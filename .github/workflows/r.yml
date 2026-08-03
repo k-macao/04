@@ -1,1 +1,14 @@
-
+name: Manual Run - Goldwind PushPlus+DeepSeek
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run: {default: 'false', options: [true,false]}
+      channel: {default: pushplus, options: [pushplus,wecom,serverchan,console,all]}
+      ai_provider: {default: deepseek, options: [deepseek,rule,openai]}
+jobs:
+  manual-test:
+    - Checkout + Python 3.11
+    - pip install requests pandas
+    - Dry-run: python run.py --dry-run + pushplus_deepseek.py --dry-run
+    - Real: python run.py + pushplus_deepseek.py (读取 Secrets)
+    - Upload Artifacts /tmp/goldwind_*
