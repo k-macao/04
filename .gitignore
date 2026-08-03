@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.log
+.DS_Store
+.merged/
+merged_*
+/tmp/
+*.tmp
+output/
+dist/
+build/
