@@ -40,6 +40,12 @@ on:
         default: 'mid'
         type: choice
         options: [low, mid, high]
+      theme:
+        description: '推送主题（仅 pushplus 通道生效）：klein=浅灰底+克莱因蓝+小两号'
+        required: true
+        default: 'klein'
+        type: choice
+        options: [klein, default]
       context:
         description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
         required: false
@@ -77,6 +83,7 @@ jobs:
           --template "${{ inputs.template }}"
           --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
@@ -86,3 +93,4 @@ jobs:
           --template "${{ inputs.template }}"
           --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
