@@ -7,7 +7,7 @@ on:
         required: true
         default: 'analysis'
         type: choice
-        options: [analysis, brief, scan, picker, fusion, plan, earnings, portfolio, review, regime]
+        options: [analysis, brief, scan, picker, fusion, plan, earnings, portfolio, review, regime, sentiment]
       dry_run:
         description: 'true=只生成不推送（联调用）；false=真实推送到微信'
         required: true
