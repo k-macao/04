@@ -58,7 +58,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.7-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.8-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -1545,7 +1545,7 @@ def themed_html(title: str, content_md: str) -> str:
 
 # ================================================================ 模块⑤：推送通道
 
-CHANNEL_LIMITS = {"pushplus": 20000, "serverchan": 20000,
+CHANNEL_LIMITS = {"pushplus": 100000, "serverchan": 20000,
                   "wecom": 3600, "console": 0}  # 0 = 不限
 
 
@@ -1573,7 +1573,7 @@ def push_pushplus(title: str, content: str, timeout: int,
     token = env("PUSHPLUS_TOKEN")
     if not token:
         raise PushError("缺少 Secret：PUSHPLUS_TOKEN")
-    title = title[:100]  # PushPlus 标题上限
+    title = title[:200]  # PushPlus 标题上限（会员支持 200 字）
     content, note = fit_for_channel("pushplus", content)
     fields = {"token": token, "title": title}
     if theme == "klein":  # 浅灰底 + 克莱因蓝 + 小两号（template=html）
