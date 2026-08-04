@@ -384,13 +384,8 @@ def market_context_line(code: str, quotes: list[Quote], v: Verification) -> str:
 
 GOOGLE_NEWS_RSS = ("https://news.google.com/rss/search?"
                    "q={q}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant")
-REDDIT_SEARCH = ("https://www.reddit.com/search.json"
-                 "?q={q}&sort=new&t=week&limit=25")
 YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
 YOUTUBE_HANDLE_PAGE = "https://www.youtube.com/@{handle}"
-FUTU_PAGE = "https://www.futunn.com/stock/{code}-HK"
-STOCKTWITS_STREAM = "https://api.stocktwits.com/api/2/streams/symbol/{t}.json"
-REDDIT_UA = {"User-Agent": "hk-sentiment-research/2.0 (educational)"}
 
 # 轻量情绪词典（先本地打标，AI 再综合——rule 模式下也能出完整报告）
 POS_WORDS = ["利好", "上涨", "大涨", "增长", "中标", "突破", "创新高", "创纪录",
@@ -497,103 +492,6 @@ def fetch_google_news(query: str, hours: int, limit: int,
     if not items:
         raise PushError(f"{hours}h 内无相关新闻")
     return items, ""
-
-
-# ---------- 源2：Reddit（公开 JSON）----------
-
-REDDIT_SAMPLE = json.dumps({"data": {"children": [
-    {"data": {"title": "Goldwind wins record offshore order, bullish",
-              "permalink": "/r/stocks/abc", "created_utc": 1754300000,
-              "score": 42, "num_comments": 13, "subreddit": "stocks"}},
-    {"data": {"title": "Wind sector slump: downgrade hits Goldwind",
-              "permalink": "/r/investing/def", "created_utc": 1754200000,
-              "score": 5, "num_comments": 2, "subreddit": "investing"}},
-    {"data": {"title": "Old news beyond window", "permalink": "/r/x",
-              "created_utc": 1754000000, "score": 1, "num_comments": 0,
-              "subreddit": "stocks"}}]}})
-
-
-def parse_reddit(text: str, hours: int, limit: int,
-                 now: datetime) -> list[SentItem]:
-    children = json.loads(text)["data"]["children"]
-    items = []
-    for c in children:
-        d = c["data"]
-        ts = datetime.fromtimestamp(d.get("created_utc", 0), UTC)
-        if not _in_window(ts, hours, now):
-            continue
-        extra = f"（r/{d.get('subreddit','?')} ▲{d.get('score',0)} 💬{d.get('num_comments',0)}）"
-        itm = _mk_item("Reddit", d.get("title", "") + extra,
-                       "https://www.reddit.com" + d.get("permalink", ""), ts, now)
-        items.append(itm)
-        if len(items) >= limit:
-            break
-    return items
-
-
-def fetch_reddit(query: str, hours: int, limit: int,
-                 timeout: int) -> tuple[list[SentItem], str]:
-    q = urllib.parse.quote_plus(query)
-    status, body = http_request(REDDIT_SEARCH.format(q=q), headers=REDDIT_UA,
-                                timeout=timeout)
-    if status != 200:
-        raise PushError(f"HTTP {status}")
-    items = parse_reddit(body, hours, limit, datetime.now(UTC))
-    if not items:
-        raise PushError(f"{hours}h 内无相关帖子")
-    return items, ""
-
-
-# ---------- 源3：moomoo/富途（无公开接口 → 尝试 + 降级 Stocktwits）----------
-
-def fetch_moomoo(code: str, hours: int, limit: int, timeout: int,
-                 stocktwits_ticker: str = "XJNGF",
-                 now: datetime | None = None) -> tuple[list[SentItem], str]:
-    now = now or datetime.now(UTC)
-    # 尝试富途页面内嵌评论（JS 渲染，多数情况下抓不到 → 走降级）
-    try:
-        status, body = http_request(FUTU_PAGE.format(code=code), timeout=timeout)
-        if status == 200:
-            snippets = re.findall(r'"content"\s*:\s*"([^"]{10,200})"', body)
-            words = re.compile(r"[一-鿿]")
-            junk = re.compile(r"http|function|var |null|\\\\u|\{|\}")
-            snippets = [s for s in snippets
-                        if words.search(s) and not junk.search(s)]
-            items = [_mk_item("moomoo·富途", s, "", None, now)
-                     for s in snippets[:limit]]
-            if items:
-                return items, "moomoo 页面直接解析（无时间戳，未按48h过滤）"
-    except PushError:
-        pass
-    # 降级：Stocktwits 公开情绪流（同維社交评论数据）
-    try:
-        status, body = http_request(
-            STOCKTWITS_STREAM.format(t=urllib.parse.quote(stocktwits_ticker)),
-            timeout=timeout)
-        if status == 200:
-            msgs = json.loads(body).get("messages", [])[:limit]
-            items = []
-            for m in msgs:
-                try:
-                    ts = datetime.fromisoformat(
-                        m["created_at"].replace("Z", "+00:00"))
-                except (KeyError, ValueError):
-                    ts = None
-                if ts and not _in_window(ts, max(hours, 24 * 7), now):
-                    continue
-                itm = _mk_item("moomoo替代·Stocktwits",
-                               re.sub(r"<[^>]+>", "", m.get("body", "")),
-                               "", ts, now)
-                if m.get("entities", {}).get("sentiment", {}).get("basic"):
-                    st = m["entities"]["sentiment"]["basic"]
-                    itm.label = {"Bullish": "利好", "Bearish": "利空"}.get(
-                        st, itm.label)
-                items.append(itm)
-            if items:
-                return items, "moomoo 无公开接口，已降级 Stocktwits 社交情绪流"
-    except (PushError, json.JSONDecodeError, KeyError):
-        pass
-    raise PushError("moomoo 无公开评论接口且降级源不可用——本项跳过")
 
 
 # ---------- 源4：YouTube @investtalk（Handle 解析 + 官方 RSS）----------
@@ -1067,17 +965,10 @@ def collect_sentiment(topic: str, code: str | None, hours: int,
     q_topic = _clean_query_topic(topic)
     jobs = [
         ("Google新闻", lambda: fetch_google_news(q_topic, hours, 10, timeout)),
-        ("Reddit", lambda: fetch_reddit(
-            f"{q_topic} OR {int(code)}.HK" if code else q_topic,
-            hours, 10, timeout)),
-        ("moomoo", lambda: fetch_moomoo(code or "02208", hours, 10, timeout)),
         ("YouTube·investtalk", lambda: fetch_youtube(
             yt_handle or (env("YT_CHANNEL") or "investtalk"), hours, 10, timeout)),
     ]
     for name, fn in jobs:
-        if name in ("moomoo",) and not code:
-            pack.errors.append("moomoo：未提供 hk_code，跳过")
-            continue
         try:
             items, note = fn()
             pack.items[name] = items
@@ -1092,7 +983,7 @@ def collect_sentiment(topic: str, code: str | None, hours: int,
             pack.momentum = {"ok": False, "score": 0.0,
                              "label": "获取失败", "detail": str(e)[:100]}
     a = {"news": _src_agg(pack.items.get("Google新闻", [])),
-         "social": _src_agg([i for k in ("Reddit", "moomoo", "YouTube·investtalk")
+         "social": _src_agg([i for k in ("YouTube·investtalk",)
                              for i in pack.items.get(k, [])])}
     news_score = a["news"].get("mean", 0.0) if a["news"].get("n") else 0.0
     social_score = a["social"].get("mean", 0.0) if a["social"].get("n") else 0.0
@@ -1112,7 +1003,7 @@ def _item_line(i: SentItem, idx: int) -> str:
 def render_sentiment_appendix(pack: SentPack) -> str:
     n = sum(len(v) for v in pack.items.values())
     lines = ["---", f"📡 **{SENTIMENT_FACTOR}证据（{pack.hours}h，共 {n} 条，本地打标）**"]
-    for name in ("Google新闻", "Reddit", "moomoo", "YouTube·investtalk"):
+    for name in ("Google新闻", "YouTube·investtalk"):
         items = pack.items.get(name)
         if not items:
             continue
@@ -1171,8 +1062,7 @@ def render_sentiment_rule(topic: str, code: str | None, pack: SentPack) -> str:
         "", *rows, "",
         f"- **综合判断**：{stance}，综合多头概率 ≈ **{anchor}%**"
         "（权重：量价40% / 新闻35% / 舆情25%）",
-        f"- **来源**：HK{code or '—'}；Google新闻 / Reddit / moomoo / "
-        f"YouTube@investtalk（{pack.hours}h 窗口）",
+        f"- **来源**：HK{code or '—'}；Google新闻 / YouTube@investtalk（{pack.hours}h 窗口）",
         "", "> ai_provider 选 deepseek 可在此数据基础上生成完整综合报告。",
         "> ⚠️ 非投资建议，仅供参考。"])
 
@@ -1205,7 +1095,7 @@ def build_messages(template: str, topic: str, context: str,
             "| 舆情动量 |  |  |  |  |  |\n"
             "| 量价动量 |  | — |  | — |  |\n\n"
             "- **新闻要点**：3 条最有信息量的（引用编号）\n"
-            "- **舆情要点**：3 条（注明来自 Reddit/moomoo/YouTube）\n"
+            "- **舆情要点**：3 条（注明来自 YouTube）\n"
             "- **催化 vs 风险**：各 2 条\n"
             "- **综合判断**：明确偏多/偏空 + 综合多头概率%"
             "（可参考本地锚点，偏离须给理由）\n"
@@ -1839,10 +1729,6 @@ def selftest() -> int:
     check("Google:利空识别(英文)", g[1].label == "利空")
     g3 = parse_google_rss(GOOGLE_SAMPLE, 8, 10, NOW)
     check("Google:8h窗口更严", len(g3) == 1)
-    NOW_R = datetime.fromtimestamp(1754300000 + 3600, timezone.utc)
-    r = parse_reddit(REDDIT_SAMPLE, 48, 10, NOW_R)
-    check("Reddit:48h过滤剩2条", len(r) == 2)
-    check("Reddit:子版与热度后缀", "r/stocks" in r[0].title)
     y = parse_youtube_atom(YOUTUBE_ATOM_SAMPLE, 48, 10, NOW)
     check("YouTube:48h过滤剩2条", len(y) == 2 and "youtu.be/abc123" in y[0].url)
     t0 = NOW.timestamp()
@@ -2070,10 +1956,10 @@ def main(argv: list[str]) -> int:
         code4sent = normalize_hk_code(hk_code_raw) if hk_code_raw else None
         if template == "analysis":
             log(f"\n📡 正在采集新增因子「{SENTIMENT_FACTOR}」的数据"
-                f"（{args.hours}h：Google新闻/Reddit/moomoo/YouTube·investtalk）…")
+                f"（{args.hours}h：Google新闻/YouTube·investtalk）…")
         else:
             log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情"
-                f"（Google新闻/Reddit/moomoo/YouTube·investtalk）…")
+                f"（Google新闻/YouTube·investtalk）…")
         sent_pack = collect_sentiment(topic, code4sent, args.hours,
                                       min(args.timeout, 15), args.yt_channel)
         for name, items in sent_pack.items.items():
