@@ -58,7 +58,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.10-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.11-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -95,6 +95,31 @@ FACTORS = [
     SENTIMENT_FACTOR,
 ]
 FACTOR_COUNT = len(FACTORS)
+
+# ---------------- 品牌信息：全部结果的统一头部与声明 ----------------
+BRAND_TITLE = "章鱼 AI 全景分析"
+BRAND_SUBTITLE = "全网多个境内境外多个大模型混合部署 AI 调研平台"
+BRAND_AUTHOR = "作者：章鱼 ai"
+BRAND_SLOGAN = ("全网境内外为你寻找蛛丝马迹-提供全景视野分析，"
+                "由多模型协同推理决策，底层所使用的大语言模型（LLM）多模式")
+BRAND_DISCLAIMER = "声明：仅供参考，不作为投资建议。"
+
+
+def brand_header_md() -> str:
+    """全部结果统一头部：标题 + 副标题 + 作者/定位说明。"""
+    return "\n".join([
+        f"## 🐙 {BRAND_TITLE}",
+        f"> {BRAND_SUBTITLE}",
+        "",
+        f"**{BRAND_AUTHOR}** {BRAND_SLOGAN}",
+        "",
+        "---",
+    ])
+
+
+def brand_footer_md() -> str:
+    """全部结果统一尾部声明。"""
+    return f"> {BRAND_DISCLAIMER}"
 
 # ================================================================ 基础工具
 
@@ -1906,6 +1931,12 @@ def selftest() -> int:
         except Exception as e:  # noqa: BLE001
             check(f"模板 {t} 构造异常: {e}", False)
     check("analysis 校验器", validate_analysis(gen_by_rule("t", "analysis")))
+    brand = f"{brand_header_md()}\n正文\n\n{brand_footer_md()}"
+    check("品牌头部字段齐全",
+          all(k in brand for k in (BRAND_TITLE, BRAND_SUBTITLE,
+                                   BRAND_AUTHOR, "LLM")))
+    check("品牌尾部声明", BRAND_DISCLAIMER in brand_footer_md())
+    check("品牌头可渲染为 HTML", BRAND_TITLE in md_to_html(brand))
 
     log(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
@@ -2079,8 +2110,11 @@ def main(argv: list[str]) -> int:
     if appendix_md:
         content += "\n\n" + appendix_md
 
+    # 全部结果统一加入品牌头部与尾部声明（所有模板/通道/dry-run 生效）
+    content = f"{brand_header_md()}\n{content}\n\n{brand_footer_md()}"
+
     now = datetime.now(CST).strftime("%m-%d %H:%M")
-    title = f"{topic}·{TEMPLATE_TITLES[template]}（{now}）"
+    title = f"{BRAND_TITLE}·{topic}·{TEMPLATE_TITLES[template]}（{now}）"
     log("\n📝 生成的内容：")
     log("-" * 60)
     log(f"# {title}\n\n{content}")
