@@ -120,6 +120,42 @@ result = deep_merge_dicts(base, incoming)
 
 输出自动合并为: id,name,age,city，并补全缺失字段
 
+## 📲 微信推送 Workflow（PushPlus + DeepSeek）
+
+仓库内置手动触发的工作流 **Manual Run - Goldwind PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
+用 DeepSeek 生成内容，通过 PushPlus 推送到微信。
+
+### 前置条件：配置 Secrets
+
+仓库 **Settings → Secrets and variables → Actions** 中添加：
+
+| Secret 名称 | 何时必需 | 获取方式 |
+|---|---|---|
+| `PUSHPLUS_TOKEN` | 通道为 `pushplus`/`all` | [pushplus.plus](https://www.pushplus.plus) 登录后个人中心复制 token |
+| `DEEPSEEK_API_KEY` | AI 为 `deepseek` | [platform.deepseek.com](https://platform.deepseek.com) 创建 API Key |
+| `WECOM_KEY` | 通道为 `wecom`/`all` | 企业微信群机器人 webhook 地址中 `key=` 后的部分 |
+| `SERVERCHAN_SENDKEY` | 通道为 `serverchan`/`all` | Server酱 Turbo 的 SendKey |
+| `OPENAI_API_KEY` | AI 为 `openai` | OpenAI 控制台（可选变量 `OPENAI_BASE_URL`） |
+
+### 运行方式
+
+**Actions → Manual Run - Goldwind PushPlus+DeepSeek → Run workflow**：
+
+- `dry_run=false`：**真实推送**到微信（默认）
+- `dry_run=true`：只生成内容打印到日志，不推送（联调用）
+- `channel`：pushplus / wecom / serverchan / console / all
+- `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
+- `topic`：内容主题，留空默认"金风科技(Goldwind) 每日简报"
+
+工作流会先运行 **Check required secrets** 步骤：缺少所需 Secret 时立即变红并指出缺哪一个。
+命令行本地调试：
+
+```bash
+python pushplus_deepseek.py --check-only          # 只检查 Secret 配置
+python pushplus_deepseek.py --dry-run             # 生成但不推送
+python pushplus_deepseek.py --channel all         # 三个通道全部推送
+```
+
 ## 📝 Git 合并演示
 
 本分支 `arena/019fc917-04` 已实现完整的合并功能，可通过 PR 合并到 main:
