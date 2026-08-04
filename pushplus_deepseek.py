@@ -28,12 +28,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from statistics import median
 
 # ================================================================ 常量
@@ -62,17 +65,18 @@ RISKS = ["low", "mid", "high"]
 RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
 
 TEMPLATES = ["brief", "analysis", "scan", "picker", "fusion",
-             "plan", "earnings", "portfolio", "review", "regime"]
+             "plan", "earnings", "portfolio", "review", "regime", "sentiment"]
 TEMPLATE_TITLES = {
     "brief": "简报", "analysis": "多空因子分析", "scan": "市场情报扫描",
     "picker": "选股器·未来30日", "fusion": "技术面×基本面融合",
     "plan": "交易计划·进出场风控", "earnings": "财报前瞻",
     "portfolio": "组合配置优化", "review": "交易复盘改进", "regime": "市场形态识别",
+    "sentiment": "量价舆情动量·48h",
 }
 TEMPLATE_MAX_TOKENS = {
     "brief": 600, "analysis": 900, "scan": 1400, "picker": 1600,
     "fusion": 1300, "plan": 1500, "earnings": 1300, "portfolio": 1500,
-    "review": 1300, "regime": 1100,
+    "review": 1300, "regime": 1100, "sentiment": 1800,
 }
 
 FACTORS = [
@@ -336,7 +340,457 @@ def market_context_line(code: str, quotes: list[Quote], v: Verification) -> str:
             f"{grade}，可信度说明见文末数据核验表")
 
 
-# ================================================================ 模块②：分析框架（10 套模板）
+# ================================================================ 模块②：舆情采集与情绪动量（48h）
+
+GOOGLE_NEWS_RSS = ("https://news.google.com/rss/search?"
+                   "q={q}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant")
+REDDIT_SEARCH = ("https://www.reddit.com/search.json"
+                 "?q={q}&sort=new&t=week&limit=25")
+YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id={cid}"
+YOUTUBE_HANDLE_PAGE = "https://www.youtube.com/@{handle}"
+FUTU_PAGE = "https://www.futunn.com/stock/{code}-HK"
+STOCKTWITS_STREAM = "https://api.stocktwits.com/api/2/streams/symbol/{t}.json"
+REDDIT_UA = {"User-Agent": "hk-sentiment-research/2.0 (educational)"}
+
+# 轻量情绪词典（先本地打标，AI 再综合——rule 模式下也能出完整报告）
+POS_WORDS = ["利好", "上涨", "大涨", "增长", "中标", "突破", "创新高", "回购",
+             "预增", "超预期", "盈利", "签约", "订单", "扩产", "获批", "分红",
+             "surge", "rally", "beat", "upgrade", "record", "profit", "bullish",
+             "soar", "win", "growth", "boost"]
+NEG_WORDS = ["利空", "下跌", "大跌", "亏损", "减持", "违约", "下调", "预警",
+             "预亏", "低于预期", "处罚", "诉讼", "削减", "延期", "停产",
+             "plunge", "miss", "downgrade", "loss", "lawsuit", "cut", "bearish",
+             "slump", "drop", "warning", "fraud"]
+
+UTC = timezone.utc
+
+
+def _count_word(low: str, w: str) -> int:
+    """英文词按词边界匹配（防止 win 命中 Goldwind 之类误判），中文按子串。"""
+    if w.isascii():
+        return len(re.findall(r"\b" + re.escape(w.lower()) + r"\b", low))
+    return low.count(w)
+
+
+def score_text(text: str) -> tuple[float, str, float]:
+    """词典法情绪打分。返回 (score∈[-1,1], 标签, 置信度∈[0,1])。"""
+    low = text.lower()
+    pos = sum(_count_word(low, w) for w in POS_WORDS)
+    neg = sum(_count_word(low, w) for w in NEG_WORDS)
+    total = pos + neg
+    score = 0.0 if total == 0 else max(-1.0, min(1.0, (pos - neg) / total))
+    label = "利好" if score > 0.12 else ("利空" if score < -0.12 else "中性")
+    return round(score, 2), label, round(min(1.0, total / 4), 2)
+
+
+@dataclass
+class SentItem:
+    source: str
+    title: str
+    url: str = ""
+    age_h: float | None = None   # 距抓取时刻的小时数
+    score: float = 0.0
+    label: str = "中性"
+    conf: float = 0.0
+
+
+def _mk_item(source: str, title: str, url: str, ts: datetime | None,
+             now: datetime) -> SentItem:
+    title = re.sub(r"\s+", " ", title).strip()
+    score, label, conf = score_text(title)
+    age = round((now - ts).total_seconds() / 3600, 1) if ts else None
+    return SentItem(source=source, title=title, url=url,
+                    age_h=age, score=score, label=label, conf=conf)
+
+
+def _in_window(ts: datetime | None, hours: int, now: datetime) -> bool:
+    return ts is not None and (now - ts).total_seconds() <= hours * 3600
+
+
+# ---------- 源1：Google 新闻（官方 RSS）----------
+
+GOOGLE_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<item><title>金风科技中标 500MW 海上风电项目 订单超预期 - 香港经济日报</title>
+<link>https://example.com/a</link><pubDate>Mon, 04 Aug 2026 08:00:00 GMT</pubDate>
+<source>香港经济日报</source></item>
+<item><title>Goldwind shares plunge 3% on profit warning fears - Reuters</title>
+<link>https://example.com/b</link><pubDate>Sun, 03 Aug 2026 20:00:00 GMT</pubDate>
+<source>Reuters</source></item>
+<item><title>风电板块周度回顾 - 财华社</title><link>https://example.com/c</link>
+<pubDate>Fri, 01 Aug 2026 08:00:00 GMT</pubDate><source>财华社</source></item>
+</channel></rss>"""
+
+
+def parse_google_rss(text: str, hours: int, limit: int,
+                     now: datetime) -> list[SentItem]:
+    root = ET.fromstring(text)
+    items = []
+    for it in root.iter("item"):
+        title = it.findtext("title", "")
+        if " - " in title:  # Google 格式: "标题 - 来源"
+            title, src = title.rsplit(" - ", 1)
+        else:
+            src = it.findtext("source", "")
+        try:
+            ts = parsedate_to_datetime(it.findtext("pubDate", ""))
+        except (TypeError, ValueError):
+            ts = None
+        if not _in_window(ts, hours, now):
+            continue  # 48h 窗口过滤
+        itm = _mk_item(f"Google·{src or '新闻'}", title,
+                       it.findtext("link", ""), ts, now)
+        items.append(itm)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fetch_google_news(query: str, hours: int, limit: int,
+                      timeout: int) -> tuple[list[SentItem], str]:
+    q = urllib.parse.quote_plus(f"{query} when:2d")
+    status, body = http_request(GOOGLE_NEWS_RSS.format(q=q), timeout=timeout)
+    if status != 200:
+        raise PushError(f"HTTP {status}")
+    items = parse_google_rss(body, hours, limit,
+                             datetime.now(UTC))
+    if not items:
+        raise PushError(f"{hours}h 内无相关新闻")
+    return items, ""
+
+
+# ---------- 源2：Reddit（公开 JSON）----------
+
+REDDIT_SAMPLE = json.dumps({"data": {"children": [
+    {"data": {"title": "Goldwind wins record offshore order, bullish",
+              "permalink": "/r/stocks/abc", "created_utc": 1754300000,
+              "score": 42, "num_comments": 13, "subreddit": "stocks"}},
+    {"data": {"title": "Wind sector slump: downgrade hits Goldwind",
+              "permalink": "/r/investing/def", "created_utc": 1754200000,
+              "score": 5, "num_comments": 2, "subreddit": "investing"}},
+    {"data": {"title": "Old news beyond window", "permalink": "/r/x",
+              "created_utc": 1754000000, "score": 1, "num_comments": 0,
+              "subreddit": "stocks"}}]}})
+
+
+def parse_reddit(text: str, hours: int, limit: int,
+                 now: datetime) -> list[SentItem]:
+    children = json.loads(text)["data"]["children"]
+    items = []
+    for c in children:
+        d = c["data"]
+        ts = datetime.fromtimestamp(d.get("created_utc", 0), UTC)
+        if not _in_window(ts, hours, now):
+            continue
+        extra = f"（r/{d.get('subreddit','?')} ▲{d.get('score',0)} 💬{d.get('num_comments',0)}）"
+        itm = _mk_item("Reddit", d.get("title", "") + extra,
+                       "https://www.reddit.com" + d.get("permalink", ""), ts, now)
+        items.append(itm)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fetch_reddit(query: str, hours: int, limit: int,
+                 timeout: int) -> tuple[list[SentItem], str]:
+    q = urllib.parse.quote_plus(query)
+    status, body = http_request(REDDIT_SEARCH.format(q=q), headers=REDDIT_UA,
+                                timeout=timeout)
+    if status != 200:
+        raise PushError(f"HTTP {status}")
+    items = parse_reddit(body, hours, limit, datetime.now(UTC))
+    if not items:
+        raise PushError(f"{hours}h 内无相关帖子")
+    return items, ""
+
+
+# ---------- 源3：moomoo/富途（无公开接口 → 尝试 + 降级 Stocktwits）----------
+
+def fetch_moomoo(code: str, hours: int, limit: int, timeout: int,
+                 stocktwits_ticker: str = "XJNGF",
+                 now: datetime | None = None) -> tuple[list[SentItem], str]:
+    now = now or datetime.now(UTC)
+    # 尝试富途页面内嵌评论（JS 渲染，多数情况下抓不到 → 走降级）
+    try:
+        status, body = http_request(FUTU_PAGE.format(code=code), timeout=timeout)
+        if status == 200:
+            snippets = re.findall(r'"content"\s*:\s*"([^"]{10,200})"', body)
+            items = [_mk_item("moomoo·富途", s, "", None, now)
+                     for s in snippets[:limit]]
+            if items:
+                return items, "moomoo 页面直接解析（无时间戳，未按48h过滤）"
+    except PushError:
+        pass
+    # 降级：Stocktwits 公开情绪流（同維社交评论数据）
+    try:
+        status, body = http_request(
+            STOCKTWITS_STREAM.format(t=urllib.parse.quote(stocktwits_ticker)),
+            timeout=timeout)
+        if status == 200:
+            msgs = json.loads(body).get("messages", [])[:limit]
+            items = []
+            for m in msgs:
+                try:
+                    ts = datetime.fromisoformat(
+                        m["created_at"].replace("Z", "+00:00"))
+                except (KeyError, ValueError):
+                    ts = None
+                if ts and not _in_window(ts, max(hours, 24 * 7), now):
+                    continue
+                itm = _mk_item("moomoo替代·Stocktwits",
+                               re.sub(r"<[^>]+>", "", m.get("body", "")),
+                               "", ts, now)
+                if m.get("entities", {}).get("sentiment", {}).get("basic"):
+                    st = m["entities"]["sentiment"]["basic"]
+                    itm.label = {"Bullish": "利好", "Bearish": "利空"}.get(
+                        st, itm.label)
+                items.append(itm)
+            if items:
+                return items, "moomoo 无公开接口，已降级 Stocktwits 社交情绪流"
+    except (PushError, json.JSONDecodeError, KeyError):
+        pass
+    raise PushError("moomoo 无公开评论接口且降级源不可用——本项跳过")
+
+
+# ---------- 源4：YouTube @investtalk（Handle 解析 + 官方 RSS）----------
+
+YOUTUBE_ATOM_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+      xmlns="http://www.w3.org/2005/Atom">
+<entry><yt:videoId>abc123</yt:videoId>
+<title>Market rally: why tech could surge this week</title>
+<published>2026-08-04T06:00:00+00:00</published></entry>
+<entry><yt:videoId>def456</yt:videoId>
+<title>Investors brace for loss: bearish signals in energy</title>
+<published>2026-08-03T07:00:00+00:00</published></entry>
+<entry><yt:videoId>old789</yt:videoId><title>Old episode</title>
+<published>2026-07-30T07:00:00+00:00</published></entry>
+</feed>"""
+
+
+def parse_youtube_atom(text: str, hours: int, limit: int,
+                       now: datetime) -> list[SentItem]:
+    ns = {"a": "http://www.w3.org/2005/Atom",
+          "yt": "http://www.youtube.com/xml/schemas/2015"}
+    items = []
+    for e in ET.fromstring(text).findall("a:entry", ns):
+        try:
+            ts = datetime.fromisoformat(e.findtext("a:published", "", ns))
+        except ValueError:
+            ts = None
+        if not _in_window(ts, hours, now):
+            continue
+        vid = e.findtext("yt:videoId", "", ns)
+        itm = _mk_item("YouTube·investtalk", e.findtext("a:title", "", ns),
+                       f"https://youtu.be/{vid}" if vid else "", ts, now)
+        items.append(itm)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fetch_youtube(handle: str, hours: int, limit: int,
+                  timeout: int) -> tuple[list[SentItem], str]:
+    handle = (handle or "investtalk").lstrip("@")
+    status, body = http_request(YOUTUBE_HANDLE_PAGE.format(handle=handle),
+                                timeout=timeout)
+    if status != 200:
+        raise PushError(f"频道页 HTTP {status}")
+    m = (re.search(r'"channelId"\s*:\s*"(UC[\w-]{22})"', body)
+         or re.search(r'itemprop="channelId"\s+content="(UC[\w-]{22})"', body))
+    if not m:
+        raise PushError(f"未能解析 @{handle} 的 channelId")
+    status, feed = http_request(YOUTUBE_FEED.format(cid=m.group(1)),
+                                timeout=timeout)
+    if status != 200:
+        raise PushError(f"频道 RSS HTTP {status}")
+    items = parse_youtube_atom(feed, hours, limit, datetime.now(UTC))
+    if not items:
+        raise PushError(f"@{handle} 在 {hours}h 内无新视频")
+    return items, ""
+
+
+# ---------- 量价情绪动量：Yahoo 小时线（近48h 涨跌 + 量比）----------
+
+def compute_price_momentum(closes: list[float], vols: list[float],
+                           tss: list[int], hours: int,
+                           now: datetime) -> dict:
+    cutoff = now.timestamp() - hours * 3600
+    pts = [(t, c, v) for t, c, v in zip(tss, closes, vols)
+           if c is not None and t >= cutoff]
+    prev_vols = [v for t, c, v in zip(tss, closes, vols)
+                 if t < cutoff and v]
+    if len(pts) < 2:
+        return {"ok": False, "score": 0.0, "label": "数据不足", "detail": ""}
+    ret = (pts[-1][1] - pts[0][1]) / pts[0][1] * 100
+    vols_48 = [v for _, _, v in pts if v]
+    avg_recent = sum(vols_48) / len(vols_48) if vols_48 else 0.0
+    avg_prev = sum(prev_vols) / len(prev_vols) if prev_vols else avg_recent
+    vol_ratio = avg_recent / avg_prev if avg_prev else 1.0
+    score = max(-1.0, min(1.0, ret / 4)) * 0.6 \
+        + max(-0.8, min(0.8, vol_ratio - 1)) * 0.5
+    score = round(max(-1.0, min(1.0, score)), 2)
+    label = "偏多" if score > 0.12 else ("偏空" if score < -0.12 else "中性")
+    detail = f"近{hours}h {ret:+.2f}%，量比 {vol_ratio:.2f}，样本 {len(pts)} 根K线"
+    return {"ok": True, "score": score, "label": label,
+            "detail": detail, "ret": round(ret, 2),
+            "vol_ratio": round(vol_ratio, 2)}
+
+
+def fetch_price_momentum(code: str, hours: int, timeout: int) -> dict:
+    url = ("https://query1.finance.yahoo.com/v8/finance/chart/"
+           f"{int(code)}.HK?interval=1h&range=5d")
+    status, body = http_request(url, timeout=timeout)
+    if status != 200:
+        raise PushError(f"小时线 HTTP {status}")
+    res = json.loads(body)["chart"]["result"][0]
+    quote = res["indicators"]["quote"][0]
+    return compute_price_momentum(quote.get("close", []),
+                                  quote.get("volume", []),
+                                  res.get("timestamp", []), hours,
+                                  datetime.now(UTC))
+
+
+# ---------- 汇总：多源采集 + 动量聚合 ----------
+
+@dataclass
+class SentPack:
+    hours: int
+    items: dict[str, list[SentItem]] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    momentum: dict = field(default_factory=dict)
+    agg: dict = field(default_factory=dict)
+
+
+def _src_agg(items: list[SentItem]) -> dict:
+    if not items:
+        return {"n": 0}
+    pos = sum(1 for i in items if i.label == "利好")
+    neg = sum(1 for i in items if i.label == "利空")
+    mean = round(sum(i.score for i in items) / len(items), 2)
+    recent = [i.score for i in items if i.age_h is not None and i.age_h <= 24]
+    older = [i.score for i in items if i.age_h is not None and i.age_h > 24]
+    trend = "→"
+    if recent and older:
+        d = sum(recent) / len(recent) - sum(older) / len(older)
+        trend = "↑" if d > 0.1 else ("↓" if d < -0.1 else "→")
+    return {"n": len(items), "pos": pos, "neg": neg,
+            "neu": len(items) - pos - neg, "mean": mean, "24h趋势": trend}
+
+
+def collect_sentiment(topic: str, code: str | None, hours: int,
+                      timeout: int, yt_handle: str = "") -> SentPack:
+    """采集 4 源 + 量价动量。任何单源失败只记录、不中断。"""
+    pack = SentPack(hours=hours)
+    jobs = [
+        ("Google新闻", lambda: fetch_google_news(topic, hours, 10, timeout)),
+        ("Reddit", lambda: fetch_reddit(
+            f"{topic} OR {int(code)}.HK" if code else topic, hours, 10, timeout)),
+        ("moomoo", lambda: fetch_moomoo(code or "02208", hours, 10, timeout)),
+        ("YouTube·investtalk", lambda: fetch_youtube(
+            yt_handle or (env("YT_CHANNEL") or "investtalk"), hours, 10, timeout)),
+    ]
+    for name, fn in jobs:
+        if name in ("moomoo",) and not code:
+            pack.errors.append("moomoo：未提供 hk_code，跳过")
+            continue
+        try:
+            items, note = fn()
+            pack.items[name] = items
+            if note:
+                pack.errors.append(f"{name}：{note}")
+        except Exception as e:  # noqa: BLE001 —— 逐源隔离
+            pack.errors.append(f"{name}：{str(e)[:120]}")
+    if code:
+        try:
+            pack.momentum = fetch_price_momentum(code, hours, timeout)
+        except Exception as e:  # noqa: BLE001
+            pack.momentum = {"ok": False, "score": 0.0,
+                             "label": "获取失败", "detail": str(e)[:100]}
+    a = {"news": _src_agg(pack.items.get("Google新闻", [])),
+         "social": _src_agg([i for k in ("Reddit", "moomoo", "YouTube·investtalk")
+                             for i in pack.items.get(k, [])])}
+    news_score = a["news"].get("mean", 0.0) if a["news"].get("n") else 0.0
+    social_score = a["social"].get("mean", 0.0) if a["social"].get("n") else 0.0
+    mom_score = pack.momentum.get("score", 0.0)
+    anchor = 50 + 45 * (0.40 * mom_score + 0.35 * news_score + 0.25 * social_score)
+    a["综合多头概率锚点"] = max(5, min(95, round(anchor)))
+    pack.agg = a
+    return pack
+
+
+def _item_line(i: SentItem, idx: int) -> str:
+    age = f"{i.age_h:.0f}h前" if i.age_h is not None else "时间未知"
+    t = i.title if len(i.title) <= 60 else i.title[:57] + "…"
+    return f"{idx}. [{i.label} {i.score:+.2f}] {t} — {i.source} · {age}"
+
+
+def render_sentiment_appendix(pack: SentPack) -> str:
+    n = sum(len(v) for v in pack.items.values())
+    lines = ["---", f"📡 **48h 多源舆情原始数据（共 {n} 条，本地打标）**"]
+    for name in ("Google新闻", "Reddit", "moomoo", "YouTube·investtalk"):
+        items = pack.items.get(name)
+        if not items:
+            continue
+        lines.append(f"\n**{name}（{len(items)}/10）**")
+        lines += [_item_line(i, k + 1) for k, i in enumerate(items)]
+    m = pack.momentum
+    if m:
+        lines.append("\n**量价情绪动量**")
+        lines.append(f"- {m.get('detail') or m.get('label')} → "
+                     f"{m.get('label')}（动量分 {m.get('score', 0):+.2f}）")
+    if pack.errors:
+        lines.append("\n**数据缺口**")
+        lines += [f"- ⚠️ {e}" for e in pack.errors]
+    return "\n".join(lines)
+
+
+def sentiment_context(pack: SentPack) -> str:
+    ctx = [f"【{pack.hours}h 多源舆情数据（本地预打标：标签/分值/时效）】"]
+    for name, items in pack.items.items():
+        ctx.append(f"▼ {name}")
+        ctx += [_item_line(i, k + 1) for k, i in enumerate(items)]
+    m = pack.momentum
+    if m.get("ok"):
+        ctx.append(f"▼ 量价动量：{m['detail']} → {m['label']}（{m['score']:+.2f}）")
+    if pack.errors:
+        ctx.append("▼ 数据缺口：" + "；".join(pack.errors))
+    a = pack.agg
+    ctx.append(
+        "▼ 本地预聚合："
+        f"新闻动量 {a.get('news', {}).get('mean', 0):+.2f}，"
+        f"社媒动量 {a.get('social', {}).get('mean', 0):+.2f}，"
+        f"量价动量 {m.get('score', 0):+.2f}，"
+        f"综合多头概率锚点 ≈ {a.get('综合多头概率锚点', '—')}%")
+    return "\n".join(ctx)
+
+
+def render_sentiment_rule(topic: str, code: str | None, pack: SentPack) -> str:
+    a, m = pack.agg, pack.momentum
+    news, soc = a.get("news", {}), a.get("social", {})
+    anchor = a.get("综合多头概率锚点", 50)
+    stance = "偏多" if anchor >= 55 else ("偏空" if anchor <= 45 else "中性")
+    rows = [
+        "| 象限 | 样本 | 利好/利空/中性 | 动量分 | 24h趋势 |",
+        "|---|---|---|---|---|",
+        f"| 新闻动量 | {news.get('n', 0)} | {news.get('pos', 0)}/{news.get('neg', 0)}"
+        f"/{news.get('neu', 0)} | {news.get('mean', 0):+.2f} | {news.get('24h趋势', '—')} |",
+        f"| 舆情动量 | {soc.get('n', 0)} | {soc.get('pos', 0)}/{soc.get('neg', 0)}"
+        f"/{soc.get('neu', 0)} | {soc.get('mean', 0):+.2f} | {soc.get('24h趋势', '—')} |",
+        f"| 量价动量 | 小时K线 | — | {m.get('score', 0):+.2f} | — |",
+    ]
+    return "\n".join([
+        f"**{topic} · 48h 量价舆情动量**（rule 本地计算，未经 AI 综合）",
+        "", *rows, "",
+        f"- **综合判断**：{stance}，综合多头概率 ≈ **{anchor}%**"
+        "（权重：量价40% / 新闻35% / 舆情25%）",
+        f"- **来源**：HK{code or '—'}；Google新闻 / Reddit / moomoo / "
+        "YouTube@investtalk（48h 窗口）",
+        "", "> ai_provider 选 deepseek 可在此数据基础上生成完整综合报告。",
+        "> ⚠️ 非投资建议，仅供参考。"])
+
+
+# ================================================================ 模块③：分析框架（11 套模板）
 
 RULES_TAIL = "末尾固定一行「⚠️ 非投资建议，仅供参考」。"
 
@@ -352,7 +806,26 @@ def build_messages(template: str, topic: str, context: str,
                    risk: str = "mid") -> list[dict]:
     """按模板构造 AI 对话。多空判断一律带概率（50%=中性）。"""
     ctx = _ctx_line(context)
-    if template == "scan":
+    if template == "sentiment":
+        user = (
+            f"基于以下 48 小时内、已完成本地预打标的多源数据，"
+            f"为「{topic}」输出一份量价与舆情动量报告。\n\n{context}\n\n"
+            "严格按此格式输出：\n\n"
+            f"## 48h 情绪动量报告\n\n"
+            "| 象限 | 样本 | 利好/利空/中性 | 动量分 | 24h趋势 | 多头概率 |\n"
+            "|---|---|---|---|---|---|\n"
+            "| 新闻动量 |  |  |  |  |  |\n"
+            "| 舆情动量 |  |  |  |  |  |\n"
+            "| 量价动量 |  | — |  | — |  |\n\n"
+            "- **新闻要点**：3 条最有信息量的（引用编号）\n"
+            "- **舆情要点**：3 条（注明来自 Reddit/moomoo/YouTube）\n"
+            "- **催化 vs 风险**：各 2 条\n"
+            "- **综合判断**：明确偏多/偏空 + 综合多头概率%"
+            "（可参考本地锚点，偏离须给理由）\n"
+            "- **失效条件**：1~2 条\n\n"
+            "打分区间 [-1,1]；样本不足的象限必须明说而非编造。全文≤650字。"
+            + RULES_TAIL)
+    elif template == "scan":
         user = (
             "扫一遍今天全球市场，总结推动股价的 5 大力量。"
             "重点关注宏观事件、板块轮动、情绪变化，区分重点与噪音。\n\n" + ctx +
@@ -686,6 +1159,39 @@ def selftest() -> int:
     check("normalize 2208→02208", normalize_hk_code("2208") == "02208")
     check("normalize 2208.HK→02208", normalize_hk_code("2208.HK") == "02208")
 
+    log("③b 情绪模块（48h 窗口）")
+    NOW = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
+    s, l_, _ = score_text("金风科技中标海上风电订单，业绩大增")
+    check("词典:利好", l_ == "利好" and s > 0)
+    s, l_, _ = score_text("公司亏损并遭大股东减持")
+    check("词典:利空", l_ == "利空" and s < 0)
+    s, l_, _ = score_text("举行年度股东大会")
+    check("词典:中性", l_ == "中性" and s == 0)
+    s, l_, _ = score_text("Goldwind")
+    check("词典:词边界防误判(Goldwind≠win)", l_ == "中性" and s == 0)
+    g = parse_google_rss(GOOGLE_SAMPLE, 48, 10, NOW)
+    check("Google:48h过滤剩2条", len(g) == 2)
+    check("Google:利好识别", g[0].label == "利好")
+    check("Google:利空识别(英文)", g[1].label == "利空")
+    g3 = parse_google_rss(GOOGLE_SAMPLE, 8, 10, NOW)
+    check("Google:8h窗口更严", len(g3) == 1)
+    NOW_R = datetime.fromtimestamp(1754300000 + 3600, timezone.utc)
+    r = parse_reddit(REDDIT_SAMPLE, 48, 10, NOW_R)
+    check("Reddit:48h过滤剩2条", len(r) == 2)
+    check("Reddit:子版与热度后缀", "r/stocks" in r[0].title)
+    y = parse_youtube_atom(YOUTUBE_ATOM_SAMPLE, 48, 10, NOW)
+    check("YouTube:48h过滤剩2条", len(y) == 2 and "youtu.be/abc123" in y[0].url)
+    t0 = NOW.timestamp()
+    tss = [int(t0 - 3600 * (120 - k)) for k in range(120)]
+    closes = [15.5] * 71 + [16.0 + 0.01 * k for k in range(49)]  # 48h内缓涨
+    vols = [1000] * 71 + [1500] * 49                              # 近48h放量
+    mom = compute_price_momentum(closes, vols, tss, 48, NOW)
+    check("量价:放量上涨→偏多", mom["ok"] and mom["label"] == "偏多"
+          and mom["score"] > 0.3)
+    mom2 = compute_price_momentum([16.5] * 71 + [16.0 - 0.02 * k for k in range(49)],
+                                  vols, tss, 48, NOW)
+    check("量价:缩量下跌→偏空", mom2["ok"] and mom2["label"] == "偏空")
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -720,6 +1226,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="港股代码（如 02208），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
+    p.add_argument("--hours", type=int, default=48,
+                   help="sentiment 模板的数据窗口小时数（默认 48）")
+    p.add_argument("--yt-channel", default="", dest="yt_channel",
+                   help="YouTube 频道 handle（默认 @investtalk，或环境变量 YT_CHANNEL）")
     p.add_argument("--timeout", type=int, default=30)
     return p.parse_args(argv)
 
@@ -748,6 +1258,29 @@ def main(argv: list[str]) -> int:
     if args.check_only:
         return 0 if print_secret_report(channel, provider) else 1
 
+    # ---------- 模块②：sentiment 模板先采集 4 源舆情 + 量价动量 ----------
+    sent_pack, appendix_md, code4sent = None, "", None
+    if template == "sentiment":
+        code4sent = normalize_hk_code(hk_code_raw) if hk_code_raw else None
+        log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情"
+            f"（Google新闻/Reddit/moomoo/YouTube·investtalk）…")
+        sent_pack = collect_sentiment(topic, code4sent, args.hours,
+                                      min(args.timeout, 15), args.yt_channel)
+        for name, items in sent_pack.items.items():
+            agg = _src_agg(items)
+            log(f"  ✅ {name}: {agg['n']} 条"
+                f"（利好{agg['pos']}/利空{agg['neg']}/中性{agg['neu']}"
+                f"，动量 {agg['mean']:+.2f}）")
+        if sent_pack.momentum:
+            log(f"  {'✅' if sent_pack.momentum.get('ok') else '❌'} 量价动量: "
+                f"{sent_pack.momentum.get('detail') or sent_pack.momentum.get('label')}")
+        for e in sent_pack.errors:
+            log(f"  ⚠️  {e}")
+        log(f"  → 综合多头概率锚点 ≈ "
+            f"{sent_pack.agg.get('综合多头概率锚点', '—')}%")
+        appendix_md = render_sentiment_appendix(sent_pack)
+        user_context = sentiment_context(sent_pack)
+
     # ---------- 模块①：三源取价 + 交叉核验（可选）----------
     data_md, context = "", user_context
     if hk_code_raw:
@@ -764,13 +1297,15 @@ def main(argv: list[str]) -> int:
         log(f"  → 核验结论：{ver.verdict}")
         data_md = market_block_md(code, quotes, ver)
         line = market_context_line(code, quotes, ver)
-        context = (line if not user_context
-                   else f"{line}\n补充背景：{user_context}")
+        context = (f"{line}\n\n{user_context}" if user_context else line)
 
-    # ---------- 模块②：内容生成 ----------
+    # ---------- 模块③：内容生成 ----------
     try:
         if provider == "rule":
-            content = gen_by_rule(topic, template)
+            if template == "sentiment" and sent_pack is not None:
+                content = render_sentiment_rule(topic, code4sent, sent_pack)
+            else:
+                content = gen_by_rule(topic, template)
         else:
             key_env = ("DEEPSEEK_API_KEY" if provider == "deepseek"
                        else "OPENAI_API_KEY")
@@ -801,6 +1336,8 @@ def main(argv: list[str]) -> int:
         content += "\n\n> ⚠️ 本次模型输出未通过框架格式校验，以上为原始返回，仅供参考。"
     if data_md:
         content += "\n\n" + data_md
+    if appendix_md:
+        content += "\n\n" + appendix_md
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
     title = f"{topic}·{TEMPLATE_TITLES[template]}（{now}）"
