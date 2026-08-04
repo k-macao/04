@@ -58,6 +58,8 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
+VERSION = "2.7-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
+
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
 PROVIDERS = ["deepseek", "rule", "openai"]
@@ -1397,7 +1399,151 @@ def print_secret_report(channel: str, provider: str) -> bool:
     return True
 
 
-# ================================================================ 模块④：推送通道
+# ================================================================ 模块④b：HTML 主题渲染
+#
+# PushPlus template=html 时走该渲染器。微信/PushPlus 详情页对 <style> 标签
+# 支持不稳定，全部使用内联样式。klein 主题：浅灰底 + 克莱因蓝(#002FA7) +
+# 字号较默认默认(≈16px)降两号 ≈ 13px。
+
+KLEIN = {
+    # ── 底色深浅：改这一行 ──────────────────────────
+    "bg": "#F3F4F6",        # 卡片底色（浅灰）
+    "hbg": "#E6ECF8",       # 表头底色
+    # ── 字号档位：改这几行 ──────────────────────────
+    "size": "13px",         # 正文（较微信默认≈16px 降两号）
+    "size_title": "15px",   # 卡片大标题
+    "size_h1": "16px",      # 「#」一级标题
+    "size_h2": "15px",      # 「##」二级标题
+    "size_h3": "13.5px",    # 「###」及以下标题
+    # ── 表格/文字配色：改这几行 ──────────────────────
+    "fg": "#002FA7",        # 主文字：克莱因蓝
+    "muted": "#5C7BC4",     # 次级文字（引用/备注）
+    "border": "#C9D4EA",    # 表格边框
+    "line": "1.65",         # 行距
+}
+
+
+def _inline_md(s: str) -> str:
+    s = (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+    s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+    s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+               rf'<a href="\2" style="color:{KLEIN["fg"]};">\1</a>', s)
+    return s
+
+
+def _render_table(rows: list[str]) -> str:
+    def cells(r: str) -> list[str]:
+        return [c.strip() for c in r.strip().strip("|").split("|")]
+    head = cells(rows[0])
+    body = [cells(r) for r in rows[2:]] if len(rows) > 2 else []
+    th = "".join(f'<th style="border:1px solid {KLEIN["border"]};padding:4px 6px;'
+                 f'background:{KLEIN["hbg"]};color:{KLEIN["fg"]};font-weight:bold;'
+                 f'text-align:left;">{_inline_md(c)}</th>' for c in head)
+    trs = []
+    for r in body:
+        tds = "".join(f'<td style="border:1px solid {KLEIN["border"]};'
+                      f'padding:4px 6px;color:{KLEIN["fg"]};">'
+                      f'{_inline_md(c)}</td>' for c in r)
+        trs.append(f"<tr>{tds}</tr>")
+    return (f'<table style="border-collapse:collapse;width:100%;'
+            f'font-size:{KLEIN["size"]};margin:6px 0;">'
+            f"<thead><tr>{th}</tr></thead><tbody>{''.join(trs)}</tbody></table>")
+
+
+def md_to_html(md: str) -> str:
+    """轻量 Markdown→HTML（仅覆盖本工具自产结构，全部内联样式）。"""
+    html: list[str] = []
+    lines = md.split("\n")
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        line = raw.rstrip()
+        s = line.strip()
+        if not s:
+            i += 1
+            continue
+        if s.startswith("|"):  # 表格块
+            tbl = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                tbl.append(lines[i])
+                i += 1
+            if len(tbl) >= 2:
+                html.append(_render_table(tbl))
+            continue
+        if re.match(r"^-{3,}$", s):  # 分隔线
+            html.append(f'<hr style="border:none;border-top:1px solid '
+                        f'{KLEIN["border"]};margin:10px 0;">')
+            i += 1
+            continue
+        if s.startswith("#"):  # 标题
+            h = len(s) - len(s.lstrip("#"))
+            txt = s.lstrip("#").strip()
+            fs = {"1": KLEIN["size_h1"], "2": KLEIN["size_h2"]}.get(
+                str(h), KLEIN["size_h3"])
+            html.append(f'<div style="font-size:{fs};font-weight:bold;'
+                        f'color:{KLEIN["fg"]};margin:8px 0 4px;">'
+                        f"{_inline_md(txt)}</div>")
+            i += 1
+            continue
+        if s.startswith(">"):  # 引用块
+            qs = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                qs.append(lines[i].strip().lstrip(">").strip())
+                i += 1
+            html.append(f'<div style="color:{KLEIN["muted"]};font-size:'
+                        f'{KLEIN["size"]};border-left:3px solid '
+                        f'{KLEIN["border"]};padding-left:8px;margin:4px 0;">'
+                        + "<br>".join(_inline_md(q) for q in qs) + "</div>")
+            continue
+        if re.match(r"^[-*]\s+", s):  # 无序列表
+            items = []
+            while i < len(lines) and re.match(r"^[-*]\s+", lines[i].strip()):
+                items.append(re.sub(r"^[-*]\s+", "", lines[i].strip()))
+                i += 1
+            lis = "".join(f'<li style="margin:2px 0;">{_inline_md(x)}</li>'
+                          for x in items)
+            html.append(f'<ul style="margin:4px 0;padding-left:18px;'
+                        f'color:{KLEIN["fg"]};">{lis}</ul>')
+            continue
+        if re.match(r"^\d+\.\s+", s):  # 有序列表
+            items = []
+            while i < len(lines) and re.match(r"^\d+\.\s+", lines[i].strip()):
+                items.append(re.sub(r"^\d+\.\s+", "", lines[i].strip()))
+                i += 1
+            lis = "".join(f'<li style="margin:2px 0;">{_inline_md(x)}</li>'
+                          for x in items)
+            html.append(f'<ol style="margin:4px 0;padding-left:18px;'
+                        f'color:{KLEIN["fg"]};">{lis}</ol>')
+            continue
+        # 普通段落：聚合连续普通行
+        para = [s]
+        i += 1
+        while i < len(lines):
+            nxt = lines[i].strip()
+            if (not nxt or nxt.startswith(("|", "#", ">", "-", "*"))
+                    or re.match(r"^\d+\.\s+", nxt) or re.match(r"^-{3,}$", nxt)):
+                break
+            para.append(nxt)
+            i += 1
+        html.append(f'<div style="margin:4px 0;color:{KLEIN["fg"]};">'
+                    + "<br>".join(_inline_md(p) for p in para) + "</div>")
+    return "".join(html)
+
+
+def themed_html(title: str, content_md: str) -> str:
+    body = md_to_html(content_md)
+    return (
+        f'<div style="background:{KLEIN["bg"]};padding:16px 14px;'
+        f'border-radius:10px;font-size:{KLEIN["size"]};'
+        f'line-height:{KLEIN["line"]};color:{KLEIN["fg"]};'
+        f'font-family:-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,'
+        f'sans-serif;">'
+        f'<div style="font-size:{KLEIN["size_title"]};font-weight:bold;'
+        f'color:{KLEIN["fg"]};margin-bottom:8px;">{title}</div>'
+        f"{body}</div>")
+
+
+# ================================================================ 模块⑤：推送通道
 
 CHANNEL_LIMITS = {"pushplus": 20000, "serverchan": 20000,
                   "wecom": 3600, "console": 0}  # 0 = 不限
@@ -1422,15 +1568,20 @@ def fit_for_channel(channel: str, content: str) -> tuple[str, str]:
     return trimmed, f"已按 {limit} 字截断"
 
 
-def push_pushplus(title: str, content: str, timeout: int) -> str:
+def push_pushplus(title: str, content: str, timeout: int,
+                  theme: str = "default") -> str:
     token = env("PUSHPLUS_TOKEN")
     if not token:
         raise PushError("缺少 Secret：PUSHPLUS_TOKEN")
     title = title[:100]  # PushPlus 标题上限
     content, note = fit_for_channel("pushplus", content)
-    status, body = http_post_form(PUSHPLUS_URL, {
-        "token": token, "title": title, "content": content, "template": "markdown",
-    }, timeout)
+    fields = {"token": token, "title": title}
+    if theme == "klein":  # 浅灰底 + 克莱因蓝 + 小两号（template=html）
+        fields.update({"content": themed_html(title, content),
+                       "template": "html"})
+    else:
+        fields.update({"content": content, "template": "markdown"})
+    status, body = http_post_form(PUSHPLUS_URL, fields, timeout)
     code = None
     try:
         code = json.loads(body).get("code")
@@ -1640,6 +1791,43 @@ def selftest() -> int:
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
     check("pushplus 5000字不限", len(unlim_c) == 5000)
 
+    log("③f klein 主题渲染")
+    h = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
+                   "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
+    check("表格→table+表头底色", "<table" in h and KLEIN["hbg"] in h
+          and "<th" in h and "<td" in h)
+    check("加粗保留", "<strong>要点</strong>" in h)
+    check("列表/引用/分隔线/有序表", "<ul" in h and KLEIN["muted"] in h
+          and "border-left" in h and "<hr" in h and "<ol" in h)
+    check("HTML 转义", "&lt;" in md_to_html("a<b>c"))
+    full = themed_html("测试标题", "正文**加粗**")
+    check("klein 三要素", KLEIN["bg"] in full and KLEIN["fg"] in full
+          and "13px" in full)
+
+    log("③g 主题集中化（一行改动全局生效）")
+    bak = dict(KLEIN)
+    try:
+        KLEIN.update({"bg": "#111111", "fg": "#222222", "border": "#333333",
+                      "hbg": "#444444", "size": "15px", "size_title": "17px",
+                      "size_h1": "18px"})
+        v = themed_html("T", "# H1\n\n| a | b |\n|---|---|\n| 1 | 2 |")
+        check("改 bg 全局生效", "#111111" in v)
+        check("改 fg 全局生效", "#222222" in v)
+        check("改表格色生效", "#333333" in v and "#444444" in v)
+        check("改字号档位生效", "18px" in v and "17px" in v
+              and "font-size:15px" in v and "font-size:16px" not in v)
+        src = open(__file__, encoding="utf-8").read()
+        theme_zone = src.split("模块④b")[1].split("模块⑤")[0]
+        theme_zone = re.sub(r"KLEIN = \{.*?\n\}", "", theme_zone, flags=re.S)
+        # 注释行不参与扫描（文档里允许出现色值说明）
+        theme_zone = "\n".join(l for l in theme_zone.splitlines()
+                               if not l.lstrip().startswith("#"))
+        hexes = set(re.findall(r"#[0-9A-Fa-f]{6}", theme_zone))
+        check("主题区无绕过常量的硬编码色", hexes == set())
+    finally:
+        KLEIN.clear()
+        KLEIN.update(bak)
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -1674,6 +1862,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="港股代码（如 02208），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
+    p.add_argument("--theme", default="", choices=["", "default", "klein"],
+                   help="pushplus 通道主题：klein=浅灰底+克莱因蓝+小两号"
+                        "（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
                    help="sentiment 模板的数据窗口小时数（默认 48）")
     p.add_argument("--yt-channel", default="", dest="yt_channel",
@@ -1692,12 +1883,13 @@ def main(argv: list[str]) -> int:
     user_context = args.context or env("CONTEXT")
     hk_code_raw = args.hk_code or env("HK_CODE")
     risk = args.risk or env("RISK") or "mid"
+    theme = args.theme or env("THEME") or "default"
     targets = ALL_CHANNELS if channel == "all" else [channel]
 
     log("=" * 60)
-    log("Manual Run - Goldwind PushPlus+DeepSeek  v2")
+    log(f"Manual Run - Goldwind PushPlus+DeepSeek  v{VERSION}")
     log(f"  模板: {template}({TEMPLATE_TITLES[template]})  通道: {channel}"
-        f"  AI: {provider}  dry_run: {args.dry_run}")
+        f"  AI: {provider}  dry_run: {args.dry_run}  主题: {theme}")
     log(f"  主题: {topic}"
         + (f"  港股: {hk_code_raw}" if hk_code_raw else "")
         + (f"  风险档: {RISK_ZH[risk]}" if template == "portfolio" else ""))
@@ -1828,13 +2020,19 @@ def main(argv: list[str]) -> int:
         log("\n✅ dry-run 完成。去掉 --dry-run 即为真实推送。")
         return 0
 
-    # ---------- 模块③：真实推送 ----------
+    # ---------- 模块⑤：真实推送 ----------
+    if theme != "default" and any(ch != "pushplus" for ch in targets):
+        log("ℹ️  主题样式仅作用于 pushplus 通道（企微/Server酱不支持换肤）")
     results: dict[str, str] = {}
     failures = 0
     for ch in targets:
         log(f"\n📤 正在通过 {ch} 推送…")
         try:
-            results[ch] = PUSH_FUNCS[ch](title, content, args.timeout)
+            if ch == "pushplus":
+                results[ch] = push_pushplus(title, content, args.timeout,
+                                            theme=theme)
+            else:
+                results[ch] = PUSH_FUNCS[ch](title, content, args.timeout)
             log(f"  ✅ {ch}: {results[ch]}")
         except PushError as e:
             results[ch] = f"失败：{e}"
