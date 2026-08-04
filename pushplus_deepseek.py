@@ -65,18 +65,19 @@ RISKS = ["low", "mid", "high"]
 RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
 
 TEMPLATES = ["brief", "analysis", "scan", "picker", "fusion",
-             "plan", "earnings", "portfolio", "review", "regime", "sentiment"]
+             "plan", "earnings", "portfolio", "review", "regime",
+             "sentiment", "feedscan"]
 TEMPLATE_TITLES = {
     "brief": "简报", "analysis": "多空因子分析", "scan": "市场情报扫描",
     "picker": "选股器·未来30日", "fusion": "技术面×基本面融合",
     "plan": "交易计划·进出场风控", "earnings": "财报前瞻",
     "portfolio": "组合配置优化", "review": "交易复盘改进", "regime": "市场形态识别",
-    "sentiment": "量价舆情动量·48h",
+    "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
 }
 TEMPLATE_MAX_TOKENS = {
     "brief": 600, "analysis": 900, "scan": 1400, "picker": 1600,
     "fusion": 1300, "plan": 1500, "earnings": 1300, "portfolio": 1500,
-    "review": 1300, "regime": 1100, "sentiment": 1800,
+    "review": 1300, "regime": 1100, "sentiment": 1800, "feedscan": 1800,
 }
 
 FACTORS = [
@@ -353,10 +354,10 @@ STOCKTWITS_STREAM = "https://api.stocktwits.com/api/2/streams/symbol/{t}.json"
 REDDIT_UA = {"User-Agent": "hk-sentiment-research/2.0 (educational)"}
 
 # 轻量情绪词典（先本地打标，AI 再综合——rule 模式下也能出完整报告）
-POS_WORDS = ["利好", "上涨", "大涨", "增长", "中标", "突破", "创新高", "回购",
-             "预增", "超预期", "盈利", "签约", "订单", "扩产", "获批", "分红",
-             "surge", "rally", "beat", "upgrade", "record", "profit", "bullish",
-             "soar", "win", "growth", "boost"]
+POS_WORDS = ["利好", "上涨", "大涨", "增长", "中标", "突破", "创新高", "创纪录",
+             "回购", "预增", "超预期", "盈利", "签约", "订单", "扩产", "获批",
+             "分红", "surge", "rally", "beat", "upgrade", "record", "profit",
+             "bullish", "soar", "win", "growth", "boost"]
 NEG_WORDS = ["利空", "下跌", "大跌", "亏损", "减持", "违约", "下调", "预警",
              "预亏", "低于预期", "处罚", "诉讼", "削减", "延期", "停产",
              "plunge", "miss", "downgrade", "loss", "lawsuit", "cut", "bearish",
@@ -515,6 +516,10 @@ def fetch_moomoo(code: str, hours: int, limit: int, timeout: int,
         status, body = http_request(FUTU_PAGE.format(code=code), timeout=timeout)
         if status == 200:
             snippets = re.findall(r'"content"\s*:\s*"([^"]{10,200})"', body)
+            words = re.compile(r"[一-鿿]")
+            junk = re.compile(r"http|function|var |null|\\\\u|\{|\}")
+            snippets = [s for s in snippets
+                        if words.search(s) and not junk.search(s)]
             items = [_mk_item("moomoo·富途", s, "", None, now)
                      for s in snippets[:limit]]
             if items:
@@ -610,6 +615,337 @@ def fetch_youtube(handle: str, hours: int, limit: int,
     return items, ""
 
 
+# ================================================================ 模块②b：全市场快讯 12 源（通用采集框架）
+#
+# 设计：各家快讯 API 返回结构差异大且无官方文档，这里用「通用 JSON 探测 +
+# 键名试探 + 时间格式自适应」做防御式解析。任何单源失败只记入缺口，不中断。
+
+TITLE_KEYS = ["title", "content", "digest", "summary", "brief", "name",
+              "description", "news_title", "sub_title", "text"]
+TIME_KEYS = ["ctime", "created_at", "display_time", "show_time", "time",
+             "pubDate", "publish_time", "update_time", "timestamp",
+             "created", "date", "release_time"]
+LIST_KEYS = ["data", "list", "items", "result", "newest", "news", "lives",
+             "telegraphs", "articles", "messages", "rows", "records"]
+
+
+def _json_find_list(obj, depth: int = 0):
+    """在任意 JSON 里找第一个「dict 列表」（含常见包裹键递归下探）。"""
+    if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+        return obj
+    if isinstance(obj, dict) and depth < 4:
+        for k in LIST_KEYS:
+            v = obj.get(k)
+            got = _json_find_list(v, depth + 1)
+            if got is not None:
+                return got
+        for v in obj.values():
+            if isinstance(v, (dict, list)):
+                got = _json_find_list(v, depth + 1)
+                if got is not None:
+                    return got
+    return None
+
+
+def _parse_any_time(v) -> datetime | None:
+    """兼容：epoch 秒/毫秒、'YYYY-MM-DD HH:MM:SS'、ISO、RFC822。"""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        if v > 1e12:
+            v = v / 1000
+        if v > 1e8:
+            return datetime.fromtimestamp(v, UTC)
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return _parse_any_time(int(s))
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s[:19], fmt).replace(tzinfo=CST)
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    try:
+        return parsedate_to_datetime(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_items_generic(payload, source: str, limit: int, hours: int,
+                          now: datetime) -> list[SentItem]:
+    """通用提取：定位列表 → 每条试探标题/时间键 → 情绪打标 → 48h 过滤。"""
+    rows = _json_find_list(payload) or []
+    items = []
+    for row in rows:
+        title, ts = "", None
+        for k in TITLE_KEYS:
+            v = row.get(k)
+            if isinstance(v, str) and len(v.strip()) >= 4:
+                title = v.strip()
+                break
+        if not title and isinstance(row.get("data"), dict):  # jin10 双层 data
+            for k in TITLE_KEYS:
+                v = row["data"].get(k)
+                if isinstance(v, str) and len(v.strip()) >= 4:
+                    title = v.strip()
+                    break
+        if not title:
+            continue
+        for scope in (row, row.get("data") if isinstance(row.get("data"), dict) else {}):
+            for k in TIME_KEYS:
+                if k in scope:
+                    ts = _parse_any_time(scope[k])
+                if ts:
+                    break
+            if ts:
+                break
+        if ts and not _in_window(ts, hours, now):
+            continue
+        # 快讯流本身即最新：无可靠时间戳的条目保留但标记
+        itm = _mk_item(source, re.sub(r"<[^>]+>", "", title), "", ts, now)
+        items.append(itm)
+        if len(items) >= limit:
+            break
+    return items
+
+
+@dataclass
+class FeedSpec:
+    name: str
+    urls: list[str]                # 依次尝试
+    kind: str = "json"             # json | js | html
+    headers: dict = field(default_factory=dict)
+    note: str = ""
+
+
+FEED_HEADERS = {"Referer": "https://wallstreetcn.com/", "Accept": "application/json"}
+FEED_SPECS: list[FeedSpec] = [
+    FeedSpec("MKTNews 快讯", [
+        "https://api.mktnews.net/api/flash?limit=10",
+        "https://mktnews.net/api/flash?limit=10",
+    ]),
+    FeedSpec("华尔街见闻 快讯", [
+        "https://api-ddc-wscn.awtmt.com/market/lives?channel=global-channel&limit=10",
+        "https://api-ddc-wscn.awtmt.com/apiv1/content/lives?channel=global-channel&limit=10",
+    ], headers=FEED_HEADERS),
+    FeedSpec("华尔街见闻 最新", [
+        "https://api-ddc-wscn.awtmt.com/apiv1/content/articles?limit=10&plat=pc",
+    ], headers=FEED_HEADERS),
+    FeedSpec("华尔街见闻 最热", [
+        "https://api-ddc-wscn.awtmt.com/apiv1/content/articles/hot?limit=10&plat=pc",
+        "https://api-ddc-wscn.awtmt.com/apiv1/content/articles?limit=10&sort=hot&plat=pc",
+    ], headers=FEED_HEADERS),
+    FeedSpec("财联社 电报", [
+        "https://www.cls.cn/nodeapi/telegraphList?app=CailianpressWeb&os=web&sv=8.4.6&rn=10",
+    ], headers={"Referer": "https://www.cls.cn/telegraph"}),
+    FeedSpec("财联社 深度", [
+        "https://www.cls.cn/api/depth/home/assembled/1000?app=CailianpressWeb&os=web&sv=8.4.6&rn=10",
+        "https://www.cls.cn/v1/depth/home/articles?app=CailianpressWeb&os=web&sv=8.4.6&rn=10",
+    ], headers={"Referer": "https://www.cls.cn/depth"}),
+    FeedSpec("财联社 热门", [
+        "https://www.cls.cn/v1/articles/hot?app=CailianpressWeb&os=web&sv=8.4.6&rn=10",
+        "https://www.cls.cn/api/articles/hot?app=CailianpressWeb&os=web&sv=8.4.6&rn=10",
+    ], headers={"Referer": "https://www.cls.cn/hot"}),
+    FeedSpec("雪球 热门股票", [], kind="xueqiu"),  # 专用流程（Cookie 预热）
+    FeedSpec("格隆汇 事件", [
+        "https://www.gelonghui.com/api/fastnews/v2/getFastNewsList?limit=10",
+        "https://www.gelonghui.com/api/article/v2/getArticleList?type=fastnews&page=1&limit=10",
+    ], headers={"Referer": "https://www.gelonghui.com/live"}),
+    FeedSpec("法布财经 快讯", [], note="公开端点未确认，需提供快讯页地址后接入"),
+    FeedSpec("法布财经 头条", [], note="公开端点未确认，需提供头条页地址后接入"),
+    FeedSpec("金十数据", [
+        "https://www.jin10.com/flash_newest.js",
+    ], kind="js", headers={"Referer": "https://www.jin10.com/", "x-app-id": "rU6QIu7JHe2gOUTe"}),
+]
+
+
+def fetch_feed_json(spec: FeedSpec, hours: int, timeout: int,
+                    now: datetime) -> list[SentItem]:
+    last_err = "无可用端点"
+    for url in spec.urls:
+        try:
+            status, body = http_request(url, headers=spec.headers or None,
+                                        timeout=timeout)
+            if status != 200:
+                last_err = f"HTTP {status}"
+                continue
+            if spec.kind == "js":  # 金十 flash_newest.js：剥 JS 壳
+                m = re.search(r"[{\[]", body)
+                body = body[m.start():] if m else body
+                body = body.rstrip(";\n ")
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                last_err = "非 JSON 返回（可能需要登录/被反爬）"
+                continue
+            items = extract_items_generic(payload, spec.name, 10, hours, now)
+            if items:
+                return items
+            last_err = "解析成功但 48h 内无条目（结构可能已变）"
+        except PushError as e:
+            last_err = str(e)[:80]
+    raise PushError(last_err)
+
+
+XUEQIU_HOT_URL = ("https://stock.xueqiu.com/v5/stock/hot_stock/list.json"
+                  "?size=10&_type=10&type=10")
+
+
+def parse_xueqiu_hot(text: str, now: datetime) -> list[SentItem]:
+    """雪球热度榜：涨跌幅直接映射情绪分，关注度增量作置信参考。"""
+    rows = _json_find_list(json.loads(text)) or []
+    items = []
+    for row in rows:
+        name, code = row.get("name", ""), row.get("code", "")
+        if not name:
+            continue
+        pct = row.get("percent")
+        inc = row.get("increment") or row.get("follow_increment")
+        try:
+            pct = float(pct)
+        except (TypeError, ValueError):
+            pct = None
+        score = max(-1.0, min(1.0, (pct or 0) / 5))
+        label = "利好" if score > 0.12 else ("利空" if score < -0.12 else "中性")
+        title = f"{name} {code} 涨跌{pct:+.2f}%" if pct is not None \
+            else f"{name} {code}"
+        if inc:
+            title += f"，关注增量 {inc}"
+        items.append(SentItem(source="雪球 热门股票", title=title,
+                              age_h=0.0, score=round(score, 2), label=label,
+                              conf=0.7))
+        if len(items) >= 10:
+            break
+    return items
+
+
+def fetch_xueqiu(timeout: int, now: datetime) -> list[SentItem]:
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(cj))
+    opener.addheaders = [("User-Agent", "Mozilla/5.0 (pushplus-deepseek/2.0)")]
+    try:
+        opener.open("https://xueqiu.com/hq", timeout=timeout).read()  # Cookie 预热
+        resp = opener.open(XUEQIU_HOT_URL, timeout=timeout)
+        body = resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        raise PushError(f"HTTP {e.code}（雪球反爬升级）") from e
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise PushError(f"网络失败 {getattr(e, 'reason', e)}") from e
+    items = parse_xueqiu_hot(body, now)
+    if not items:
+        raise PushError("接口结构已变，未解析到榜单")
+    return items
+
+
+@dataclass
+class FeedPack:
+    hours: int
+    items: dict[str, list[SentItem]] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    agg: dict = field(default_factory=dict)
+
+
+def collect_feeds(hours: int, timeout: int) -> FeedPack:
+    now = datetime.now(UTC)
+    pack = FeedPack(hours=hours)
+    for spec in FEED_SPECS:
+        if spec.kind == "xueqiu":
+            try:
+                pack.items[spec.name] = fetch_xueqiu(min(timeout, 12), now)
+            except Exception as e:  # noqa: BLE001
+                pack.errors.append(f"{spec.name}：{str(e)[:100]}")
+            continue
+        if not spec.urls:
+            pack.errors.append(f"{spec.name}：{spec.note or '无端点'}")
+            continue
+        try:
+            pack.items[spec.name] = fetch_feed_json(
+                spec, hours, min(timeout, 12), now)
+        except Exception as e:  # noqa: BLE001 —— 逐源隔离
+            pack.errors.append(f"{spec.name}：{str(e)[:100]}")
+    all_items = [i for v in pack.items.values() for i in v]
+    n_ok = len(pack.items)
+    mean = round(sum(i.score for i in all_items) / len(all_items), 2) \
+        if all_items else 0.0
+    pos = sum(1 for i in all_items if i.label == "利好")
+    neg = sum(1 for i in all_items if i.label == "利空")
+    anchor = 50 + 45 * max(-1.0, min(1.0, mean * 3))
+    pack.agg = {"n": len(all_items), "pos": pos, "neg": neg,
+                "neu": len(all_items) - pos - neg, "mean": mean,
+                "n_sources": n_ok, "综合多头概率锚点": round(anchor)}
+    return pack
+
+
+def feed_context(topic: str, pack: FeedPack) -> str:
+    ctx = [f"【{pack.hours}h 全市场快讯数据：{pack.agg['n_sources']}/12 源可用，"
+           f"共 {pack.agg['n']} 条，已本地打标】关注标的：{topic}"]
+    for spec in FEED_SPECS:
+        items = pack.items.get(spec.name)
+        if not items:
+            continue
+        agg = _src_agg(items)
+        ctx.append(f"▼ {spec.name}（{agg['n']}条：利好{agg['pos']}/"
+                   f"利空{agg['neg']}/中性{agg['neu']}，动量{agg['mean']:+.2f}）")
+        ctx += [_item_line(i, k + 1) for k, i in enumerate(items[:10])]
+    if pack.errors:
+        ctx.append("▼ 数据缺口：" + "；".join(pack.errors))
+    ctx.append(f"▼ 本地聚合：总样本 {pack.agg['n']}，利好/利空/中性="
+               f"{pack.agg['pos']}/{pack.agg['neg']}/{pack.agg['neu']}，"
+               f"情绪均值 {pack.agg['mean']:+.2f}，"
+               f"综合多头概率锚点 ≈ {pack.agg['综合多头概率锚点']}%")
+    return "\n".join(ctx)
+
+
+def render_feed_rule(topic: str, pack: FeedPack) -> str:
+    lines = [f"**{topic} · 全市场快讯情绪扫描**（rule 本地计算，未经 AI 综合）",
+             "", "| 来源 | 样本 | 利好/利空/中性 | 情绪分 | 代表快讯 |",
+             "|---|---|---|---|---|"]
+    for spec in FEED_SPECS:
+        items = pack.items.get(spec.name)
+        if not items:
+            err = next((e.split("：", 1)[1] for e in pack.errors
+                        if e.startswith(spec.name)), "失败")
+            lines.append(f"| {spec.name} | — | — | — | ⚠️ {err[:16]} |")
+            continue
+        agg = _src_agg(items)
+        rep = items[0].title[:16]
+        lines.append(f"| {spec.name} | {agg['n']} | {agg['pos']}/{agg['neg']}"
+                     f"/{agg['neu']} | {agg['mean']:+.2f} | {rep}… |")
+    a = pack.agg
+    anchor = a.get("综合多头概率锚点", 50)
+    stance = "偏多" if anchor >= 55 else ("偏空" if anchor <= 45 else "中性")
+    lines += ["",
+              f"- **全市场情绪温度**：均值 {a['mean']:+.2f}"
+              f"（{a['pos']}利好/{a['neg']}利空/{a['neu']}中性，"
+              f"共 {a['n']} 条 / {a['n_sources']}/12 源）",
+              f"- **综合判断**：{stance}，综合多头概率 ≈ **{anchor}%**",
+              "", "> ai_provider 选 deepseek 可生成跨源主线归纳与板块映射。",
+              "> ⚠️ 非投资建议，仅供参考。"]
+    return "\n".join(lines)
+
+
+def render_feed_appendix(pack: FeedPack) -> str:
+    lines = ["---", f"📰 **快讯原始明细（{pack.agg['n']} 条，每源≤10）**"]
+    for spec in FEED_SPECS:
+        items = pack.items.get(spec.name)
+        if not items:
+            continue
+        lines.append(f"\n**{spec.name}（{len(items)}/10）**")
+        lines += [_item_line(i, k + 1) for k, i in enumerate(items[:10])]
+    if pack.errors:
+        lines.append("\n**数据缺口**")
+        lines += [f"- ⚠️ {e}" for e in pack.errors]
+    return "\n".join(lines)
+
+
 # ---------- 量价情绪动量：Yahoo 小时线（近48h 涨跌 + 量比）----------
 
 def compute_price_momentum(closes: list[float], vols: list[float],
@@ -678,14 +1014,23 @@ def _src_agg(items: list[SentItem]) -> dict:
             "neu": len(items) - pos - neg, "mean": mean, "24h趋势": trend}
 
 
+def _clean_query_topic(topic: str) -> str:
+    """检索用主题清洗：去括号注释、去模板名等杂质，避免污染外部查询。"""
+    t = re.sub(r"[（(].*$", "", topic).strip()
+    t = re.sub(r"(每日简报|简报)$", "", t).strip(" 　·-")
+    return t or "金风科技"
+
+
 def collect_sentiment(topic: str, code: str | None, hours: int,
                       timeout: int, yt_handle: str = "") -> SentPack:
     """采集 4 源 + 量价动量。任何单源失败只记录、不中断。"""
     pack = SentPack(hours=hours)
+    q_topic = _clean_query_topic(topic)
     jobs = [
-        ("Google新闻", lambda: fetch_google_news(topic, hours, 10, timeout)),
+        ("Google新闻", lambda: fetch_google_news(q_topic, hours, 10, timeout)),
         ("Reddit", lambda: fetch_reddit(
-            f"{topic} OR {int(code)}.HK" if code else topic, hours, 10, timeout)),
+            f"{q_topic} OR {int(code)}.HK" if code else q_topic,
+            hours, 10, timeout)),
         ("moomoo", lambda: fetch_moomoo(code or "02208", hours, 10, timeout)),
         ("YouTube·investtalk", lambda: fetch_youtube(
             yt_handle or (env("YT_CHANNEL") or "investtalk"), hours, 10, timeout)),
@@ -824,6 +1169,22 @@ def build_messages(template: str, topic: str, context: str,
             "（可参考本地锚点，偏离须给理由）\n"
             "- **失效条件**：1~2 条\n\n"
             "打分区间 [-1,1]；样本不足的象限必须明说而非编造。全文≤650字。"
+            + RULES_TAIL)
+    elif template == "feedscan":
+        user = (
+            f"基于以下 48h 内全市场快讯数据（已本地预打标，含各源情绪指标），"
+            f"输出一份全市场情绪扫描报告，并评估对关注标的「{topic}」的传导。\n\n"
+            f"{context}\n\n严格按此格式输出：\n\n"
+            "## 全市场快讯情绪扫描\n\n"
+            "| 来源 | 样本 | 利好/利空/中性 | 情绪分 | 多头概率 |\n"
+            "|---|---|---|---|---|\n（逐源罗列，不可用源注明）\n\n"
+            "- **全市场情绪温度**：偏暖/偏冷一句话 + 综合多头概率%"
+            "（可参考本地锚点，偏离须给理由）\n"
+            "- **三大主线**：跨源归纳，每条标注支撑来源与成立概率%\n"
+            "- **板块映射**：利多板块/利空板块各 2~3 个\n"
+            f"- **对「{topic}」所在产业链的传导**：1~2 句 + 方向概率%\n"
+            "- **噪音提示**：2 条看似重要但可忽略的快讯\n\n"
+            "打分区间 [-1,1]；样本不足的源必须明说而非编造。全文≤700字。"
             + RULES_TAIL)
     elif template == "scan":
         user = (
@@ -1036,12 +1397,37 @@ def print_secret_report(channel: str, provider: str) -> bool:
     return True
 
 
-# ================================================================ 模块③：推送通道
+# ================================================================ 模块④：推送通道
+
+CHANNEL_LIMITS = {"pushplus": 20000, "serverchan": 20000,
+                  "wecom": 3600, "console": 0}  # 0 = 不限
+
+
+def fit_for_channel(channel: str, content: str) -> tuple[str, str]:
+    """按通道长度预算截断。返回 (内容, 截断说明或空串)。
+
+    企业微信单条 markdown ≤4096 字节，超限整包必失败；
+    截断时优先保住正文（AI 报告），从尾部明细往前收。
+    """
+    limit = CHANNEL_LIMITS.get(channel, 0)
+    if not limit or len(content) <= limit:
+        return content, ""
+    budget = limit - 80
+    cut = content.rfind("\n", 0, budget)
+    if cut < budget * 0.5:  # 没有合适换行点才硬切
+        cut = budget
+    trimmed = (content[:cut].rstrip()
+               + f"\n\n> ⚠️ 内容超出 {channel} 单条上限，尾部明细已省略"
+                 "（完整内容见 GitHub Actions 运行日志）")
+    return trimmed, f"已按 {limit} 字截断"
+
 
 def push_pushplus(title: str, content: str, timeout: int) -> str:
     token = env("PUSHPLUS_TOKEN")
     if not token:
         raise PushError("缺少 Secret：PUSHPLUS_TOKEN")
+    title = title[:100]  # PushPlus 标题上限
+    content, note = fit_for_channel("pushplus", content)
     status, body = http_post_form(PUSHPLUS_URL, {
         "token": token, "title": title, "content": content, "template": "markdown",
     }, timeout)
@@ -1051,7 +1437,7 @@ def push_pushplus(title: str, content: str, timeout: int) -> str:
     except json.JSONDecodeError:
         pass
     if status == 200 and code == 200:
-        return "发送成功"
+        return "发送成功" + (f"（{note}）" if note else "")
     raise PushError(f"PushPlus 返回异常（HTTP {status}）：{body[:400]}")
 
 
@@ -1059,6 +1445,7 @@ def push_wecom(title: str, content: str, timeout: int) -> str:
     key = env("WECOM_KEY")
     if not key:
         raise PushError("缺少 Secret：WECOM_KEY")
+    content, note = fit_for_channel("wecom", content)
     payload = {"msgtype": "markdown",
                "markdown": {"content": f"**{title}**\n\n{content}"}}
     status, body = http_post_json(f"{WECOM_URL}?key={key}", payload, timeout=timeout)
@@ -1067,7 +1454,7 @@ def push_wecom(title: str, content: str, timeout: int) -> str:
     except json.JSONDecodeError:
         errcode = None
     if status == 200 and errcode == 0:
-        return "发送成功"
+        return "发送成功" + (f"（{note}）" if note else "")
     raise PushError(f"企业微信机器人返回异常（HTTP {status}）：{body[:400]}")
 
 
@@ -1075,6 +1462,7 @@ def push_serverchan(title: str, content: str, timeout: int) -> str:
     sendkey = env("SERVERCHAN_SENDKEY")
     if not sendkey:
         raise PushError("缺少 Secret：SERVERCHAN_SENDKEY")
+    content, note = fit_for_channel("serverchan", content)
     status, body = http_post_form(SERVERCHAN_URL.format(sendkey=sendkey),
                                   {"title": title, "desp": content}, timeout)
     try:
@@ -1082,7 +1470,7 @@ def push_serverchan(title: str, content: str, timeout: int) -> str:
     except json.JSONDecodeError:
         code = None
     if status == 200 and code == 0:
-        return "发送成功"
+        return "发送成功" + (f"（{note}）" if note else "")
     raise PushError(f"Server酱返回异常（HTTP {status}）：{body[:400]}")
 
 
@@ -1192,6 +1580,66 @@ def selftest() -> int:
                                   vols, tss, 48, NOW)
     check("量价:缩量下跌→偏空", mom2["ok"] and mom2["label"] == "偏空")
 
+    log("③c 快讯通用解析框架")
+    ts_8am = datetime(2026, 8, 4, 8, tzinfo=timezone.utc).timestamp()
+    schema_a = {"data": {"list": [
+        {"title": "央行超预期降准释放流动性", "ctime": ts_8am},
+        {"title": "某大宗商品库存平稳", "ctime": ts_8am - 60 * 60 * 100},
+    ]}}
+    ia = extract_items_generic(schema_a, "测试源A", 10, 48, NOW)
+    check("通用:schema A 提取+48h过滤", len(ia) == 1 and ia[0].label == "利好")
+    schema_b = {"errno": 0, "data": [
+        {"content": "制造业 PMI 低于预期引发下跌担忧", "display_time": ts_8am * 1000},
+        {"brief": "新能源招标再创纪录", "pubDate": "Mon, 04 Aug 2026 09:00:00 GMT"},
+    ]}
+    ib = extract_items_generic(schema_b, "测试源B", 10, 48, NOW)
+    check("通用:schema B 毫秒时间+多键名", len(ib) == 2 and ib[0].label == "利空"
+          and ib[1].label == "利好")
+    schema_c = {"items": [{"title": "美联储维持利率不变",
+                           "display_time": "2026-08-04 07:30:00"}]}
+    ic = extract_items_generic(schema_c, "测试源C", 10, 48, NOW)
+    check("通用:字符串时间解析", len(ic) == 1 and ic[0].age_h is not None)
+    xq_sample = json.dumps({"data": {"items": [
+        {"name": "金风科技", "code": "HK02208", "percent": 3.2,
+         "current": 16.8, "increment": 8888},
+        {"name": "某地产股", "code": "SH600000", "percent": -4.1},
+    ]}})
+    xq = parse_xueqiu_hot(xq_sample, NOW)
+    check("雪球:涨跌幅→情绪", len(xq) == 2 and xq[0].label == "利好"
+          and xq[1].label == "利空" and "关注增量" in xq[0].title)
+    jin10_sample = ('var flash_newest = {"status":200,"data":['
+                    '{"id":"1","time":"2026-08-04 09:00:00","type":0,'
+                    '"data":{"content":"黄金突破历史新高","pic":""}}]};')
+    m = re.search(r"[{\[]", jin10_sample)
+    jj = json.loads(jin10_sample[m.start():].rstrip(";\n "))
+    ij = extract_items_generic(jj, "金十数据", 10, 48, NOW)
+    check("金十:JS壳+双层data", len(ij) == 1 and ij[0].label == "利好")
+    fp = FeedPack(hours=48)
+    fp.items["金十数据"] = ij
+    fp.errors.append("法布财经 快讯：公开端点未确认，需提供快讯页地址后接入")
+    fp.agg = {"n": 1, "pos": 1, "neg": 0, "neu": 0, "mean": 1.0,
+              "n_sources": 1, "综合多头概率锚点": 50 + 45 * min(1.0, 1.0 * 3)}
+    md_rule = render_feed_rule("金风科技", fp)
+    check("feedscan:rule渲染含缺口行", "⚠️" in md_rule and "情绪温度" in md_rule)
+    check("feedscan:附录含来源明细", "金十数据（1/10）" in render_feed_appendix(fp))
+
+    log("③d 审计修复回归")
+    check("查询词清洗:默认主题", _clean_query_topic(
+        "金风科技(Goldwind) 每日简报") == "金风科技")
+    check("查询词清洗:普通主题不动", _clean_query_topic("比亚迪") == "比亚迪")
+    check("查询词清洗:空值兜底", _clean_query_topic("(空)") == "金风科技")
+
+    log("③e 通道长度保护（防内容被截/整包拒发）")
+    short_c, note = fit_for_channel("wecom", "短内容")
+    check("限内原样", short_c == "短内容" and note == "")
+    long_c = "报告头部\n" + "明细行\n" * 1500
+    trim_c, note = fit_for_channel("wecom", long_c)
+    check("超限截断+注释", len(trim_c) <= 3600 and "已省略" in trim_c
+          and note.startswith("已按"))
+    check("截断保住正文头部", trim_c.startswith("报告头部"))
+    unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
+    check("pushplus 5000字不限", len(unlim_c) == 5000)
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -1281,6 +1729,28 @@ def main(argv: list[str]) -> int:
         appendix_md = render_sentiment_appendix(sent_pack)
         user_context = sentiment_context(sent_pack)
 
+    # ---------- 模块②b：feedscan 模板采集 12 源全市场快讯 ----------
+    feed_pack = None
+    if template == "feedscan":
+        log(f"\n📡 正在采集 12 源全市场快讯（{args.hours}h 窗口）…")
+        feed_pack = collect_feeds(args.hours, min(args.timeout, 12))
+        for spec in FEED_SPECS:
+            items = feed_pack.items.get(spec.name)
+            if items:
+                agg = _src_agg(items)
+                log(f"  ✅ {spec.name}: {agg['n']} 条"
+                    f"（利好{agg['pos']}/利空{agg['neg']}/中性{agg['neu']}"
+                    f"，情绪 {agg['mean']:+.2f}）")
+            else:
+                err = next((e for e in feed_pack.errors
+                            if e.startswith(spec.name)), "失败")
+                log(f"  ⚠️  {err}")
+        log(f"  → 全市场 {feed_pack.agg['n']} 条，情绪均值 "
+            f"{feed_pack.agg['mean']:+.2f}，多头概率锚点 ≈ "
+            f"{feed_pack.agg['综合多头概率锚点']}%")
+        appendix_md = render_feed_appendix(feed_pack)
+        user_context = feed_context(topic, feed_pack)
+
     # ---------- 模块①：三源取价 + 交叉核验（可选）----------
     data_md, context = "", user_context
     if hk_code_raw:
@@ -1304,6 +1774,8 @@ def main(argv: list[str]) -> int:
         if provider == "rule":
             if template == "sentiment" and sent_pack is not None:
                 content = render_sentiment_rule(topic, code4sent, sent_pack)
+            elif template == "feedscan" and feed_pack is not None:
+                content = render_feed_rule(topic, feed_pack)
             else:
                 content = gen_by_rule(topic, template)
         else:
