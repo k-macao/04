@@ -96,7 +96,7 @@ FACTORS = [
 ]
 FACTOR_COUNT = len(FACTORS)
 
-# ---------------- 品牌信息：全部结果的统一头部与声明 ----------------
+# ---------------- 品牌信息：全部结果的统一头部与尾注 ----------------
 BRAND_TITLE = "章鱼 AI 全景分析"
 BRAND_SUBTITLE = "全网多个境内境外多个大模型混合部署 AI 调研平台"
 BRAND_AUTHOR = "作者：章鱼 ai"
@@ -106,20 +106,27 @@ BRAND_DISCLAIMER = "声明：仅供参考，不作为投资建议。"
 
 
 def brand_header_md() -> str:
-    """全部结果统一头部：标题 + 副标题 + 作者/定位说明。"""
+    """全部结果统一头部：只放标题和副标题。"""
     return "\n".join([
         f"## 🐙 {BRAND_TITLE}",
         f"> {BRAND_SUBTITLE}",
-        "",
-        f"**{BRAND_AUTHOR}** {BRAND_SLOGAN}",
         "",
         "---",
     ])
 
 
 def brand_footer_md() -> str:
-    """全部结果统一尾部声明。"""
-    return f"> {BRAND_DISCLAIMER}"
+    """全部结果统一尾注；作者信息必须是推送正文的最后一行。"""
+    return "\n".join([
+        "> " + BRAND_DISCLAIMER,
+        "",
+        f"**{BRAND_AUTHOR}** {BRAND_SLOGAN}",
+    ])
+
+
+def add_branding(content: str) -> str:
+    """给正文加品牌头和固定尾注，避免各调用点自行拼接而放错位置。"""
+    return f"{brand_header_md()}\n{content.rstrip()}\n\n{brand_footer_md()}"
 
 # ================================================================ 基础工具
 
@@ -1620,26 +1627,69 @@ def themed_html(title: str, content_md: str) -> str:
 # ================================================================ 模块⑤：推送通道
 
 CHANNEL_LIMITS = {"pushplus": 0, "serverchan": 20000,
-                  "wecom": 4096, "console": 0}  # 0 = 不限；pushplus 突破 10 万字硬限
+                  "wecom": 4096, "console": 0}  # 0 = 不限
 
 
-def fit_for_channel(channel: str, content: str) -> tuple[str, str]:
-    """按通道长度预算截断。返回 (内容, 截断说明或空串)。
+def _utf8_len(text: str) -> int:
+    """推送服务的长度限制按 UTF-8 字节计算，不能用 Python 字符数代替。"""
+    return len(text.encode("utf-8"))
 
-    企业微信单条 markdown ≤4096 字节，超限整包必失败；
-    截断时优先保住正文（AI 报告），从尾部明细往前收。
+
+def _truncate_to_utf8_bytes(text: str, max_bytes: int) -> str:
+    """截到最多 ``max_bytes`` 个 UTF-8 字节，且绝不截断一个中文字符。"""
+    if max_bytes <= 0:
+        return ""
+    if _utf8_len(text) <= max_bytes:
+        return text
+    return text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
+
+
+def _split_protected_suffix(content: str, protected_suffix: str) -> tuple[str, str]:
+    """从内容中分离须保留的尾注；未匹配时保持普通截断行为。"""
+    normalized = content.rstrip()
+    suffix = protected_suffix.strip()
+    if suffix and normalized.endswith(suffix):
+        return normalized[:-len(suffix)].rstrip(), suffix
+    return normalized, ""
+
+
+def fit_for_channel(channel: str, content: str,
+                    protected_suffix: str = "") -> tuple[str, str]:
+    """按通道字节上限截断，返回 ``(内容, 截断说明或空串)``。
+
+    企业微信的 Markdown 上限是 4096 UTF-8 字节。若指定 ``protected_suffix``
+    （主流程传入品牌尾注），会从正文中间裁切，保留声明和最后一行作者，避免
+    长报告在推送后显示“作者不见了”或作者不在结尾。
     """
     limit = CHANNEL_LIMITS.get(channel, 0)
-    if not limit or len(content) <= limit:
+    if not limit or _utf8_len(content) <= limit:
         return content, ""
-    budget = limit - 80
-    cut = content.rfind("\n", 0, budget)
-    if cut < budget * 0.5:  # 没有合适换行点才硬切
-        cut = budget
-    trimmed = (content[:cut].rstrip()
-               + f"\n\n> ⚠️ 内容超出 {channel} 单条上限，尾部明细已省略"
-                 "（完整内容见 GitHub Actions 运行日志）")
-    return trimmed, f"已按 {limit} 字截断"
+
+    body, suffix = _split_protected_suffix(content, protected_suffix)
+    note_detail = ("作者与声明已保留；" if suffix else "")
+    notice = (f"> ⚠️ 内容超出 {channel} 单条上限，部分正文已省略"
+              f"（{note_detail}完整内容见 GitHub Actions 运行日志）")
+    suffix_block = f"\n\n{suffix}" if suffix else ""
+    tail = f"\n\n{notice}{suffix_block}"
+    body_budget = limit - _utf8_len(tail)
+
+    if body_budget > 0:
+        trimmed_body = _truncate_to_utf8_bytes(body, body_budget)
+        # 尽量在一行结束处截断；没有合适换行时，安全地按字节截断。
+        cut = trimmed_body.rfind("\n")
+        if cut >= len(trimmed_body) * 0.5:
+            trimmed_body = trimmed_body[:cut]
+        trimmed = trimmed_body.rstrip() + tail
+    elif suffix and _utf8_len(suffix) <= limit:
+        # 极端情况下优先保留固定尾注，而不是发出一个不完整的作者行。
+        trimmed = suffix
+    else:
+        trimmed = _truncate_to_utf8_bytes(notice, limit)
+
+    # 上述预算应当保证这一条件；保留断言式兜底，防止日后改文案超限。
+    if _utf8_len(trimmed) > limit:
+        trimmed = _truncate_to_utf8_bytes(trimmed, limit)
+    return trimmed, f"已按 {limit} 字节截断"
 
 
 def push_pushplus(title: str, content: str, timeout: int,
@@ -1648,7 +1698,7 @@ def push_pushplus(title: str, content: str, timeout: int,
     if not token:
         raise PushError("缺少 Secret：PUSHPLUS_TOKEN")
     title = title[:200]  # PushPlus 标题上限（会员支持 200 字）
-    content, note = fit_for_channel("pushplus", content)
+    content, note = fit_for_channel("pushplus", content, brand_footer_md())
     fields = {"token": token, "title": title}
     if theme == "klein":  # 浅灰底 + 克莱因蓝 + 小两号（template=html）
         fields.update({"content": themed_html(title, content),
@@ -1670,9 +1720,10 @@ def push_wecom(title: str, content: str, timeout: int) -> str:
     key = env("WECOM_KEY")
     if not key:
         raise PushError("缺少 Secret：WECOM_KEY")
-    content, note = fit_for_channel("wecom", content)
-    payload = {"msgtype": "markdown",
-               "markdown": {"content": f"**{title}**\n\n{content}"}}
+    # 企业微信的 4096 字节限制作用于整个 markdown 字段，标题也必须计入。
+    message = f"**{title}**\n\n{content}"
+    message, note = fit_for_channel("wecom", message, brand_footer_md())
+    payload = {"msgtype": "markdown", "markdown": {"content": message}}
     status, body = http_post_json(f"{WECOM_URL}?key={key}", payload, timeout=timeout)
     try:
         errcode = json.loads(body).get("errcode")
@@ -1687,7 +1738,7 @@ def push_serverchan(title: str, content: str, timeout: int) -> str:
     sendkey = env("SERVERCHAN_SENDKEY")
     if not sendkey:
         raise PushError("缺少 Secret：SERVERCHAN_SENDKEY")
-    content, note = fit_for_channel("serverchan", content)
+    content, note = fit_for_channel("serverchan", content, brand_footer_md())
     status, body = http_post_form(SERVERCHAN_URL.format(sendkey=sendkey),
                                   {"title": title, "desp": content}, timeout)
     try:
@@ -1859,9 +1910,20 @@ def selftest() -> int:
     check("限内原样", short_c == "短内容" and note == "")
     long_c = "报告头部\n" + "明细行\n" * 1500
     trim_c, note = fit_for_channel("wecom", long_c)
-    check("超限截断+注释", len(trim_c) <= 4096 and "已省略" in trim_c
+    check("超限截断+注释", _utf8_len(trim_c) <= 4096 and "已省略" in trim_c
           and note.startswith("已按"))
     check("截断保住正文头部", trim_c.startswith("报告头部"))
+    footer = brand_footer_md()
+    branded_long = add_branding("报告头部\n" + "中文明细行\n" * 1500)
+    trim_brand, note = fit_for_channel("wecom", branded_long, footer)
+    check("中文按 UTF-8 字节截断", _utf8_len(trim_brand) <= 4096
+          and note.endswith("字节截断"))
+    check("截断仍保留尾部作者", trim_brand.rstrip().endswith(footer.rstrip()))
+    check("截断仍保留作者最后", trim_brand.rstrip().endswith(BRAND_SLOGAN))
+    wecom_message = f"**{'很长的标题' * 30}**\n\n{branded_long}"
+    trim_with_title, _ = fit_for_channel("wecom", wecom_message, footer)
+    check("企业微信标题计入总字节上限", _utf8_len(trim_with_title) <= 4096
+          and trim_with_title.rstrip().endswith(footer.rstrip()))
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
     check("pushplus 5000字不限", len(unlim_c) == 5000)
 
@@ -1931,12 +1993,15 @@ def selftest() -> int:
         except Exception as e:  # noqa: BLE001
             check(f"模板 {t} 构造异常: {e}", False)
     check("analysis 校验器", validate_analysis(gen_by_rule("t", "analysis")))
-    brand = f"{brand_header_md()}\n正文\n\n{brand_footer_md()}"
+    brand = add_branding("正文")
     check("品牌头部字段齐全",
-          all(k in brand for k in (BRAND_TITLE, BRAND_SUBTITLE,
-                                   BRAND_AUTHOR, "LLM")))
+          all(k in brand_header_md() for k in (BRAND_TITLE, BRAND_SUBTITLE)))
+    check("作者不再出现在头部", BRAND_AUTHOR not in brand_header_md())
     check("品牌尾部声明", BRAND_DISCLAIMER in brand_footer_md())
-    check("品牌头可渲染为 HTML", BRAND_TITLE in md_to_html(brand))
+    check("作者固定在最后", brand.rstrip().endswith(BRAND_SLOGAN)
+          and brand.rstrip().endswith(brand_footer_md().rstrip()))
+    check("品牌头尾可渲染为 HTML", BRAND_TITLE in md_to_html(brand)
+          and BRAND_AUTHOR in md_to_html(brand))
 
     log(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
@@ -2110,8 +2175,8 @@ def main(argv: list[str]) -> int:
     if appendix_md:
         content += "\n\n" + appendix_md
 
-    # 全部结果统一加入品牌头部与尾部声明（所有模板/通道/dry-run 生效）
-    content = f"{brand_header_md()}\n{content}\n\n{brand_footer_md()}"
+    # 所有模板/通道/dry-run 走同一个组装函数：作者固定在推送正文最后一行。
+    content = add_branding(content)
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
     title = f"{BRAND_TITLE}·{topic}·{TEMPLATE_TITLES[template]}（{now}）"
