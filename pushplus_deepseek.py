@@ -58,7 +58,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.8-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.9-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -77,9 +77,9 @@ TEMPLATE_TITLES = {
     "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
 }
 TEMPLATE_MAX_TOKENS = {
-    "brief": 600, "analysis": 900, "scan": 1400, "picker": 1600,
-    "fusion": 1300, "plan": 1500, "earnings": 1300, "portfolio": 1500,
-    "review": 1300, "regime": 1100, "sentiment": 1800, "feedscan": 1800,
+    "brief": 2000, "analysis": 3000, "scan": 4000, "picker": 4000,
+    "fusion": 3000, "plan": 4000, "earnings": 3000, "portfolio": 4000,
+    "review": 3000, "regime": 3000, "sentiment": 4000, "feedscan": 4000,
 }
 
 FACTORS = [
@@ -1170,7 +1170,7 @@ def build_messages(template: str, topic: str, context: str,
             "- **综合判断**：明确偏多/偏空 + 综合多头概率%"
             "（可参考本地锚点，偏离须给理由）\n"
             "- **失效条件**：1~2 条\n\n"
-            "打分区间 [-1,1]；样本不足的象限必须明说而非编造。全文≤650字。"
+            "打分区间 [-1,1]；样本不足的象限必须明说而非编造。"
             + RULES_TAIL)
     elif template == "feedscan":
         user = (
@@ -1186,41 +1186,41 @@ def build_messages(template: str, topic: str, context: str,
             "- **板块映射**：利多板块/利空板块各 2~3 个\n"
             f"- **对「{topic}」所在产业链的传导**：1~2 句 + 方向概率%\n"
             "- **噪音提示**：2 条看似重要但可忽略的快讯\n\n"
-            "打分区间 [-1,1]；样本不足的源必须明说而非编造。全文≤700字。"
+            "打分区间 [-1,1]；样本不足的源必须明说而非编造。"
             + RULES_TAIL)
     elif template == "scan":
         user = (
             "扫一遍今天全球市场，总结推动股价的 5 大力量。"
             "重点关注宏观事件、板块轮动、情绪变化，区分重点与噪音。\n\n" + ctx +
             "严格按此格式输出：\n\n"
-            "| 力量 | 方向 | 对港股影响概率 | 逻辑（≤20字） | 相关板块 |\n"
+            "| 力量 | 方向 | 对港股影响概率 | 逻辑 | 相关板块 |\n"
             "|---|---|---|---|---|\n（恰好 5 行）\n\n"
             "- **重点**：2 条今日真正值得跟踪的\n- **噪音**：2 条看似热闹但可忽略的\n"
             "- **今日结论**：1~2 句，给出港股整体偏多/偏空概率\n\n"
-            "概率取整数%。全文≤600字。" + RULES_TAIL)
+            "概率取整数%。" + RULES_TAIL)
     elif template == "picker":
         user = (
             "根据当下市场环境，挑出未来 30 天高概率的股票 3~5 只"
             "（范围：港股/A股，风电及新能源链优先）。每只说清楚为什么看好、"
             "关键风险、什么情况下要止损。\n\n" + ctx +
             "严格按此格式输出：\n\n"
-            "| 股票 | 方向 | 30日上涨概率 | 看好逻辑（≤20字） | 关键风险 | 止损触发 |\n"
+            "| 股票 | 方向 | 30日上涨概率 | 看好逻辑 | 关键风险 | 止损触发 |\n"
             "|---|---|---|---|---|---|\n（3~5 行）\n\n"
             "- **首选**：1 句话点名胜率最高的一只\n"
             "- **弃权说明**：若环境不适合开新仓，明说并给理由\n\n"
-            "概率取整数%。全文≤800字。" + RULES_TAIL)
+            "概率取整数%。" + RULES_TAIL)
     elif template == "fusion":
         user = (
             f"分析「{topic}」，结合 K 线结构、财报和最新新闻，给出明确的看多还是看空。\n\n"
             + ctx +
             "严格按此格式输出：\n\n"
-            "| 维度 | 判断 | 多头概率 | 要点（≤18字） |\n|---|---|---|---|\n"
+            "| 维度 | 判断 | 多头概率 | 要点 |\n|---|---|---|---|\n"
             "| K线结构 |  |  |  |\n| 基本面/财报 |  |  |  |\n"
             "| 最新消息 |  |  |  |\n| 资金与情绪 |  |  |  |\n\n"
             "- **结论**：明确写「看多」或「看空」+ 信心概率%\n"
             "- **关键点位**：支撑 S1/S2、压力 R1/R2（有行情数据时按真实价格算，"
             "否则标注推断）\n- **适合风格**：短线/波段/长线三选一 + 一句理由\n\n"
-            "全文≤500字。" + RULES_TAIL)
+            + RULES_TAIL)
     elif template == "plan":
         user = (
             f"给「{topic}」做个完整交易计划：理想进场区间、止损怎么设、"
@@ -1234,7 +1234,7 @@ def build_messages(template: str, topic: str, context: str,
             "| T3 |  |  | 清仓或移动止盈 |\n\n"
             "- **头寸配置**：占总资金%（低风险原则，单票≤15%）\n"
             "- **盈亏比**：估算并给出值\n- **计划失效条件**：2 条\n\n"
-            "全文≤600字。" + RULES_TAIL)
+            "" + RULES_TAIL)
     elif template == "earnings":
         user = (
             f"分析「{topic}」的即将发布财报：用历史财报反应、指引趋势、"
@@ -1247,19 +1247,19 @@ def build_messages(template: str, topic: str, context: str,
             "| 小跌(0~-5%) |  |  |\n| 大跌(<-5%) |  |  |\n"
             "（概率合计=100%）\n\n"
             "- **最可能路径**：1~2 句\n- **关键观察点**：2 条（订单/毛利率/指引）\n\n"
-            "全文≤550字。" + RULES_TAIL)
+            "" + RULES_TAIL)
     elif template == "portfolio":
         user = (
             f"根据我的风险偏好【{RISK_ZH[risk]}】，设计一个分散的股票组合"
             "（港股/A股，风电新能源为重点再加其他板块）。各板块怎么配、"
             "为什么要这些头寸、多久调整一次。\n\n" + ctx +
             "严格按此格式输出：\n\n"
-            "| 板块 | 配置比例 | 代表标的 | 配置理由（≤18字） |\n|---|---|---|---|\n"
+            "| 板块 | 配置比例 | 代表标的 | 配置理由 |\n|---|---|---|---|\n"
             "（4~6 行，比例合计 100%，含现金档）\n\n"
             "- **头寸原则**：单票上限%、单板块上限%\n"
             "- **再平衡**：频率（如每季度）+ 2 条触发式调整条件\n"
             "- **预期特征**：该风险档位的预期波动 1 句\n\n"
-            "全文≤700字。" + RULES_TAIL)
+            "" + RULES_TAIL)
     elif template == "review":
         if context:
             user = (
@@ -1273,7 +1273,7 @@ def build_messages(template: str, topic: str, context: str,
                 "- **下次改进（if-then 规则）**：3 条，形如"
                 "「若…则…」，可直接执行\n"
                 "- **长期胜率杠杆**：1 条最值得固化的习惯\n\n"
-                "全文≤600字。" + RULES_TAIL)
+                "" + RULES_TAIL)
         else:
             user = (
                 "用户未提供具体交易细节。输出一份《交易复盘框架》：\n"
@@ -1281,19 +1281,19 @@ def build_messages(template: str, topic: str, context: str,
                 "2) 错误分类清单（择时/仓位/纪律/信息）；"
                 "3) 心理偏差自查表（各给一句自查问题）；"
                 "4) 说明把交易细节粘贴到 context 输入后，可获得逐条复盘。\n\n"
-                "全文≤500字。" + RULES_TAIL)
+                "" + RULES_TAIL)
     elif template == "regime":
         user = (
             "判断当前市场是趋势、震荡、风险偏好高还是低。"
             "在这个环境下交易策略应该怎么调整，交易员常掉的坑是什么。\n\n" + ctx +
             "严格按此格式输出：\n\n"
-            "| 属性 | 判定 | 概率 | 依据（≤18字） |\n|---|---|---|---|\n"
+            "| 属性 | 判定 | 概率 | 依据 |\n|---|---|---|---|\n"
             "| 趋势市 | 是/否 |  |  |\n| 震荡市 | 是/否 |  |  |\n"
             "| 风险偏好高 | 是/否 |  |  |\n| 高波动 | 是/否 |  |  |\n\n"
             "- **环境一句话**：当前最贴切的 regime 标签\n"
             "- **策略调整**：仓位/持仓周期/止损宽度/可用品类 各 1 条\n"
             "- **常见坑**：该环境下交易员最常犯的 2~3 个错误\n\n"
-            "全文≤450字。" + RULES_TAIL)
+            "" + RULES_TAIL)
     elif template == "analysis":
         factors_text = "\n".join(f"{i+1}. {f}" for i, f in enumerate(FACTORS))
         user = (
@@ -1302,14 +1302,14 @@ def build_messages(template: str, topic: str, context: str,
             "上涨/利多的把握，50% 中性，>50% 偏多，<50% 偏空。\n\n"
             f"因子列表（必须全部覆盖，顺序不可变）：\n{factors_text}\n\n"
             "严格按以下 Markdown 格式输出，不要增删表格行：\n\n"
-            "| 因子 | 方向 | 多头概率 | 依据（≤20字） |\n|---|---|---|---|\n"
+            "| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
             "| （逐因子填写） |\n\n"
             "- **综合判断**：方向+综合多头概率（如「震荡偏多，约 58%」）\n"
             "- **关键风险**：1~2 条\n- **数据局限**：一句话\n\n"
-            "概率取整数%，全文≤450字。" + RULES_TAIL)
+            "" + RULES_TAIL)
     else:  # brief
         user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
-                "每个要点一句话；结尾一句小结。全文不超过 250 字。\n\n" + ctx)
+                "每个要点一句话；结尾一句小结。\n\n" + ctx)
     system = ("你是一位严谨的跨市场分析师，深耕港股/A股风电与新能源链。"
               "输出必须是简体中文 Markdown，不要寒暄，不要使用代码块，"
               "所有概率用整数百分比表示。")
@@ -1545,8 +1545,8 @@ def themed_html(title: str, content_md: str) -> str:
 
 # ================================================================ 模块⑤：推送通道
 
-CHANNEL_LIMITS = {"pushplus": 100000, "serverchan": 20000,
-                  "wecom": 3600, "console": 0}  # 0 = 不限
+CHANNEL_LIMITS = {"pushplus": 0, "serverchan": 20000,
+                  "wecom": 4096, "console": 0}  # 0 = 不限；pushplus 突破 10 万字硬限
 
 
 def fit_for_channel(channel: str, content: str) -> tuple[str, str]:
@@ -1785,7 +1785,7 @@ def selftest() -> int:
     check("限内原样", short_c == "短内容" and note == "")
     long_c = "报告头部\n" + "明细行\n" * 1500
     trim_c, note = fit_for_channel("wecom", long_c)
-    check("超限截断+注释", len(trim_c) <= 3600 and "已省略" in trim_c
+    check("超限截断+注释", len(trim_c) <= 4096 and "已省略" in trim_c
           and note.startswith("已按"))
     check("截断保住正文头部", trim_c.startswith("报告头部"))
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
