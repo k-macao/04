@@ -8,7 +8,7 @@ pushplus_deepseek.py — 港股数据 + DeepSeek 分析 → 多通道推送
 ========
 1. 港股行情模块：三个免费无需 Key 的数据源（Yahoo财经 / 东方财富 / 腾讯财经）
 2. 交叉核验模块：同一标的从三源取价，比对偏差，给出可信度结论；异常源自动剔除
-3. 分析框架模块：DeepSeek 按 10 套模板生成内容，多空判断一律带概率
+3. 分析框架模块：DeepSeek 按 12 套模板生成内容，多空判断一律带概率；analysis 包含 7 个因子
 4. 推送模块：多通道真实推送 / dry-run 预览 / Secrets 检查
 
 用法
@@ -58,7 +58,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.9-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.10-2026-08-04"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -82,6 +82,9 @@ TEMPLATE_MAX_TOKENS = {
     "review": 3000, "regime": 3000, "sentiment": 4000, "feedscan": 4000,
 }
 
+# analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
+# 48 小时内的价格/成交量、新闻和社媒样本做本地预聚合，必须单独呈现。
+SENTIMENT_FACTOR = "量价舆情动量（48h）"
 FACTORS = [
     "基本面（业绩/订单/毛利率）",
     "行业与政策面（风电装机/招标/电价政策）",
@@ -89,7 +92,9 @@ FACTORS = [
     "资金面（主力/北向/两融动向）",
     "消息面与情绪面（公告/舆情/行业事件）",
     "估值面（PE/PB 与历史分位）",
+    SENTIMENT_FACTOR,
 ]
+FACTOR_COUNT = len(FACTORS)
 
 # ================================================================ 基础工具
 
@@ -1074,7 +1079,7 @@ def _item_line(i: SentItem, idx: int) -> str:
 
 def render_sentiment_appendix(pack: SentPack) -> str:
     n = sum(len(v) for v in pack.items.values())
-    lines = ["---", f"📡 **48h 多源舆情原始数据（共 {n} 条，本地打标）**"]
+    lines = ["---", f"📡 **{SENTIMENT_FACTOR}证据（{pack.hours}h，共 {n} 条，本地打标）**"]
     for name in ("Google新闻", "Reddit", "moomoo", "YouTube·investtalk"):
         items = pack.items.get(name)
         if not items:
@@ -1093,7 +1098,10 @@ def render_sentiment_appendix(pack: SentPack) -> str:
 
 
 def sentiment_context(pack: SentPack) -> str:
-    ctx = [f"【{pack.hours}h 多源舆情数据（本地预打标：标签/分值/时效）】"]
+    ctx = [
+        f"【新增因子：{SENTIMENT_FACTOR}】",
+        f"【{pack.hours}h 多源舆情数据（本地预打标：标签/分值/时效）】",
+    ]
     for name, items in pack.items.items():
         ctx.append(f"▼ {name}")
         ctx += [_item_line(i, k + 1) for k, i in enumerate(items)]
@@ -1127,17 +1135,17 @@ def render_sentiment_rule(topic: str, code: str | None, pack: SentPack) -> str:
         f"| 量价动量 | 小时K线 | — | {m.get('score', 0):+.2f} | — |",
     ]
     return "\n".join([
-        f"**{topic} · 48h 量价舆情动量**（rule 本地计算，未经 AI 综合）",
+        f"**{topic} · {pack.hours}h 量价舆情动量**（rule 本地计算，未经 AI 综合）",
         "", *rows, "",
         f"- **综合判断**：{stance}，综合多头概率 ≈ **{anchor}%**"
         "（权重：量价40% / 新闻35% / 舆情25%）",
         f"- **来源**：HK{code or '—'}；Google新闻 / Reddit / moomoo / "
-        "YouTube@investtalk（48h 窗口）",
+        f"YouTube@investtalk（{pack.hours}h 窗口）",
         "", "> ai_provider 选 deepseek 可在此数据基础上生成完整综合报告。",
         "> ⚠️ 非投资建议，仅供参考。"])
 
 
-# ================================================================ 模块③：分析框架（11 套模板）
+# ================================================================ 模块③：分析框架（12 套模板 / 7 个分析因子）
 
 RULES_TAIL = "末尾固定一行「⚠️ 非投资建议，仅供参考」。"
 
@@ -1155,10 +1163,10 @@ def build_messages(template: str, topic: str, context: str,
     ctx = _ctx_line(context)
     if template == "sentiment":
         user = (
-            f"基于以下 48 小时内、已完成本地预打标的多源数据，"
+            f"基于以下数据窗口内、已完成本地预打标的多源数据，"
             f"为「{topic}」输出一份量价与舆情动量报告。\n\n{context}\n\n"
             "严格按此格式输出：\n\n"
-            f"## 48h 情绪动量报告\n\n"
+            "## 情绪动量报告\n\n"
             "| 象限 | 样本 | 利好/利空/中性 | 动量分 | 24h趋势 | 多头概率 |\n"
             "|---|---|---|---|---|---|\n"
             "| 新闻动量 |  |  |  |  |  |\n"
@@ -1296,11 +1304,14 @@ def build_messages(template: str, topic: str, context: str,
             "" + RULES_TAIL)
     elif template == "analysis":
         factors_text = "\n".join(f"{i+1}. {f}" for i, f in enumerate(FACTORS))
+        new_factor_no = FACTORS.index(SENTIMENT_FACTOR) + 1
         user = (
-            f"请对「{topic}」按以下 6 个因子逐一做多空分析。{ctx}"
+            f"请对「{topic}」按以下 {FACTOR_COUNT} 个因子逐一做多空分析。{ctx}"
             "每个因子给出【方向】和【多头概率】：多头概率 = 该因子当前指向"
             "上涨/利多的把握，50% 中性，>50% 偏多，<50% 偏空。\n\n"
             f"因子列表（必须全部覆盖，顺序不可变）：\n{factors_text}\n\n"
+            f"第 {new_factor_no} 项「{SENTIMENT_FACTOR}」是新增因子，必须单独占一行，"
+            "不得并入消息面与情绪面；优先使用上下文中标注的本地预聚合结果和样本依据。\n\n"
             "严格按以下 Markdown 格式输出，不要增删表格行：\n\n"
             "| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
             "| （逐因子填写） |\n\n"
@@ -1318,24 +1329,62 @@ def build_messages(template: str, topic: str, context: str,
 
 
 def validate_analysis(content: str) -> bool:
-    """analysis 模板专属校验：应含表头且 ≥6 行带百分号的因子行。"""
+    """校验 analysis 是否逐项体现全部因子（包括新增的量价舆情动量）。"""
     if "| 因子" not in content:
         return False
-    rows = [ln for ln in content.splitlines()
-            if ln.strip().startswith("|") and "%" in ln]
-    return len(rows) >= len(FACTORS)
+
+    # 只检查因子表格，避免模型在后续风险说明中写几个百分比就误通过。
+    rows: list[str] = []
+    in_factor_table = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            if in_factor_table and stripped:
+                break
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if cells and cells[0] == "因子":
+            in_factor_table = True
+            continue
+        if not in_factor_table or not cells:
+            continue
+        if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+            continue
+        if len(cells) >= 3:
+            rows.append(stripped)
+
+    return all(
+        any(factor in row and re.search(r"(?<!\d)\d{1,3}%", row) for row in rows)
+        for factor in FACTORS
+    )
 
 
 # ================================================================ 内容生成（rule / AI 统一入口）
 
-def gen_by_rule(topic: str, template: str) -> str:
+def gen_by_rule(topic: str, template: str,
+                sent_pack: SentPack | None = None) -> str:
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M")
     if template == "analysis":
-        rows = "\n".join(
-            f"| {f} | 中性 | 50% | 示例占位，待 AI 填充 |" for f in FACTORS)
+        rows = []
+        for factor in FACTORS:
+            direction, probability, evidence = "中性", 50, "示例占位，待 AI 填充"
+            if factor == SENTIMENT_FACTOR and sent_pack is not None:
+                has_data = any(sent_pack.items.values()) or bool(
+                    sent_pack.momentum.get("ok"))
+                if has_data:
+                    probability = int(sent_pack.agg.get("综合多头概率锚点", 50))
+                    direction = ("偏多" if probability > 50
+                                 else ("偏空" if probability < 50 else "中性"))
+                    momentum = sent_pack.momentum.get("score", 0)
+                    evidence = (f"48h本地锚点 {probability}%；"
+                                f"量价动量 {momentum:+.2f}")
+                else:
+                    evidence = "48h 数据不足，无法计算本地锚点"
+            rows.append(f"| {factor} | {direction} | {probability}% | {evidence} |")
         return "\n".join([
             f"**{topic} · 多空因子分析框架**（rule 演示模板，概率均为占位示例）",
-            "", "| 因子 | 方向 | 多头概率 | 依据 |", "|---|---|---|---|", rows,
+            "", "| 因子 | 方向 | 多头概率 | 依据 |", "|---|---|---|---|",
+            "\n".join(rows),
             "", "- **综合判断**：示例——ai_provider 选 deepseek 后由 AI 填充真实概率",
             "- **关键风险**：示例", "- **数据局限**：rule 模式不含真实分析", "",
             f"> 运行时间：{now}（北京时间）。⚠️ 非投资建议，仅供参考。"])
@@ -1828,6 +1877,27 @@ def selftest() -> int:
         KLEIN.clear()
         KLEIN.update(bak)
 
+    log("③h 新增量价舆情动量因子")
+    analysis_prompt = build_messages("analysis", "金风科技", "示例背景", "mid")[1]["content"]
+    check("analysis 提示词含新增因子", SENTIMENT_FACTOR in analysis_prompt)
+    check(f"analysis 提示词声明 {FACTOR_COUNT} 个因子",
+          f"{FACTOR_COUNT} 个因子" in analysis_prompt)
+    rule_analysis = gen_by_rule("金风科技", "analysis")
+    check("rule 表格含新增因子", f"| {SENTIMENT_FACTOR} |" in rule_analysis)
+    check("analysis 校验器逐项校验", validate_analysis(rule_analysis))
+    missing_new_factor = rule_analysis.replace(
+        next(line for line in rule_analysis.splitlines()
+             if SENTIMENT_FACTOR in line), "")
+    check("analysis 缺新增因子时不通过", not validate_analysis(missing_new_factor))
+    sample_sent = SentPack(
+        hours=48,
+        momentum={"ok": True, "score": 0.42},
+        agg={"综合多头概率锚点": 69},
+    )
+    check("rule 使用新增因子本地锚点",
+          "| 量价舆情动量（48h） | 偏多 | 69% |" in
+          gen_by_rule("金风科技", "analysis", sent_pack=sample_sent))
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -1866,7 +1936,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="pushplus 通道主题：klein=浅灰底+克莱因蓝+小两号"
                         "（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
-                   help="sentiment 模板的数据窗口小时数（默认 48）")
+                   help="analysis/sentiment/feedscan 的数据窗口小时数（默认 48）")
     p.add_argument("--yt-channel", default="", dest="yt_channel",
                    help="YouTube 频道 handle（默认 @investtalk，或环境变量 YT_CHANNEL）")
     p.add_argument("--timeout", type=int, default=30)
@@ -1898,12 +1968,16 @@ def main(argv: list[str]) -> int:
     if args.check_only:
         return 0 if print_secret_report(channel, provider) else 1
 
-    # ---------- 模块②：sentiment 模板先采集 4 源舆情 + 量价动量 ----------
+    # ---------- 新增因子：analysis/sentiment 共用 48h 量价舆情数据 ----------
     sent_pack, appendix_md, code4sent = None, "", None
-    if template == "sentiment":
+    if template in ("sentiment", "analysis"):
         code4sent = normalize_hk_code(hk_code_raw) if hk_code_raw else None
-        log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情"
-            f"（Google新闻/Reddit/moomoo/YouTube·investtalk）…")
+        if template == "analysis":
+            log(f"\n📡 正在采集新增因子「{SENTIMENT_FACTOR}」的数据"
+                f"（{args.hours}h：Google新闻/Reddit/moomoo/YouTube·investtalk）…")
+        else:
+            log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情"
+                f"（Google新闻/Reddit/moomoo/YouTube·investtalk）…")
         sent_pack = collect_sentiment(topic, code4sent, args.hours,
                                       min(args.timeout, 15), args.yt_channel)
         for name, items in sent_pack.items.items():
@@ -1919,7 +1993,9 @@ def main(argv: list[str]) -> int:
         log(f"  → 综合多头概率锚点 ≈ "
             f"{sent_pack.agg.get('综合多头概率锚点', '—')}%")
         appendix_md = render_sentiment_appendix(sent_pack)
-        user_context = sentiment_context(sent_pack)
+        factor_context = sentiment_context(sent_pack)
+        user_context = (f"{factor_context}\n\n{user_context}"
+                        if user_context else factor_context)
 
     # ---------- 模块②b：feedscan 模板采集 12 源全市场快讯 ----------
     feed_pack = None
@@ -1969,7 +2045,7 @@ def main(argv: list[str]) -> int:
             elif template == "feedscan" and feed_pack is not None:
                 content = render_feed_rule(topic, feed_pack)
             else:
-                content = gen_by_rule(topic, template)
+                content = gen_by_rule(topic, template, sent_pack=sent_pack)
         else:
             key_env = ("DEEPSEEK_API_KEY" if provider == "deepseek"
                        else "OPENAI_API_KEY")
@@ -1990,7 +2066,7 @@ def main(argv: list[str]) -> int:
         if args.dry_run and "缺少 Secret" in str(e):
             log(f"⚠️  {e}")
             log("⚠️  dry-run 模式：降级使用 rule 模板继续演示管线")
-            content = gen_by_rule(topic, template)
+            content = gen_by_rule(topic, template, sent_pack=sent_pack)
         else:
             log(f"❌ 内容生成失败：{e}")
             return 1

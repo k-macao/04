@@ -146,6 +146,22 @@ result = deep_merge_dicts(base, incoming)
 - `channel`：pushplus / wecom / serverchan / console / all
 - `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
 - `topic`：内容主题，留空默认"金风科技(Goldwind) 每日简报"
+- `hours`：量价舆情动量/全市场快讯的数据窗口，支持 24/48/72 小时
+
+### 分析框架与新增因子
+
+当前工作流提供 12 套模板。选择 `analysis` 时会逐行输出以下 7 个因子，新增的
+**量价舆情动量（48h）**不会再被合并到普通消息/情绪面：
+
+1. 基本面（业绩/订单/毛利率）
+2. 行业与政策面（风电装机/招标/电价政策）
+3. 技术面（趋势/量价/关键价位）
+4. 资金面（主力/北向/两融动向）
+5. 消息面与情绪面（公告/舆情/行业事件）
+6. 估值面（PE/PB 与历史分位）
+7. **量价舆情动量（48h）**：基于窗口内价格/成交量、新闻和社媒样本，先本地预聚合，再交给 AI 分析
+
+当 `analysis` 搭配 `hk_code` 运行时，脚本会自动采集该新增因子所需的数据；采集失败会明确标注数据缺口，不会伪造概率。
 
 工作流会先运行 **Check required secrets** 步骤：缺少所需 Secret 时立即变红并指出缺哪一个。
 命令行本地调试：
@@ -153,6 +169,7 @@ result = deep_merge_dicts(base, incoming)
 ```bash
 python pushplus_deepseek.py --check-only          # 只检查 Secret 配置
 python pushplus_deepseek.py --dry-run             # 生成但不推送
+python pushplus_deepseek.py --template analysis --hk-code 02208 --hours 48 --dry-run
 python pushplus_deepseek.py --channel all         # 三个通道全部推送
 ```
 
