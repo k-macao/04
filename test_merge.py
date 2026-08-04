@@ -13,6 +13,7 @@ from pathlib import Path
 from merge import (
     merge_text_files,
     merge_json_files,
+    merge_yaml_files,
     merge_csv_files,
     merge_binary_files,
     merge_files,
@@ -195,6 +196,70 @@ class TestFolderMerge(unittest.TestCase):
             self.assertEqual(merged_json["b"], [1, 2])
             self.assertTrue((out_dir / "only_in_1.txt").exists())
             self.assertTrue((out_dir / "only_in_2.txt").exists())
+
+
+class TestYamlMerge(unittest.TestCase):
+    """YAML 合并测试（需要 PyYAML；未安装时自动跳过）"""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("跳过：未安装 PyYAML（pip install pyyaml）")
+
+    def test_yaml_deep_merge(self):
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            f1 = tmpdir / "a.yaml"
+            f2 = tmpdir / "b.yaml"
+            f1.write_text(
+                yaml.dump({"name": "Alice", "skills": ["python"], "meta": {"age": 20}}, allow_unicode=True),
+                encoding="utf-8",
+            )
+            f2.write_text(
+                yaml.dump({"name": "Bob", "skills": ["java"], "meta": {"city": "Macao"}, "extra": 1}, allow_unicode=True),
+                encoding="utf-8",
+            )
+            out = tmpdir / "merged.yaml"
+            merge_yaml_files([f1, f2], out, deep_merge=True)
+            data = yaml.safe_load(out.read_text(encoding="utf-8"))
+            self.assertEqual(data["name"], "Bob")
+            self.assertEqual(data["skills"], ["python", "java"])
+            self.assertEqual(data["meta"], {"age": 20, "city": "Macao"})
+            self.assertEqual(data["extra"], 1)
+
+    def test_yaml_list_strategies(self):
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            f1 = tmpdir / "c.yaml"
+            f2 = tmpdir / "d.yaml"
+            f1.write_text(yaml.dump([1, 2, 3]), encoding="utf-8")
+            f2.write_text(yaml.dump([3, 4, 5]), encoding="utf-8")
+
+            out_concat = tmpdir / "concat.yaml"
+            merge_yaml_files([f1, f2], out_concat, merge_list_strategy="concat")
+            self.assertEqual(yaml.safe_load(out_concat.read_text()), [1, 2, 3, 3, 4, 5])
+
+            out_unique = tmpdir / "unique.yaml"
+            merge_yaml_files([f1, f2], out_unique, merge_list_strategy="unique")
+            self.assertEqual(yaml.safe_load(out_unique.read_text()), [1, 2, 3, 4, 5])
+
+            out_replace = tmpdir / "replace.yaml"
+            merge_yaml_files([f1, f2], out_replace, merge_list_strategy="replace")
+            self.assertEqual(yaml.safe_load(out_replace.read_text()), [3, 4, 5])
+
+    def test_yaml_auto_detect(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            f = tmpdir / "config.yaml"
+            f.write_text("key: value\n", encoding="utf-8")
+            # YAML 文件应被检测为 YAML 类型（若有 PyYAML）
+            from merge import _HAS_YAML
+            expected = MergeStrategy.YAML if _HAS_YAML else MergeStrategy.TEXT
+            self.assertEqual(detect_file_type(f), expected)
 
 
 class TestMergeAlgorithms(unittest.TestCase):
