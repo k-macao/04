@@ -6,16 +6,18 @@
 提供多种文件合并策略：
 - 文本文件合并
 - JSON 文件合并 (支持深合并字典、拼接列表)
+- YAML 文件合并 (支持深合并，需 PyYAML)
 - CSV 文件合并 (支持表头对齐)
 - 二进制文件合并
 - 通用自动检测合并
 
 Usage:
-    from merge import merge_files, merge_text_files, merge_json_files, merge_csv_files
+    from merge import merge_files, merge_text_files, merge_json_files, merge_yaml_files, merge_csv_files
 
 CLI:
     python merge.py text file1.txt file2.txt -o merged.txt
     python merge.py json data1.json data2.json -o merged.json --deep-merge
+    python merge.py yaml a.yaml b.yaml -o merged.yaml
     python merge.py csv a.csv b.csv -o merged.csv
     python merge.py auto file1 file2 file3 -o merged_output
 """
@@ -29,10 +31,17 @@ from pathlib import Path
 from typing import List, Union, Dict, Any, Optional
 from enum import Enum
 
+try:
+    import yaml
+    _HAS_YAML = True
+except ImportError:
+    _HAS_YAML = False
+
 
 class MergeStrategy(Enum):
     TEXT = "text"
     JSON = "json"
+    YAML = "yaml"
     CSV = "csv"
     BINARY = "binary"
     AUTO = "auto"
@@ -209,6 +218,68 @@ def merge_json_files(
     return output_path
 
 
+def merge_yaml_files(
+    input_paths: List[Union[str, Path]],
+    output_path: Union[str, Path],
+    deep_merge: bool = True,
+    merge_list_strategy: str = "concat",
+    encoding: str = "utf-8",
+) -> Path:
+    """
+    合并多个 YAML 文件（需安装 PyYAML: pip install pyyaml）
+
+    Args:
+        input_paths: YAML 文件列表
+        output_path: 输出路径
+        deep_merge: 是否深合并嵌套字典
+        merge_list_strategy: 列表合并策略 (concat / unique / replace)
+        encoding: 编码
+
+    Returns:
+        输出文件 Path
+
+    Raises:
+        ImportError: 未安装 PyYAML 时抛出
+    """
+    if not _HAS_YAML:
+        raise ImportError("合并 YAML 需要 PyYAML：pip install pyyaml")
+    _ensure_parent_dir(output_path)
+    output_path = Path(output_path)
+    if not input_paths:
+        raise ValueError("input_paths 不能为空")
+
+    merged_data: Any = None
+    for fpath in input_paths:
+        fpath = Path(fpath)
+        if not fpath.exists():
+            raise FileNotFoundError(f"输入文件不存在: {fpath}")
+        with open(fpath, 'r', encoding=encoding) as f:
+            data = yaml.safe_load(f)
+        if merged_data is None:
+            merged_data = data
+            continue
+        if isinstance(merged_data, dict) and isinstance(data, dict):
+            merged_data = deep_merge_dicts(merged_data, data) if deep_merge else {**merged_data, **data}
+        elif isinstance(merged_data, list) and isinstance(data, list):
+            if merge_list_strategy == "concat":
+                merged_data = merged_data + data
+            elif merge_list_strategy == "unique":
+                seen = set(yaml.dump(x, sort_keys=True, allow_unicode=True) for x in merged_data)
+                for item in data:
+                    key = yaml.dump(item, sort_keys=True, allow_unicode=True)
+                    if key not in seen:
+                        merged_data.append(item)
+                        seen.add(key)
+            elif merge_list_strategy == "replace":
+                merged_data = data
+        else:
+            merged_data = [merged_data, data]
+
+    with open(output_path, 'w', encoding=encoding) as out:
+        yaml.dump(merged_data, out, allow_unicode=True, sort_keys=False)
+    return output_path
+
+
 def merge_csv_files(
     input_paths: List[Union[str, Path]],
     output_path: Union[str, Path],
@@ -310,9 +381,11 @@ def detect_file_type(file_path: Union[str, Path]) -> MergeStrategy:
     ext = Path(file_path).suffix.lower()
     if ext == ".json":
         return MergeStrategy.JSON
+    elif ext in {".yaml", ".yml"}:
+        return MergeStrategy.YAML if _HAS_YAML else MergeStrategy.TEXT
     elif ext == ".csv":
         return MergeStrategy.CSV
-    elif ext in {".txt", ".log", ".md", ".py", ".js", ".ts", ".html", ".css", ".yaml", ".yml", ".xml", ".ini", ".cfg"}:
+    elif ext in {".txt", ".log", ".md", ".py", ".js", ".ts", ".html", ".css", ".xml", ".ini", ".cfg"}:
         return MergeStrategy.TEXT
     else:
         # 尝试读取前 1k 判断是否为文本
@@ -336,7 +409,7 @@ def merge_files(
     Args:
         input_paths: 输入文件列表
         output_path: 输出文件
-        strategy: 合并策略 auto/text/json/csv/binary
+        strategy: 合并策略 auto/text/json/yaml/csv/binary
         **kwargs: 传递给具体合并函数的额外参数
 
     Returns:
@@ -357,6 +430,8 @@ def merge_files(
         return merge_text_files(input_paths, output_path, **kwargs)
     elif strategy == MergeStrategy.JSON:
         return merge_json_files(input_paths, output_path, **kwargs)
+    elif strategy == MergeStrategy.YAML:
+        return merge_yaml_files(input_paths, output_path, **kwargs)
     elif strategy == MergeStrategy.CSV:
         return merge_csv_files(input_paths, output_path, **kwargs)
     elif strategy == MergeStrategy.BINARY:
@@ -413,6 +488,8 @@ def merge_folders(
                         tmp_merged = dest_path.with_suffix(dest_path.suffix + ".merged.tmp")
                         if detect == MergeStrategy.JSON:
                             merge_json_files([dest_path, src_path], tmp_merged)
+                        elif detect == MergeStrategy.YAML:
+                            merge_yaml_files([dest_path, src_path], tmp_merged)
                         elif detect == MergeStrategy.CSV:
                             merge_csv_files([dest_path, src_path], tmp_merged)
                         elif detect == MergeStrategy.TEXT:
@@ -431,7 +508,7 @@ def merge_folders(
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="文件合并工具 - 支持文本/JSON/CSV/二进制")
+    parser = argparse.ArgumentParser(description="文件合并工具 - 支持文本/JSON/YAML/CSV/二进制")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # text
@@ -451,6 +528,14 @@ def main():
     p_json.add_argument("--no-deep-merge", dest="deep_merge", action="store_false", help="不深合并")
     p_json.add_argument("--list-strategy", choices=["concat", "unique", "replace"], default="concat")
 
+    # yaml
+    p_yaml = subparsers.add_parser("yaml", help="合并 YAML 文件")
+    p_yaml.add_argument("inputs", nargs="+", help="输入文件")
+    p_yaml.add_argument("-o", "--output", required=True, help="输出文件")
+    p_yaml.add_argument("--deep-merge", action="store_true", default=True, help="深合并")
+    p_yaml.add_argument("--no-deep-merge", dest="deep_merge", action="store_false", help="不深合并")
+    p_yaml.add_argument("--list-strategy", choices=["concat", "unique", "replace"], default="concat")
+
     # csv
     p_csv = subparsers.add_parser("csv", help="合并 CSV 文件")
     p_csv.add_argument("inputs", nargs="+", help="输入文件")
@@ -462,7 +547,7 @@ def main():
     p_auto = subparsers.add_parser("auto", help="自动检测合并")
     p_auto.add_argument("inputs", nargs="+", help="输入文件")
     p_auto.add_argument("-o", "--output", required=True, help="输出文件")
-    p_auto.add_argument("--strategy", choices=["text", "json", "csv", "binary", "auto"], default="auto")
+    p_auto.add_argument("--strategy", choices=["text", "json", "yaml", "csv", "binary", "auto"], default="auto")
 
     # folder
     p_folder = subparsers.add_parser("folder", help="合并文件夹")
@@ -484,6 +569,13 @@ def main():
             )
         elif args.command == "json":
             out = merge_json_files(
+                args.inputs,
+                args.output,
+                deep_merge=args.deep_merge,
+                merge_list_strategy=args.list_strategy,
+            )
+        elif args.command == "yaml":
+            out = merge_yaml_files(
                 args.inputs,
                 args.output,
                 deep_merge=args.deep_merge,
