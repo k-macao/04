@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-！
 """
 纯快讯提取脚本
 每个数据源只提取 1 条最新内容，不做任何分析
