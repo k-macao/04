@@ -1,37 +1,67 @@
 name: Manual Run - Goldwind PushPlus+DeepSeek
+
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (不真实推送，只看日志)'
-        required: false
+        description: 'true=只生成不推送（联调用）；false=真实推送到微信'
+        required: true
         default: 'false'
         type: choice
-        options: ['true','false']
+        options: ['false', 'true']
       channel:
         description: '推送通道'
+        required: true
         default: 'pushplus'
         type: choice
-        options: [pushplus,wecom,serverchan,console,all]
+        options: [pushplus, wecom, serverchan, console, all]
       ai_provider:
-        description: 'AI 提供商'
+        description: 'AI 提供商（rule=固定模板，不调用 AI）'
+        required: true
         default: 'deepseek'
         type: choice
-        options: [deepseek,rule,openai]
+        options: [deepseek, rule, openai]
+      topic:
+        description: '内容主题（可选，留空则用默认：金风科技每日简报）'
+        required: false
+        default: ''
 
 jobs:
-  manual-test:
-    runs-on: ubuntu-latest      # ✅ 必须
-    steps:                       # ✅ 必须
+  manual-push:
+    runs-on: ubuntu-latest
+    env:
+      PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      WECOM_KEY: ${{ secrets.WECOM_KEY }}
+      SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+      TOPIC: ${{ inputs.topic }}
+    steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-      - name: Run dry-run test
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Check required secrets
+        run: >-
+          python pushplus_deepseek.py --check-only
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
+
+      - name: Dry run (只生成内容，不真实推送)
         if: ${{ inputs.dry_run == 'true' }}
-        env:
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: |
-          python run.py --dry-run
+        run: >-
           python pushplus_deepseek.py --dry-run
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
+
+      - name: Real push (真实推送到微信)
+        if: ${{ inputs.dry_run == 'false' }}
+        run: >-
+          python pushplus_deepseek.py
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
