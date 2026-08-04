@@ -2,6 +2,12 @@ name: Manual Run - Goldwind PushPlus+DeepSeek
 on:
   workflow_dispatch:
     inputs:
+      template:
+        description: '分析框架（8套框架+简报+多空因子）'
+        required: true
+        default: 'analysis'
+        type: choice
+        options: [analysis, brief, scan, picker, fusion, plan, earnings, portfolio, review, regime]
       dry_run:
         description: 'true=只生成不推送（联调用）；false=真实推送到微信'
         required: true
@@ -20,18 +26,22 @@ on:
         default: 'deepseek'
         type: choice
         options: [deepseek, rule, openai]
-      template:
-        description: '内容模板：analysis=多空因子分析（每因子方向+多头概率）；brief=简报'
-        required: true
-        default: 'analysis'
-        type: choice
-        options: [analysis, brief]
       topic:
-        description: '内容主题（可选，留空则用默认：金风科技每日简报）'
+        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 金风科技；留空用默认）'
         required: false
         default: ''
+      hk_code:
+        description: '港股代码（接入三源核验行情，如 02208=金风科技H；留空则不取数据）'
+        required: false
+        default: '02208'
+      risk:
+        description: '风险偏好档位（仅 portfolio 模板使用）'
+        required: true
+        default: 'mid'
+        type: choice
+        options: [low, mid, high]
       context:
-        description: '最新行情/公告背景（可选；AI 无实时行情，粘贴后可显著提高概率质量）'
+        description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
         required: false
         default: ''
 jobs:
@@ -65,6 +75,8 @@ jobs:
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
           --template "${{ inputs.template }}"
+          --hk-code "${{ inputs.hk_code }}"
+          --risk "${{ inputs.risk }}"
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
@@ -72,3 +84,5 @@ jobs:
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
           --template "${{ inputs.template }}"
+          --hk-code "${{ inputs.hk_code }}"
+          --risk "${{ inputs.risk }}"
