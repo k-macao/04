@@ -1,5 +1,4 @@
 name: Manual Run - Goldwind PushPlus+DeepSeek
-
 on:
   workflow_dispatch:
     inputs:
@@ -21,11 +20,20 @@ on:
         default: 'deepseek'
         type: choice
         options: [deepseek, rule, openai]
+      template:
+        description: '内容模板：analysis=多空因子分析（每因子方向+多头概率）；brief=简报'
+        required: true
+        default: 'analysis'
+        type: choice
+        options: [analysis, brief]
       topic:
         description: '内容主题（可选，留空则用默认：金风科技每日简报）'
         required: false
         default: ''
-
+      context:
+        description: '最新行情/公告背景（可选；AI 无实时行情，粘贴后可显著提高概率质量）'
+        required: false
+        default: ''
 jobs:
   manual-push:
     runs-on: ubuntu-latest
@@ -37,31 +45,30 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
       TOPIC: ${{ inputs.topic }}
+      CONTEXT: ${{ inputs.context }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-
       - name: Check required secrets
         run: >-
           python pushplus_deepseek.py --check-only
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
-
       - name: Dry run (只生成内容，不真实推送)
         if: ${{ inputs.dry_run == 'true' }}
         run: >-
           python pushplus_deepseek.py --dry-run
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
-
+          --template "${{ inputs.template }}"
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
           python pushplus_deepseek.py
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
+          --template "${{ inputs.template }}"
