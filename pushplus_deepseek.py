@@ -7,6 +7,7 @@ pushplus_deepseek.py — DeepSeek 生成内容 → 多通道推送（PushPlus / 
     python pushplus_deepseek.py                          # 真实推送（默认 pushplus + deepseek）
     python pushplus_deepseek.py --dry-run                # 只生成不推送，打印全部细节（联调用）
     python pushplus_deepseek.py --check-only             # 只检查所需 Secrets 是否已配置
+    python pushplus_deepseek.py --template analysis      # 多空因子分析（每因子方向+多头概率）
     python pushplus_deepseek.py --channel all --ai-provider rule --topic "每日一句"
 
 所需的 GitHub Secrets（按所选通道 / AI 提供商而定）：
@@ -16,6 +17,7 @@ pushplus_deepseek.py — DeepSeek 生成内容 → 多通道推送（PushPlus / 
     DEEPSEEK_API_KEY    ai-provider = deepseek 时必需
     OPENAI_API_KEY      ai-provider = openai 时必需（可选 OPENAI_BASE_URL 覆盖接口地址）
     TOPIC               任意模式可选，覆盖默认内容主题
+    CONTEXT             可选，注入最新行情/公告等背景，供 AI 给出概率时参考
 """
 from __future__ import annotations
 
@@ -42,8 +44,19 @@ CST = timezone(timedelta(hours=8), "CST")  # 北京时间
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 PROVIDERS = ["deepseek", "rule", "openai"]
+TEMPLATES = ["brief", "analysis"]  # brief=简报；analysis=多空因子分析框架
 # --channel all 展开为三个真实通道（console 单独选择即可，避免制造噪音）
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
+
+# 多空因子分析框架：每个因子都会得到 方向(多/空/中性) + 多头概率(%)
+FACTORS = [
+    "基本面（业绩/订单/毛利率）",
+    "行业与政策面（风电装机/招标/电价政策）",
+    "技术面（趋势/量价/关键价位）",
+    "资金面（主力/北向/两融动向）",
+    "消息面与情绪面（公告/舆情/行业事件）",
+    "估值面（PE/PB 与历史分位）",
+]
 
 
 # ---------------------------------------------------------------- 工具
@@ -135,8 +148,25 @@ def print_secret_report(channel: str, provider: str) -> bool:
 
 # ---------------------------------------------------------------- 内容生成
 
-def gen_by_rule(topic: str) -> str:
+def gen_by_rule(topic: str, template: str = "brief") -> str:
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M")
+    if template == "analysis":
+        rows = "\n".join(
+            f"| {f} | 中性 | 50% | 示例占位，待 AI 填充 |" for f in FACTORS)
+        return "\n".join([
+            f"**{topic} · 多空因子分析框架**（rule 演示模板，概率均为占位示例）",
+            "",
+            "| 因子 | 方向 | 多头概率 | 依据 |",
+            "|---|---|---|---|",
+            rows,
+            "",
+            "- **综合判断**：示例——运行时将 ai_provider 选为 deepseek，由 AI 逐因子给出真实多空概率",
+            "- **关键风险**：示例——同上",
+            "- **数据局限**：rule 模式不调用 AI、不含真实分析",
+            "",
+            f"> 运行时间：{now}（北京时间）。如需真实概率分析：ai_provider 选 deepseek",
+            "> 并确认 Secrets 中已配置 DEEPSEEK_API_KEY。⚠️ 非投资建议，仅供参考。",
+        ])
     return textwrap.dedent(f"""\
         **{topic}**
 
@@ -148,20 +178,55 @@ def gen_by_rule(topic: str) -> str:
         > 并确认仓库 Secrets 中已配置 DEEPSEEK_API_KEY。""")
 
 
-def chat_completion(url: str, api_key: str, model: str, topic: str,
+def build_messages(template: str, topic: str, context: str) -> list[dict]:
+    """按模板构造 AI 对话消息。"""
+    if template == "analysis":
+        if context:
+            ctx_line = f"可参考的最新信息（用户提供，请优先采用）：\n{context}\n\n"
+        else:
+            ctx_line = ("注意：你无法访问实时行情与最新公告，请基于已有知识推断，"
+                        "凡属推断的依据在末尾标注 *（推断）。\n\n")
+        factors_text = "\n".join(f"{i+1}. {f}" for i, f in enumerate(FACTORS))
+        user = (
+            f"请对「{topic}」按以下 6 个因子逐一做多空分析。{ctx_line}"
+            "每个因子给出【方向】和【多头概率】：多头概率 = 该因子当前指向上涨/利多的把握，"
+            "50% 表示中性，>50% 偏多，<50% 偏空。\n\n"
+            f"因子列表（必须全部覆盖，顺序不可变）：\n{factors_text}\n\n"
+            "严格按以下 Markdown 格式输出，不要增删表格行，不要输出多余小节：\n\n"
+            "| 因子 | 方向 | 多头概率 | 依据（≤20字） |\n"
+            "|---|---|---|---|\n"
+            "| （逐因子填写） |\n\n"
+            "表格之后依次输出：\n"
+            "- **综合判断**：加权各因子后的整体结论（格式：方向+综合多头概率，"
+            "如「震荡偏多，综合多头概率约 58%」）\n"
+            "- **关键风险**：1~2 条最可能打破结论的因素\n"
+            "- **数据局限**：一句话说明实时数据缺失对概率的影响\n\n"
+            "概率取整数百分比，全文不超过 450 字，"
+            "末尾固定一行「⚠️ 非投资建议，仅供参考」。"
+        )
+        system = ("你是一位严谨的 A 股分析师，熟悉风电行业。"
+                  "输出必须是简体中文 Markdown，不要寒暄，不要使用代码块。")
+    else:
+        user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
+                "每个要点一句话；结尾一句小结。全文不超过 250 字。")
+        system = "你是一位简洁专业的中文资讯编辑，输出 Markdown，不要寒暄。"
+    return [{"role": "system", "content": system},
+            {"role": "user", "content": user}]
+
+
+def validate_analysis(content: str) -> bool:
+    """校验 analysis 输出：应含表头且 ≥6 行带百分号的因子行。"""
+    if "| 因子" not in content:
+        return False
+    factor_rows = [ln for ln in content.splitlines()
+                   if ln.strip().startswith("|") and "%" in ln]
+    return len(factor_rows) >= len(FACTORS)
+
+
+def chat_completion(url: str, api_key: str, model: str, messages: list[dict],
                     timeout: int) -> str:
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system",
-             "content": "你是一位简洁专业的中文资讯编辑，输出 Markdown，不要寒暄。"},
-            {"role": "user",
-             "content": (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
-                         "每个要点一句话；结尾一句小结。全文不超过 250 字。")},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 600,
-    }
+    payload = {"model": model, "messages": messages,
+               "temperature": 0.7, "max_tokens": 900}
     status, body = http_post_json(url, payload,
                                   {"Authorization": f"Bearer {api_key}"}, timeout)
     if status != 200:
@@ -172,22 +237,30 @@ def chat_completion(url: str, api_key: str, model: str, topic: str,
         raise PushError(f"AI 接口返回格式异常：{body[:400]}") from e
 
 
-def generate_content(provider: str, topic: str, timeout: int) -> str:
+def generate_content(provider: str, topic: str, timeout: int,
+                     template: str = "brief", context: str = "") -> str:
     if provider == "rule":
-        return gen_by_rule(topic)
+        return gen_by_rule(topic, template)
+    messages = build_messages(template, topic, context)
     if provider == "deepseek":
         key = env("DEEPSEEK_API_KEY")
         if not key:
             raise PushError("缺少 Secret：DEEPSEEK_API_KEY（ai_provider=deepseek 必需）")
-        return chat_completion(DEEPSEEK_URL, key, "deepseek-chat", topic, timeout)
-    if provider == "openai":
+        content = chat_completion(DEEPSEEK_URL, key, "deepseek-chat",
+                                  messages, timeout)
+    elif provider == "openai":
         key = env("OPENAI_API_KEY")
         if not key:
             raise PushError("缺少 Secret：OPENAI_API_KEY（ai_provider=openai 必需）")
         base = env("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
-        return chat_completion(f"{base.rstrip('/')}/chat/completions",
-                               key, "gpt-4o-mini", topic, timeout)
-    raise PushError(f"未知 AI 提供商：{provider}")
+        content = chat_completion(f"{base.rstrip('/')}/chat/completions",
+                                  key, "gpt-4o-mini", messages, timeout)
+    else:
+        raise PushError(f"未知 AI 提供商：{provider}")
+    # analysis 模板做格式校验：不合格时仍推送，但附加警示（不静默丢弃内容）
+    if template == "analysis" and not validate_analysis(content):
+        content += "\n\n> ⚠️ 本次模型输出未通过框架格式校验，以上为原始返回，仅供参考。"
+    return content
 
 
 # ---------------------------------------------------------------- 各通道推送
@@ -269,8 +342,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="推送通道（默认 pushplus）")
     p.add_argument("--ai-provider", default="deepseek", choices=PROVIDERS,
                    dest="ai_provider", help="内容生成方式（默认 deepseek）")
+    p.add_argument("--template", default="brief", choices=TEMPLATES,
+                   help="brief=简报；analysis=多空因子分析（每因子方向+多头概率）")
     p.add_argument("--topic", default="",
                    help="内容主题（默认取环境变量 TOPIC，再退到内置主题）")
+    p.add_argument("--context", default="",
+                   help="注入最新行情/公告等背景（也可用环境变量 CONTEXT），"
+                        "供 analysis 模板给出概率时参考")
     p.add_argument("--timeout", type=int, default=30, help="网络超时秒数（默认 30）")
     return p.parse_args(argv)
 
@@ -278,13 +356,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     channel, provider = args.channel, args.ai_provider
+    template = args.template
     topic = args.topic or env("TOPIC") or DEFAULT_TOPIC
+    context = args.context or env("CONTEXT")
     targets = ALL_CHANNELS if channel == "all" else [channel]
 
     log("=" * 56)
     log("Manual Run - Goldwind PushPlus+DeepSeek")
-    log(f"  通道: {channel}  AI: {provider}  dry_run: {args.dry_run}")
-    log(f"  主题: {topic}")
+    log(f"  通道: {channel}  AI: {provider}  模板: {template}  dry_run: {args.dry_run}")
+    log(f"  主题: {topic}" + (f"  附带背景: {len(context)} 字" if context else ""))
     log("=" * 56)
 
     # ---------- 模式 1：只检查 Secrets ----------
@@ -293,19 +373,23 @@ def main(argv: list[str]) -> int:
 
     # ---------- 模式 2/3：生成内容（dry-run 与真实推送共用）----------
     try:
-        content = generate_content(provider, topic, args.timeout)
+        content = generate_content(provider, topic, args.timeout,
+                                   template=template, context=context)
     except PushError as e:
         if args.dry_run and "缺少 Secret" in str(e):
             # dry-run 下联调时允许缺 AI Key：降级为模板内容，保证整条管线可预览
             log(f"⚠️  {e}")
             log("⚠️  dry-run 模式：降级使用 rule 模板继续演示管线")
-            content = gen_by_rule(topic)
+            content = gen_by_rule(topic, template)
         else:
             log(f"❌ 内容生成失败：{e}")
             return 1
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
-    title = f"{topic}（{now}）"
+    if template == "analysis":
+        title = f"{topic}·多空因子分析（{now}）"
+    else:
+        title = f"{topic}（{now}）"
     log("\n📝 生成的内容：")
     log("-" * 56)
     log(f"# {title}\n\n{content}")
