@@ -955,6 +955,7 @@ class SentPack:
     errors: list[str] = field(default_factory=list)
     momentum: dict = field(default_factory=dict)
     agg: dict = field(default_factory=dict)
+    scan: object | None = None   # 十四平台股票扫描结果（stock_news_scan.ScanPack）
 
 
 def _src_agg(items: list[SentItem]) -> dict:
@@ -1004,6 +1005,14 @@ def collect_sentiment(topic: str, code: str | None, hours: int,
         except Exception as e:  # noqa: BLE001
             pack.momentum = {"ok": False, "score": 0.0,
                              "label": "获取失败", "detail": str(e)[:100]}
+    # ---------- 十四平台扫描：输入股票代码 → 窗口内相关新闻 + 有关板块 ----------
+    if code or q_topic:
+        try:
+            from stock_news_scan import scan_stock
+            pack.scan = scan_stock(code or "", q_topic, hours=hours,
+                                   timeout=min(timeout, 12))
+        except Exception as e:  # noqa: BLE001 —— 扫描失败仅记数据缺口
+            pack.errors.append(f"十四平台扫描：{str(e)[:120]}")
     a = {"news": _src_agg(pack.items.get("Google新闻", [])),
          "social": _src_agg([i for k in ("YouTube·investtalk",)
                              for i in pack.items.get(k, [])])}
@@ -1039,6 +1048,12 @@ def render_sentiment_appendix(pack: SentPack) -> str:
     if pack.errors:
         lines.append("\n**数据缺口**")
         lines += [f"- ⚠️ {e}" for e in pack.errors]
+    if getattr(pack, "scan", None):
+        try:
+            from stock_news_scan import render_scan_md
+            lines += ["", render_scan_md(pack.scan)]
+        except Exception:  # noqa: BLE001 —— 附录缺扫描段不影响主报告
+            pass
     return "\n".join(lines)
 
 
@@ -1053,6 +1068,13 @@ def sentiment_context(pack: SentPack) -> str:
     m = pack.momentum
     if m.get("ok"):
         ctx.append(f"▼ 量价动量：{m['detail']} → {m['label']}（{m['score']:+.2f}）")
+    if getattr(pack, "scan", None):
+        try:
+            from stock_news_scan import scan_context
+            ctx.append("▼ 十四平台扫描：")
+            ctx += ["  " + line for line in scan_context(pack.scan).splitlines()]
+        except Exception:  # noqa: BLE001
+            pass
     if pack.errors:
         ctx.append("▼ 数据缺口：" + "；".join(pack.errors))
     a = pack.agg
@@ -2292,7 +2314,23 @@ def selftest() -> int:
     else:
         check("NewsNow 模块缺失（应存在 newsnow_sources.py）", False)
 
-    log("③j 标题：股票代码 + 中文名")
+    log("③j 量价舆情动量·十四平台扫描（156h 窗口 + 有关板块）")
+    try:
+        from stock_news_scan import selftest_scan, demo_scan_pack, \
+            DEFAULT_WINDOW_HOURS
+        check("默认窗口为 156h", DEFAULT_WINDOW_HOURS == 156)
+        check("十四平台扫描自检通过", selftest_scan() == 0)
+        sp = SentPack(hours=156, scan=demo_scan_pack())
+        md = render_sentiment_appendix(sp)
+        check("情绪附录并入十四平台扫描",
+              "十四平台扫描" in md and "有关板块" in md)
+        ctx = sentiment_context(sp)
+        check("AI 上下文并入十四平台扫描", "十四平台扫描" in ctx)
+        check("扫描聚合含平台计数", sp.scan.agg.get("platforms_total") == 14)
+    except Exception as e:  # noqa: BLE001
+        check(f"十四平台扫描集成异常: {e}", False)
+
+    log("③k 标题：股票代码 + 中文名")
     cn_q = [Quote(source="Yahoo财经", ok=True, name="Goldwind Science"),
             Quote(source="东方财富", ok=True, name="金风科技"),
             Quote(source="腾讯财经", ok=True, name="金风科技")]
@@ -2354,7 +2392,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="pushplus 通道主题：klein=游戏复古像素风(米黄纸底+黑细框+像素图标)；"
                         "pixel=复古监控风暗色大屏+细线框+REC摄像头元素（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
-                   help="analysis/sentiment/feedscan 的数据窗口小时数（默认 48）")
+                   help="analysis/sentiment/feedscan/十四平台扫描的数据窗口小时数"
+                        "（默认 48，支持 24/48/72/156）")
     p.add_argument("--yt-channel", default="", dest="yt_channel",
                    help="YouTube 频道 handle（默认 @investtalk，或环境变量 YT_CHANNEL）")
     p.add_argument("--timeout", type=int, default=30)
@@ -2390,12 +2429,12 @@ def main(argv: list[str]) -> int:
     sent_pack, appendix_md, code4sent = None, "", None
     if template in ("sentiment", "analysis"):
         code4sent = normalize_hk_code(hk_code_raw) if hk_code_raw else None
+        scan_hint = "Google新闻/YouTube + 十四平台扫描"
         if template == "analysis":
             log(f"\n📡 正在采集新增因子「{SENTIMENT_FACTOR}」的数据"
-                f"（{args.hours}h：Google新闻/YouTube·investtalk）…")
+                f"（{args.hours}h：{scan_hint}）…")
         else:
-            log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情"
-                f"（Google新闻/YouTube·investtalk）…")
+            log(f"\n📡 正在采集 {args.hours}h 窗口的多源舆情（{scan_hint}）…")
         sent_pack = collect_sentiment(topic, code4sent, args.hours,
                                       min(args.timeout, 15), args.yt_channel)
         for name, items in sent_pack.items.items():
@@ -2410,6 +2449,14 @@ def main(argv: list[str]) -> int:
             log(f"  ⚠️  {e}")
         log(f"  → 综合多头概率锚点 ≈ "
             f"{sent_pack.agg.get('综合多头概率锚点', '—')}%")
+        if getattr(sent_pack, "scan", None):
+            sa = sent_pack.scan.agg
+            log(f"  🛰 十四平台扫描: 直接相关 {sa.get('n_direct', 0)} 条"
+                f" / 板块相关 {sa.get('n_sector', 0)} 条，命中 "
+                f"{sa.get('platforms_hit', 0)}/{sa.get('platforms_total', 14)} 平台")
+            if sent_pack.scan.dyn_sectors:
+                log(f"  🧭 有关板块: "
+                    + "、".join(s for s, _ in sent_pack.scan.dyn_sectors[:6]))
         appendix_md = render_sentiment_appendix(sent_pack)
         factor_context = sentiment_context(sent_pack)
         user_context = (f"{factor_context}\n\n{user_context}"

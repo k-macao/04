@@ -51,7 +51,7 @@ on:
         required: false
         default: ''
       hours:
-        description: '数据窗口小时数（analysis/sentiment/feedscan 用，默认 48）'
+        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描 用，默认 48，支持 24/48/72/156）'
         required: false
         default: '48'
 
