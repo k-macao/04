@@ -41,11 +41,11 @@ on:
         type: choice
         options: [low, mid, high]
       theme:
-        description: '推送主题（仅 pushplus 通道生效）：klein=浅灰底+克莱因蓝+小两号'
+        description: '推送主题（仅 pushplus 通道生效）：klein=浅灰底+克莱因蓝+小两号；pixel=复古监控风·暗色服务器大屏·细线框·REC摄像头元素'
         required: true
         default: 'klein'
         type: choice
-        options: [klein, default]
+        options: [klein, default, pixel]
       context:
         description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
         required: false
