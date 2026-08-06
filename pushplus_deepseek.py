@@ -1404,30 +1404,31 @@ def print_secret_report(channel: str, provider: str) -> bool:
 #
 # PushPlus template=html 时走该渲染器。微信/PushPlus 详情页对 <style> 标签
 # 支持不稳定，全部使用内联样式。
-# klein 主题：浅灰底 + 克莱因蓝 + 小两号
+# klein 主题：游戏复古像素风 - 米黄纸底/黑细框/像素图标/涨跌突出
 # pixel 主题：复古监控风 - 暗色服务器大屏/细线框/等宽细字/涨跌突出/REC摄像头元素
 
 KLEIN = {
-    "bg": "#F3F4F6",
-    "card_bg": "#FFFFFF",
-    "hbg": "#E6ECF8",
-    "hfg": "#002FA7",
-    "fg": "#002FA7",
-    "muted": "#5C7BC4",
-    "border": "#C9D4EA",
-    "line": "1.65",
-    "font": "-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif",
-    "size": "13px",
-    "size_title": "15px",
-    "size_h1": "16px",
-    "size_h2": "15px",
-    "size_h3": "13.5px",
-    "up": "#0A7E07",
-    "down": "#D32F2F",
-    "up_bg": "#E8F5E9",
-    "down_bg": "#FFEBEE",
-    "accent": "#FFEB3B",
-    "accent_fg": "#002FA7",
+    # ---- 游戏复古像素风：米黄纸底 + 白卡片 + 黑细框 + 像素字体/图标 ----
+    "bg": "#EDE8D0",            # 纸色底
+    "card_bg": "#FFFFFF",       # 白卡片
+    "hbg": "#111111",           # 黑底标题栏
+    "hfg": "#FFFFFF",           # 标题白字
+    "fg": "#111111",            # 正文黑字
+    "muted": "#777777",         # 辅助灰
+    "border": "#111111",        # 黑细线框 1px
+    "line": "1.5",
+    "font": "'Courier New','Nimbus Mono PS',Consolas,monospace",
+    "size": "12px",
+    "size_title": "13px",
+    "size_h1": "13px",
+    "size_h2": "12px",
+    "size_h3": "12px",
+    "up": "#00A85F",
+    "down": "#FF2D2A",
+    "up_bg": "#D1F5DF",
+    "down_bg": "#FFD6D6",
+    "accent": "#FFE600",        # 像素黄 重点凸显
+    "accent_fg": "#111111",
 }
 
 PIXEL = {
@@ -1529,11 +1530,11 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
         f'font-size:{theme["size"]};'
         f'font-family:{theme.get("font", KLEIN["font"])};'
     )
-    # pixel 表头加像素图标
+    # 复古主题表头加像素图标
     th_cells = []
     for c in head:
         icon = ""
-        if theme_name == "pixel":
+        if theme_name in ("pixel", "klein"):
             icon = f'<span style="display:inline-block;width:6px;height:6px;background:{theme["accent"]};margin-right:4px;vertical-align:middle;"></span>'
         th_cells.append(
             f'<th style="{th_style_base}">{icon}{_inline_md(c, theme_name)}</th>'
@@ -1560,7 +1561,7 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
             )
             prefix = ""
 
-            if theme_name == "pixel":
+            if theme_name in ("pixel", "klein"):
                 if is_up:
                     # 涨：绿字 + 淡绿底 + ▲ 像素图标 最突出
                     td_base = (
@@ -1596,7 +1597,7 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
                             f'{inner}</span>'
                         )
             else:
-                # klein 也保留涨跌突出
+                # 兜底：其他主题保留涨跌突出
                 if is_up:
                     td_base = (
                         f'border:1px solid {theme["border"]};'
@@ -1653,8 +1654,8 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
                 html.append(_render_table(tbl, theme_name))
             continue
 
-        if re.match(r"^-{3,}$", s):  # 分隔线 - 像素风用虚线细线
-            if theme_name == "pixel":
+        if re.match(r"^-{3,}$", s):  # 分隔线 - 复古风用虚线细线
+            if theme_name in ("pixel", "klein"):
                 html.append(
                     f'<hr style="border:none;border-top:1px dashed {theme["border"]};margin:8px 0;">'
                 )
@@ -1671,13 +1672,15 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
             fs = {"1": theme["size_h1"], "2": theme["size_h2"]}.get(
                 str(h), theme["size_h3"]
             )
-            if theme_name == "pixel":
+            if theme_name in ("pixel", "klein"):
                 icon_map = {1: "■", 2: "►", 3: "·"}
                 icon = icon_map.get(h, "·")
+                # klein 游戏复古用粗左线 3px；pixel 监控风保持细线 1px
+                lb = "3px" if theme_name == "klein" else "1px"
                 html.append(
                     f'<div style="font-size:{fs};font-weight:bold;'
                     f'color:{theme["fg"]};margin:8px 0 3px;'
-                    f'border-left:1px solid {theme["border"]};'
+                    f'border-left:{lb} solid {theme["border"]};'
                     f'padding-left:6px;'
                     f'font-family:{theme["font"]};line-height:{theme["line"]};'
                     f'letter-spacing:1px;">'
@@ -1699,11 +1702,12 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
             while i < len(lines) and lines[i].strip().startswith(">"):
                 qs.append(lines[i].strip().lstrip(">").strip())
                 i += 1
-            if theme_name == "pixel":
+            if theme_name in ("pixel", "klein"):
+                lb = "3px" if theme_name == "klein" else "1px"
                 html.append(
                     f'<div style="color:{theme["muted"]};font-size:{theme["size"]};'
                     f'border:1px solid {theme["border"]};'
-                    f'border-left:1px solid {theme["border"]};'
+                    f'border-left:{lb} solid {theme["border"]};'
                     f'padding:4px 6px;margin:4px 0;'
                     f'background:{theme["card_bg"]};'
                     f'font-family:{theme["font"]};line-height:{theme["line"]};'
@@ -1719,16 +1723,18 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
                 )
             continue
 
-        if re.match(r"^[-*]\s+", s):  # 无序列表 - 像素图标 ■
+        if re.match(r"^[-*]\s+", s):  # 无序列表 - 像素图标方块
             items = []
             while i < len(lines) and re.match(r"^[-*]\s+", lines[i].strip()):
                 items.append(re.sub(r"^[-*]\s+", "", lines[i].strip()))
                 i += 1
-            if theme_name == "pixel":
+            if theme_name in ("pixel", "klein"):
+                # pixel 监控风用琥珀方块；klein 游戏复古用黑方块
+                mk = theme["accent"] if theme_name == "pixel" else theme["border"]
                 lis = "".join(
                     f'<li style="margin:2px 0;list-style:none;position:relative;padding-left:12px;">'
                     f'<span style="position:absolute;left:0;top:2px;width:6px;height:6px;'
-                    f'background:{theme["accent"]};display:inline-block;"></span>'
+                    f'background:{mk};display:inline-block;"></span>'
                     f"{_inline_md(x, theme_name)}</li>"
                     for x in items
                 )
@@ -1832,15 +1838,30 @@ def themed_html(title: str, content_md: str, theme_name: str = "klein") -> str:
             f'</div>'
             f'</div></div>'
         )
-    # klein 原样式
+    # klein 游戏复古像素风：米黄纸底 + 白卡片 + 1px黑细框 + 像素阴影 + 黑底标题栏
+    safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return (
-        f'<div style="background:{theme["bg"]};padding:16px 14px;'
-        f'border-radius:10px;font-size:{theme["size"]};'
-        f'line-height:{theme["line"]};color:{theme["fg"]};'
-        f'font-family:{theme.get("font", KLEIN["font"])};">'
-        f'<div style="font-size:{theme["size_title"]};font-weight:bold;'
-        f'color:{theme["fg"]};margin-bottom:8px;">{title}</div>'
-        f"{body}</div>"
+        f'<div style="background:{theme["bg"]};padding:10px;'
+        f'font-size:{theme["size"]};line-height:{theme["line"]};'
+        f'color:{theme["fg"]};font-family:{theme["font"]};">'
+        f'<div style="background:{theme["card_bg"]};'
+        f'border:1px solid {theme["border"]};'
+        f'box-shadow:3px 3px 0 {theme["border"]};'
+        f'padding:0;">'
+        f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};'
+        f'font-size:{theme["size_title"]};font-weight:bold;'
+        f'padding:5px 8px;border-bottom:1px solid {theme["border"]};'
+        f'font-family:{theme["font"]};letter-spacing:1px;">'
+        f'<span style="display:inline-block;width:8px;height:8px;'
+        f'background:{theme["accent"]};margin-right:6px;'
+        f'vertical-align:middle;border:1px solid {theme["hfg"]};"></span>'
+        f'{safe_title}'
+        f'<span style="float:right;font-size:9px;opacity:0.8;">[RETRO]</span>'
+        f'</div>'
+        f'<div style="padding:8px;">{body}</div>'
+        f'<div style="border-top:1px dashed {theme["border"]};'
+        f'margin:4px 8px 8px;height:0;"></div>'
+        f'</div></div>'
     )
 
 
@@ -2144,7 +2165,7 @@ def selftest() -> int:
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
     check("pushplus 5000字不限", len(unlim_c) == 5000)
 
-    log("③f klein 主题渲染")
+    log("③f klein 主题渲染（游戏复古像素风）")
     h = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
                    "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
     check("表格→table+表头底色", "<table" in h and KLEIN["hbg"] in h
@@ -2153,9 +2174,13 @@ def selftest() -> int:
     check("列表/引用/分隔线/有序表", "<ul" in h and KLEIN["muted"] in h
           and "border-left" in h and "<hr" in h and "<ol" in h)
     check("HTML 转义", "&lt;" in md_to_html("a<b>c"))
+    check("klein 像素图标(■►)与黑方块", ("■" in h or "►" in h)
+          and KLEIN["border"] in h)
     full = themed_html("测试标题", "正文**加粗**")
-    check("klein 三要素", KLEIN["bg"] in full and KLEIN["fg"] in full
-          and "13px" in full)
+    check("klein 三要素(纸底+黑细框+等宽)", KLEIN["bg"] in full
+          and KLEIN["border"] in full and "Courier" in full and "12px" in full)
+    check("klein 像素阴影+黑底标题栏", "box-shadow" in full and KLEIN["hbg"] in full)
+    check("klein RETRO 角标", "[RETRO]" in full)
 
     log("③f-2 pixel 像素主题渲染（复古监控风·服务器大屏）")
     ph = md_to_html("## 标题\n\n| 因子 | 涨跌 |\n|---|---|\n| 基本面 | +2.5% |\n| 技术面 | -1.2% |\n| 价格 | 16.80 |\n\n"
@@ -2290,8 +2315,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
     p.add_argument("--theme", default="", choices=["", "default", "klein", "pixel"],
-                   help="pushplus 通道主题：klein=浅灰底+克莱因蓝+小两号；pixel=复古监控风"
-                        "暗色大屏+细线框+REC摄像头元素（或环境变量 THEME）")
+                   help="pushplus 通道主题：klein=游戏复古像素风(米黄纸底+黑细框+像素图标)；"
+                        "pixel=复古监控风暗色大屏+细线框+REC摄像头元素（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
                    help="analysis/sentiment/feedscan 的数据窗口小时数（默认 48）")
     p.add_argument("--yt-channel", default="", dest="yt_channel",

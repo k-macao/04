@@ -41,7 +41,7 @@ on:
         type: choice
         options: [low, mid, high]
       theme:
-        description: '推送主题（仅 pushplus 通道生效）：klein=浅灰底+克莱因蓝+小两号；pixel=复古监控风·暗色服务器大屏·细线框·REC摄像头元素'
+        description: '推送主题（仅 pushplus 通道生效）：klein=游戏复古像素风(米黄纸底+黑细框+像素图标)；pixel=复古监控风·暗色服务器大屏·细线框·REC摄像头元素'
         required: true
         default: 'klein'
         type: choice
