@@ -139,12 +139,6 @@ def in_window(ts: datetime | None, hours: int, now: datetime) -> bool:
 # ---------------- 个股档案：代码 → 名称/别名/板块 ----------------
 
 STOCK_PROFILES: dict[str, dict] = {
-    "02208": {
-        "name": "金风科技",
-        "aliases": ["金風科技", "Goldwind", "金风"],
-        "sectors": ["风电", "海上风电", "新能源", "绿色电力",
-                    "可再生能源", "风机", "储能"],
-    },
     "00700": {
         "name": "腾讯控股",
         "aliases": ["腾讯", "Tencent"],
@@ -167,7 +161,7 @@ STOCK_PROFILES: dict[str, dict] = {
     },
 }
 
-# 按位前瞻提取「XX板块」：'港股风电板块' 同时产出 '港股风电板块' 与 '风电板块'
+# 按位前瞻提取「XX板块」：'港股电商板块' 同时产出 '港股电商板块' 与 '电商板块'
 _SECTOR_RE = re.compile(r"(?=([一-龥A-Za-z]{2,8}板块))")
 
 
@@ -285,7 +279,7 @@ def extract_dyn_sectors(direct: dict[str, list[ScanItem]],
 
     子串对（Y 是 X 的尾部子串，如 '能源板块'⊂'新能源板块'）按频次归属：
     - 同频：Y 只伴随 X 出现 → Y 是伪影，保留较长的规范名（新能源板块）；
-    - Y 更高频：X 只存在于 Y 的语境里 → 保留短名（港股风电板块→风电板块）。
+    - Y 更高频：X 只存在于 Y 的语境里 → 保留短名（港股电商板块→电商板块）。
     """
     counter: dict[str, int] = {}
     for group in (direct, sector_hits):
@@ -750,49 +744,50 @@ def scan_context(pack: ScanPack) -> str:
 # ---------------- 离线样例与自检 ----------------
 
 CLS_SAMPLE = json.dumps({"data": [
-    {"title": "金风科技中标 500MW 海上风电项目，订单超预期", "ctime": 9999},
-    {"title": "风电板块午后异动拉升，多只概念股涨停", "ctime": 9999},
+    {"title": "阿里巴巴Q3营收超预期，云计算业务增长提速", "ctime": 9999},
+    {"title": "电商板块午后异动拉升，多只概念股涨停", "ctime": 9999},
     {"title": "某公司债券违约被立案调查", "ctime": 9999},
 ]})
 
 WSCN_SAMPLE = json.dumps({"data": {"lives": [
-    {"content_text": "新能源板块集体走强，风电领涨", "display_time": 9999},
+    {"content_text": "AI应用板块集体走强，云计算领涨", "display_time": 9999},
     {"title": "隔夜美股三大指数收涨", "display_time": 9999},
 ]}})
 
 JIN10_TPL = ('var flash_newest = {"data": ['
-             '{"data": {"content": "金风科技股价大涨 6%，北向资金加仓",'
+             '{"data": {"content": "阿里巴巴股价大涨 6%，南向资金加仓",'
              ' "time": "{t1}"}},'
              '{"data": {"content": "国际油价小幅下跌", "time": "{t2}"}}'
              ']};')
 
 GLH_SAMPLE = json.dumps({"result": [
-    {"title": "港股风电板块走强，金风科技上涨", "time": "{t1}"},
+    {"title": "港股电商板块走强，阿里巴巴上涨", "time": "{t1}"},
     {"title": "恒生指数低开高走", "time": "{t2}"},
 ]})
 
 MKT_SAMPLE = json.dumps({"data": {"list": [
-    {"title": "可再生能源补贴政策落地 风电装机提速", "published_at": 9999},
+    {"title": "AI算力需求爆发 云计算板块受益", "published_at": 9999},
     {"title": "欧元区 PMI 低于预期", "published_at": 9999},
 ]}})
 
 GOOGLE_SAMPLE_SCAN = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<item><title>金风科技 02208.HK 回购股份公告 - 经济通</title>
+<item><title>阿里巴巴 09988.HK 回购股份公告 - 经济通</title>
 <link>https://example.com/r1</link><pubDate>{d1}</pubDate></item>
-<item><title>海上风电招标创纪录 风电板块受益 - 财华社</title>
+<item><title>云业务增长提速 电商板块受益 - 财华社</title>
 <link>https://example.com/r2</link><pubDate>{d2}</pubDate></item>
 </channel></rss>"""
 
 XUEQIU_SAMPLE = json.dumps({"data": {"items": [
-    {"name": "金风科技", "code": "SZ002202", "percent": 2.35, "increment": 5312},
+    {"name": "阿里巴巴", "code": "HK09988", "percent": 2.35, "increment": 5312},
     {"name": "贵州茅台", "code": "SH600519", "percent": -0.8},
 ]}})
 
 SOCIAL_SAMPLE_RAW = [
-    {"title": "如何看待金风科技中标 500MW？ 1234万热度",
+    {"title": "如何看待阿里巴巴新财报？ 1234万热度",
      "url": "https://z.hu/1", "ts": None},
-    {"title": "AI热榜：大模型提速", "url": "https://z.hu/2", "ts": None},
+    # 干扰项：完全不含代码/名称/板块词（注意别让标题撞上板块词如「电商」）
+    {"title": "娱乐圈新片定档暑期", "url": "https://z.hu/2", "ts": None},
 ]
 
 
@@ -804,7 +799,7 @@ def demo_scan_pack(now: datetime | None = None) -> ScanPack:
     板块相关 ≥2 条（财联社/华尔街见闻/格隆汇/MKTNews/Google）。
     """
     now = now or datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
-    q = build_stock_query("02208", "金风科技")
+    q = build_stock_query("09988", "阿里巴巴")
     hours = DEFAULT_WINDOW_HOURS
 
     def _shift(h: float, fmt: str) -> str:
@@ -889,16 +884,16 @@ def selftest_scan() -> int:
     ts10h = int(now.timestamp() - 10 * 3600)
     ts160h = int(now.timestamp() - 160 * 3600)
 
-    check("代码补零 normalize 2208→02208", normalize_code("2208") == "02208")
-    q = build_stock_query("02208", "金风科技")
+    check("代码补零 normalize 9988→09988", normalize_code("9988") == "09988")
+    q = build_stock_query("09988", "阿里巴巴")
     check("直接词含代码变体+名称+别名",
-          "02208" in q.direct_words and "2208.HK" in q.direct_words
-          and "金风科技" in q.direct_words and "Goldwind" in q.direct_words)
-    check("预设板块含风电/海上风电",
-          "风电" in q.sectors and "海上风电" in q.sectors)
-    q2 = build_stock_query("02208", "", extra_sectors=["绿电"])
+          "09988" in q.direct_words and "9988.HK" in q.direct_words
+          and "阿里巴巴" in q.direct_words and "Alibaba" in q.direct_words)
+    check("预设板块含电商/云计算",
+          "电商" in q.sectors and "云计算" in q.sectors)
+    q2 = build_stock_query("09988", "", extra_sectors=["数字经济"])
     check("无名时档案补全名称+追加自定义板块",
-          q2.name == "金风科技" and "绿电" in q2.sectors)
+          q2.name == "阿里巴巴" and "数字经济" in q2.sectors)
 
     check("epoch 秒/毫秒均解析",
           parse_any_time(ts10h) is not None
@@ -927,10 +922,10 @@ def selftest_scan() -> int:
           len(rows_g) == 2 and "经济通" not in rows_g[0]["title"])
 
     d_items, s_items = classify_items("财联社 电报", rows, q, 156, now)
-    check("直接命中：金风科技+中标", len(d_items) == 1
-          and any("金风科技" in i.matched for i in d_items))
-    check("板块命中：风电板块归入板块相关", len(s_items) == 1
-          and "风电" in s_items[0].matched)
+    check("直接命中：阿里巴巴+超预期", len(d_items) == 1
+          and any("阿里巴巴" in i.matched for i in d_items))
+    check("板块命中：电商板块归入板块相关", len(s_items) == 1
+          and "电商" in s_items[0].matched)
     check("无关条目被过滤",
           all("违约" not in i.title for i in d_items + s_items))
     rows_old = extract_flash_rows(json.loads(CLS_SAMPLE.replace("9999", str(ts160h))))
@@ -949,15 +944,15 @@ def selftest_scan() -> int:
         XUEQIU_SAMPLE, StockQuery(), now))
 
     s1 = extract_dyn_sectors(
-        {"P": [_mk_scan_item("P", "港股风电板块走强 风电板块受益", "", None,
-                             now, "板块", ["风电"])]}, {})
-    check("动态板块：低频长名被高频短名吸收(风电板块)",
-          [s for s, _ in s1] == ["风电板块"])
+        {"P": [_mk_scan_item("P", "港股电商板块走强 电商板块受益", "", None,
+                             now, "板块", ["电商"])]}, {})
+    check("动态板块：低频长名被高频短名吸收(电商板块)",
+          [s for s, _ in s1] == ["电商板块"])
     s2 = extract_dyn_sectors(
-        {"P": [_mk_scan_item("P", "新能源板块集体走强", "", None,
-                             now, "板块", ["新能源"])]}, {})
-    check("动态板块：同频子串伪影被吸收(新能源板块)",
-          [s for s, _ in s2] == ["新能源板块"])
+        {"P": [_mk_scan_item("P", "AI应用板块集体走强", "", None,
+                             now, "板块", ["AI"])]}, {})
+    check("动态板块：同频子串伪影被吸收(AI应用板块)",
+          [s for s, _ in s2] == ["AI应用板块"])
 
     pack = demo_scan_pack(now)
     a = pack.agg
@@ -968,11 +963,11 @@ def selftest_scan() -> int:
     check("渲染：标题含十四平台/156h", "十四平台扫描" in md and "156h" in md)
     check("渲染：含直接分组与有关板块",
           "直接相关新闻" in md and "有关板块" in md)
-    check("渲染：动态板块提取「风电板块」",
-          any(s == "风电板块" for s, _ in pack.dyn_sectors))
-    check("渲染：预设板块行带提及计数", "风电（预设" in md)
+    check("渲染：动态板块提取「电商板块」",
+          any(s == "电商板块" for s, _ in pack.dyn_sectors))
+    check("渲染：预设板块行带提及计数", "电商（预设" in md)
     ctx = scan_context(pack)
-    check("AI 上下文含代码+板块行", "02208" in ctx and "有关板块" in ctx)
+    check("AI 上下文含代码+板块行", "09988" in ctx and "有关板块" in ctx)
 
     print(f"\n{'✅ 十四平台扫描自检通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
@@ -984,12 +979,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="量价舆情动量·十四平台股票扫描：输入股票代码，"
                     "检索最近 156 小时内的相关新闻与有关板块")
-    p.add_argument("--code", default="", help="股票代码（如 02208 / 2208.HK / 600519）")
+    p.add_argument("--code", default="", help="股票代码（如 09988 / 9988.HK / 600519）")
     p.add_argument("--name", default="", help="股票名称（留空时查内置档案补全）")
     p.add_argument("--hours", type=int, default=DEFAULT_WINDOW_HOURS,
                    help=f"检索窗口小时数（默认 {DEFAULT_WINDOW_HOURS}）")
     p.add_argument("--sectors", default="",
-                   help="追加板块关键词，逗号分隔（如：风电,储能）")
+                   help="追加板块关键词，逗号分隔（如：电商,云计算）")
     p.add_argument("--timeout", type=int, default=12)
     p.add_argument("--selftest", action="store_true", help="离线自检后退出")
     p.add_argument("--json", action="store_true", help="以 JSON 输出聚合结果")

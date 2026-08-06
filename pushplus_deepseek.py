@@ -13,7 +13,7 @@ pushplus_deepseek.py — 港股数据 + DeepSeek 分析 → 多通道推送
 
 用法
 ====
-    python pushplus_deepseek.py --template fusion --topic "金风科技" --hk-code 02208
+    python pushplus_deepseek.py --template fusion --topic "阿里巴巴" --hk-code 09988
     python pushplus_deepseek.py --template scan --dry-run
     python pushplus_deepseek.py --selftest            # 离线自检（解析器+核验+模板）
     python pushplus_deepseek.py --check-only          # 只检查 Secrets
@@ -61,7 +61,7 @@ TENCENT_URL = "https://qt.gtimg.cn/q=hk{code}"
 EM_HK_PRICE_SCALE = 1000          # 东财港股价格为实际价格×1000
 HK_TZ = timezone(timedelta(hours=8), "HKT")
 
-DEFAULT_TOPIC = "金风科技(Goldwind) 每日简报"
+DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
 VERSION = "2.13-newsnow-pixel-2026-08-06"  # 脚本版本指纹：每次交付递增，日志首行可见
@@ -93,7 +93,7 @@ TEMPLATE_MAX_TOKENS = {
 # analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
 # 48 小时内的价格/成交量、新闻和社媒样本做本地预聚合，必须单独呈现。
 SENTIMENT_FACTOR = "量价舆情动量（48h）"
-# 行业与政策面：只做真实可见的政策/监管动态分析，不默认风电政策、不套产业链逻辑
+# 行业与政策面：只做真实可见的政策/监管动态分析，不预设任何行业政策、不套产业链逻辑
 INDUSTRY_POLICY_FACTOR = "行业与政策面（真实政策分析）"
 FACTORS = [
     "基本面（业绩/订单/毛利率）",
@@ -199,7 +199,7 @@ class Quote:
 
 
 def normalize_hk_code(raw: str) -> str:
-    """接受 2208 / 02208 / 2208.HK / hk02208 等写法，统一为 5 位数字字符串。"""
+    """接受 9988 / 09988 / 9988.HK / hk09988 等写法，统一为 5 位数字字符串。"""
     digits = "".join(ch for ch in raw if ch.isdigit())
     if not digits:
         raise PushError(f"无法识别的港股代码: {raw!r}")
@@ -253,7 +253,7 @@ def parse_eastmoney(text: str) -> Quote:
 
 
 def parse_tencent(text: str) -> Quote:
-    # 形如: v_hk02208="100~金风科技~02208~16.800~16.610~16.850~...";
+    # 形如: v_hk09988="100~阿里巴巴~09988~16.800~16.610~16.850~...";
     if '="' not in text or not text.strip().endswith(";"):
         raise ValueError("返回格式不符合预期")
     body = text.split('="', 1)[1].rstrip('";\n ')
@@ -423,7 +423,7 @@ UTC = timezone.utc
 
 
 def _count_word(low: str, w: str) -> int:
-    """英文词按词边界匹配（防止 win 命中 Goldwind 之类误判），中文按子串。"""
+    """英文词按词边界匹配（防止 win 命中 downwind 之类误判），中文按子串。"""
     if w.isascii():
         return len(re.findall(r"\b" + re.escape(w.lower()) + r"\b", low))
     return low.count(w)
@@ -468,13 +468,13 @@ def _in_window(ts: datetime | None, hours: int, now: datetime) -> bool:
 
 GOOGLE_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
-<item><title>金风科技中标 500MW 海上风电项目 订单超预期 - 香港经济日报</title>
+<item><title>阿里巴巴Q3营收超预期 云计算业务增长提速 - 香港经济日报</title>
 <link>https://example.com/a</link><pubDate>Mon, 04 Aug 2026 08:00:00 GMT</pubDate>
 <source>香港经济日报</source></item>
-<item><title>Goldwind shares plunge 3% on profit warning fears - Reuters</title>
+<item><title>Alibaba shares plunge 3% on profit warning fears - Reuters</title>
 <link>https://example.com/b</link><pubDate>Sun, 03 Aug 2026 20:00:00 GMT</pubDate>
 <source>Reuters</source></item>
-<item><title>风电板块周度回顾 - 财华社</title><link>https://example.com/c</link>
+<item><title>电商板块周度回顾 - 财华社</title><link>https://example.com/c</link>
 <pubDate>Fri, 01 Aug 2026 08:00:00 GMT</pubDate><source>财华社</source></item>
 </channel></rss>"""
 
@@ -978,7 +978,7 @@ def _clean_query_topic(topic: str) -> str:
     """检索用主题清洗：去括号注释、去模板名等杂质，避免污染外部查询。"""
     t = re.sub(r"[（(].*$", "", topic).strip()
     t = re.sub(r"(每日简报|简报)$", "", t).strip(" 　·-")
-    return t or "金风科技"
+    return t or "阿里巴巴"
 
 
 def collect_sentiment(topic: str, code: str | None, hours: int,
@@ -1189,7 +1189,7 @@ def build_messages(template: str, topic: str, context: str,
     elif template == "picker":
         user = (
             "根据当下市场环境，挑出未来 30 天高概率的股票 3~5 只"
-            "（范围：港股/A股，风电及新能源链优先）。每只说清楚为什么看好、"
+            "（范围：港股/A股，互联网及科技链优先）。每只说清楚为什么看好、"
             "关键风险、什么情况下要止损。\n\n" + ctx +
             "严格按此格式输出：\n\n"
             "| 股票 | 方向 | 30日上涨概率 | 看好逻辑 | 关键风险 | 止损触发 |\n"
@@ -1239,7 +1239,7 @@ def build_messages(template: str, topic: str, context: str,
     elif template == "portfolio":
         user = (
             f"根据我的风险偏好【{RISK_ZH[risk]}】，设计一个分散的股票组合"
-            "（港股/A股，风电新能源为重点再加其他板块）。各板块怎么配、"
+            "（港股/A股，互联网科技为重点再加其他板块）。各板块怎么配、"
             "为什么要这些头寸、多久调整一次。\n\n" + ctx +
             "严格按此格式输出：\n\n"
             "| 板块 | 配置比例 | 代表标的 | 配置理由 |\n|---|---|---|---|\n"
@@ -1294,7 +1294,7 @@ def build_messages(template: str, topic: str, context: str,
             "不得并入消息面与情绪面；优先使用上下文中标注的本地预聚合结果和样本依据。\n\n"
             f"「{INDUSTRY_POLICY_FACTOR}」只依据真实可见的政策/监管动态分析"
             "（如实际发布的产业政策、监管文件、补贴或招标规则），禁止编造，"
-            "不得默认风电政策，也不得套用产业链传导逻辑。\n\n"
+            "不得默认任何单一行业政策，也不得套用产业链传导逻辑。\n\n"
             "严格按以下 Markdown 格式输出，不要增删表格行：\n\n"
             "| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
             "| （逐因子填写） |\n\n"
@@ -1383,7 +1383,7 @@ def gen_by_rule(topic: str, template: str,
         f"**{topic} · {TEMPLATE_TITLES.get(template, '简报')}**（rule 演示模板）", "",
         f"- 模板：{template}（正式内容需 ai_provider=deepseek）",
         f"- 运行时间：{now}（北京时间）",
-        "- 工作流：Manual Run - Goldwind PushPlus+DeepSeek", "",
+        "- 工作流：Manual Run - Alibaba PushPlus+DeepSeek", "",
         "> 在 Actions 运行页选择 ai_provider=deepseek 即可获得完整 AI 分析。",
         "> ⚠️ 非投资建议，仅供参考。"])
 
@@ -2047,7 +2047,7 @@ PUSH_FUNCS = {
 # ================================================================ 离线自检
 
 YAHOO_SAMPLE = json.dumps({"chart": {"result": [{"meta": {
-    "symbol": "2208.HK", "longName": "Xinjiang Goldwind Science & Technology",
+    "symbol": "9988.HK", "longName": "Alibaba Group Holding Limited",
     "regularMarketPrice": 16.80, "previousClose": 16.61,
     "regularMarketDayHigh": 16.92, "regularMarketDayLow": 16.55,
     "regularMarketVolume": 19923879, "regularMarketTime": 1754280000}}],
@@ -2055,10 +2055,10 @@ YAHOO_SAMPLE = json.dumps({"chart": {"result": [{"meta": {
 
 EASTMONEY_SAMPLE = json.dumps({"rc": 0, "data": {
     "f43": 16800, "f44": 16920, "f45": 16550, "f46": 16850,
-    "f57": "02208", "f58": "金风科技", "f60": 16610,
+    "f57": "09988", "f58": "阿里巴巴", "f60": 16610,
     "f170": 114, "f47": 19923879}})
 
-TENCENT_SAMPLE = ('v_hk02208="100~金风科技~02208~16.800~16.610~16.850~16.900'
+TENCENT_SAMPLE = ('v_hk09988="100~阿里巴巴~09988~16.800~16.610~16.850~16.900'
                   '~16.550~16.800~19923879~335544320~3.51~2.18~16.920~16.550'
                   '~2026/08/04 16:08:07~0.190~1.140~3.52~2.05~38.69~184.94'
                   '~190.02~18.440~14.080~1.230~16.800~3.30~0.00~0.00~0~0~0~0~0";')
@@ -2079,14 +2079,14 @@ def selftest() -> int:
                   parse_tencent(TENCENT_SAMPLE))
     check("Yahoo 解析 16.80", qa.ok and abs(qa.price - 16.80) < 1e-9)
     check("东财 解析 ÷1000=16.80", qb.ok and abs(qb.price - 16.80) < 1e-9
-          and qb.name == "金风科技")
+          and qb.name == "阿里巴巴")
     check("东财 涨跌幅 1.14%", abs((qb.change_pct or 0) - 1.14) < 1e-9)
     check("腾讯 解析 16.80", qc.ok and abs(qc.price - 16.80) < 1e-9)
 
     log("② 交叉核验")
     v = verify_quotes([qa, qb, qc])
     check("三源一致→可信", "三源一致" in v.verdict and v.n_excluded == 0)
-    bad = Quote(source="东方财富", ok=True, name="金风科技", price=18.50,
+    bad = Quote(source="东方财富", ok=True, name="阿里巴巴", price=18.50,
                 prev_close=16.61, change_pct=11.4)
     v2 = verify_quotes([qa, bad, qc])
     check("异常源被剔除", v2.n_excluded == 1 and "剔除" in v2.verdict)
@@ -2097,23 +2097,23 @@ def selftest() -> int:
                         Quote(source="B", ok=False, error="y"),
                         Quote(source="C", ok=False, error="z")])
     check("全失败→降级提示", "全部失败" in v4.verdict)
-    md = market_block_md("02208", [qa, qb, qc], v)
+    md = market_block_md("09988", [qa, qb, qc], v)
     check("核验表含三源名", all(s in md for s in ("Yahoo", "东方财富", "腾讯")))
 
     log("③ 港股代码规整")
-    check("normalize 2208→02208", normalize_hk_code("2208") == "02208")
-    check("normalize 2208.HK→02208", normalize_hk_code("2208.HK") == "02208")
+    check("normalize 9988→09988", normalize_hk_code("9988") == "09988")
+    check("normalize 9988.HK→09988", normalize_hk_code("9988.HK") == "09988")
 
     log("③b 情绪模块（48h 窗口）")
     NOW = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
-    s, l_, _ = score_text("金风科技中标海上风电订单，业绩大增")
+    s, l_, _ = score_text("阿里巴巴签约云计算大单，营收增长超预期")
     check("词典:利好", l_ == "利好" and s > 0)
     s, l_, _ = score_text("公司亏损并遭大股东减持")
     check("词典:利空", l_ == "利空" and s < 0)
     s, l_, _ = score_text("举行年度股东大会")
     check("词典:中性", l_ == "中性" and s == 0)
-    s, l_, _ = score_text("Goldwind")
-    check("词典:词边界防误判(Goldwind≠win)", l_ == "中性" and s == 0)
+    s, l_, _ = score_text("Downwind")
+    check("词典:词边界防误判(downwind≠win)", l_ == "中性" and s == 0)
     g = parse_google_rss(GOOGLE_SAMPLE, 48, 10, NOW)
     check("Google:48h过滤剩2条", len(g) == 2)
     check("Google:利好识别", g[0].label == "利好")
@@ -2153,7 +2153,7 @@ def selftest() -> int:
     ic = extract_items_generic(schema_c, "测试源C", 10, 48, NOW)
     check("通用:字符串时间解析", len(ic) == 1 and ic[0].age_h is not None)
     xq_sample = json.dumps({"data": {"items": [
-        {"name": "金风科技", "code": "HK02208", "percent": 3.2,
+        {"name": "阿里巴巴", "code": "HK09988", "percent": 3.2,
          "current": 16.8, "increment": 8888},
         {"name": "某地产股", "code": "SH600000", "percent": -4.1},
     ]}})
@@ -2172,15 +2172,15 @@ def selftest() -> int:
     fp.errors.append("法布财经 快讯：公开端点未确认，需提供快讯页地址后接入")
     fp.agg = {"n": 1, "pos": 1, "neg": 0, "neu": 0, "mean": 1.0,
               "n_sources": 1, "综合多头概率锚点": 50 + 45 * min(1.0, 1.0 * 3)}
-    md_rule = render_feed_rule("金风科技", fp)
+    md_rule = render_feed_rule("阿里巴巴", fp)
     check("feedscan:rule渲染含缺口行", "⚠️" in md_rule and "情绪温度" in md_rule)
     check("feedscan:附录含来源明细", "金十数据（1/10）" in render_feed_appendix(fp))
 
     log("③d 审计修复回归")
     check("查询词清洗:默认主题", _clean_query_topic(
-        "金风科技(Goldwind) 每日简报") == "金风科技")
+        "阿里巴巴(Alibaba) 每日简报") == "阿里巴巴")
     check("查询词清洗:普通主题不动", _clean_query_topic("比亚迪") == "比亚迪")
-    check("查询词清洗:空值兜底", _clean_query_topic("(空)") == "金风科技")
+    check("查询词清洗:空值兜底", _clean_query_topic("(空)") == "阿里巴巴")
 
     log("③e 通道长度保护（防内容被截/整包拒发）")
     short_c, note = fit_for_channel("wecom", "短内容")
@@ -2262,15 +2262,16 @@ def selftest() -> int:
         KLEIN.update(bak)
 
     log("③h 新增量价舆情动量因子")
-    analysis_prompt = build_messages("analysis", "金风科技", "示例背景", "mid")[1]["content"]
+    analysis_prompt = build_messages("analysis", "阿里巴巴", "示例背景", "mid")[1]["content"]
     check("analysis 提示词含新增因子", SENTIMENT_FACTOR in analysis_prompt)
     check(f"analysis 提示词声明 {FACTOR_COUNT} 个因子",
           f"{FACTOR_COUNT} 个因子" in analysis_prompt)
-    check("行业与政策面=真实政策分析，无风电装机/产业链套用",
+    check("行业与政策面=真实政策分析，无预设行业/产业链套用",
           INDUSTRY_POLICY_FACTOR in analysis_prompt
-          and "风电装机" not in analysis_prompt
+          and all(w not in analysis_prompt
+                  for w in ("风电装机", "光伏招标", "电商GMV", "白酒配额"))
           and "不得套用产业链传导逻辑" in analysis_prompt)
-    rule_analysis = gen_by_rule("金风科技", "analysis")
+    rule_analysis = gen_by_rule("阿里巴巴", "analysis")
     check("rule 表格含新增因子", f"| {SENTIMENT_FACTOR} |" in rule_analysis)
     check("analysis 校验器逐项校验", validate_analysis(rule_analysis))
     missing_new_factor = rule_analysis.replace(
@@ -2284,7 +2285,7 @@ def selftest() -> int:
     )
     check("rule 使用新增因子本地锚点",
           "| 量价舆情动量（48h） | 偏多 | 69% |" in
-          gen_by_rule("金风科技", "analysis", sent_pack=sample_sent))
+          gen_by_rule("阿里巴巴", "analysis", sent_pack=sample_sent))
 
     log("③i NewsNow 7源接入（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01）")
     if newsnow_mod is not None:
@@ -2300,11 +2301,11 @@ def selftest() -> int:
             # 模拟 pack 渲染走 pixel 主题
             from newsnow_sources import NewsNowPack, HotItem
             demo_pack = NewsNowPack(items={
-                "知乎热榜": [HotItem(source="知乎热榜", id="1", title="金风科技中标 500MW", url="https://zhihu.com/q/1", extra_info="100万热度")],
-                "微博实时热搜": [HotItem(source="微博实时热搜", id="a", title="+2.5% 金风科技大涨", url="https://weibo.com/a", extra_info="热")],
-                "香港01": [HotItem(source="香港01", id="b", title="港股风电板块", url="https://hk01.com/b", extra_info="")],
+                "知乎热榜": [HotItem(source="知乎热榜", id="1", title="阿里巴巴Q3财报超预期", url="https://zhihu.com/q/1", extra_info="100万热度")],
+                "微博实时热搜": [HotItem(source="微博实时热搜", id="a", title="+2.5% 阿里巴巴大涨", url="https://weibo.com/a", extra_info="热")],
+                "香港01": [HotItem(source="香港01", id="b", title="港股电商板块", url="https://hk01.com/b", extra_info="")],
             }, agg={"total": 3, "sources_ok": 3, "sources_total": 7})
-            md_demo = render_newsnow_rule("金风科技", demo_pack)
+            md_demo = render_newsnow_rule("阿里巴巴", demo_pack)
             check("NewsNow 渲染含7源名", "知乎热榜" in md_demo and "香港01" in md_demo)
             # pixel 主题渲染涨跌突出
             html_demo = themed_html("测试NewsNow", md_demo, "pixel")
@@ -2331,24 +2332,24 @@ def selftest() -> int:
         check(f"十四平台扫描集成异常: {e}", False)
 
     log("③k 标题：股票代码 + 中文名")
-    cn_q = [Quote(source="Yahoo财经", ok=True, name="Goldwind Science"),
-            Quote(source="东方财富", ok=True, name="金风科技"),
-            Quote(source="腾讯财经", ok=True, name="金风科技")]
-    check("中文名优先（腾讯/东财）", pick_cn_name(cn_q, "回退") == "金风科技")
+    cn_q = [Quote(source="Yahoo财经", ok=True, name="Alibaba Group"),
+            Quote(source="东方财富", ok=True, name="阿里巴巴"),
+            Quote(source="腾讯财经", ok=True, name="阿里巴巴")]
+    check("中文名优先（腾讯/东财）", pick_cn_name(cn_q, "回退") == "阿里巴巴")
     check("无中文名回退英文名",
           pick_cn_name([Quote(source="Yahoo财经", ok=True,
-                              name="Goldwind Science")], "回退") == "Goldwind Science")
+                              name="Alibaba Group")], "回退") == "Alibaba Group")
     check("全部失败回退 TOPIC",
           pick_cn_name([Quote(source="Yahoo财经", ok=False, error="x")],
-                       "金风科技") == "金风科技")
-    code = normalize_hk_code("02208")
-    title_subject = f"HK{code} {pick_cn_name(cn_q, fallback='金风科技')}"
-    check("标题主体=HK代码+中文名", title_subject == "HK02208 金风科技")
+                       "阿里巴巴") == "阿里巴巴")
+    code = normalize_hk_code("09988")
+    title_subject = f"HK{code} {pick_cn_name(cn_q, fallback='阿里巴巴')}"
+    check("标题主体=HK代码+中文名", title_subject == "HK09988 阿里巴巴")
 
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
-            msgs = build_messages(t, "金风科技", "示例背景", "mid")
+            msgs = build_messages(t, "阿里巴巴", "示例背景", "mid")
             check(f"模板 {t}", bool(msgs[1]["content"]))
         except Exception as e:  # noqa: BLE001
             check(f"模板 {t} 构造异常: {e}", False)
@@ -2385,7 +2386,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--context", default="",
                    help="背景信息/复盘细节（或环境变量 CONTEXT）")
     p.add_argument("--hk-code", default="", dest="hk_code",
-                   help="港股代码（如 02208），接入三源核验行情（或环境变量 HK_CODE）")
+                   help="港股代码（如 09988），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
     p.add_argument("--theme", default="", choices=["", "default", "klein", "pixel"],
@@ -2414,7 +2415,7 @@ def main(argv: list[str]) -> int:
     targets = ALL_CHANNELS if channel == "all" else [channel]
 
     log("=" * 60)
-    log(f"Manual Run - Goldwind PushPlus+DeepSeek  v{VERSION}")
+    log(f"Manual Run - Alibaba PushPlus+DeepSeek  v{VERSION}")
     log(f"  模板: {template}({TEMPLATE_TITLES[template]})  通道: {channel}"
         f"  AI: {provider}  dry_run: {args.dry_run}  主题: {theme}")
     log(f"  主题: {topic}"
