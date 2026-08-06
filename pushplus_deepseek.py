@@ -390,6 +390,18 @@ def market_context_line(code: str, quotes: list[Quote], v: Verification) -> str:
             f"{grade}，可信度说明见文末数据核验表")
 
 
+def pick_cn_name(quotes: list[Quote], fallback: str = "") -> str:
+    """从三源行情里挑中文名填入标题：腾讯/东财返回中文名，Yahoo 英文名兜底。
+
+    全部失败时回退 ``fallback``（通常为 TOPIC）。
+    """
+    names = [q.name.strip() for q in quotes if q.ok and q.name.strip()]
+    for n in names:
+        if re.search(r"[\u4e00-\u9fff]", n):  # 含中文的优先（腾讯/东财）
+            return n
+    return names[0] if names else fallback
+
+
 # ================================================================ 模块②：舆情采集与情绪动量（48h）
 
 GOOGLE_NEWS_RSS = ("https://news.google.com/rss/search?"
@@ -2280,6 +2292,21 @@ def selftest() -> int:
     else:
         check("NewsNow 模块缺失（应存在 newsnow_sources.py）", False)
 
+    log("③j 标题：股票代码 + 中文名")
+    cn_q = [Quote(source="Yahoo财经", ok=True, name="Goldwind Science"),
+            Quote(source="东方财富", ok=True, name="金风科技"),
+            Quote(source="腾讯财经", ok=True, name="金风科技")]
+    check("中文名优先（腾讯/东财）", pick_cn_name(cn_q, "回退") == "金风科技")
+    check("无中文名回退英文名",
+          pick_cn_name([Quote(source="Yahoo财经", ok=True,
+                              name="Goldwind Science")], "回退") == "Goldwind Science")
+    check("全部失败回退 TOPIC",
+          pick_cn_name([Quote(source="Yahoo财经", ok=False, error="x")],
+                       "金风科技") == "金风科技")
+    code = normalize_hk_code("02208")
+    title_subject = f"HK{code} {pick_cn_name(cn_q, fallback='金风科技')}"
+    check("标题主体=HK代码+中文名", title_subject == "HK02208 金风科技")
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -2437,6 +2464,7 @@ def main(argv: list[str]) -> int:
 
     # ---------- 模块①：三源取价 + 交叉核验（可选）----------
     data_md, context = "", user_context
+    quotes: list[Quote] = []
     if hk_code_raw:
         code = normalize_hk_code(hk_code_raw)
         log(f"\n📥 正在从 3 个免费源获取 HK{code} 行情…")
@@ -2509,7 +2537,12 @@ def main(argv: list[str]) -> int:
     content = add_branding(content)
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
-    title = f"{BRAND_TITLE}·{topic}·{TEMPLATE_TITLES[template]}（{now}）"
+    # 标题：给了股票代码时用「HK代码 中文名」（中文名从三源行情读取，失败回退 TOPIC）
+    title_subject = topic
+    if hk_code_raw:
+        code = normalize_hk_code(hk_code_raw)
+        title_subject = f"HK{code} {pick_cn_name(quotes, fallback=topic)}"
+    title = f"{BRAND_TITLE}·{title_subject}·{TEMPLATE_TITLES[template]}（{now}）"
     log("\n📝 生成的内容：")
     log("-" * 60)
     log(f"# {title}\n\n{content}")
