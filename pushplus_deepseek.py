@@ -93,9 +93,11 @@ TEMPLATE_MAX_TOKENS = {
 # analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
 # 48 小时内的价格/成交量、新闻和社媒样本做本地预聚合，必须单独呈现。
 SENTIMENT_FACTOR = "量价舆情动量（48h）"
+# 行业与政策面：只做真实可见的政策/监管动态分析，不默认风电政策、不套产业链逻辑
+INDUSTRY_POLICY_FACTOR = "行业与政策面（真实政策分析）"
 FACTORS = [
     "基本面（业绩/订单/毛利率）",
-    "行业与政策面（风电装机/招标/电价政策）",
+    INDUSTRY_POLICY_FACTOR,
     "技术面（趋势/量价/关键价位）",
     "资金面（主力/北向/两融动向）",
     "消息面与情绪面（公告/舆情/行业事件）",
@@ -1256,6 +1258,9 @@ def build_messages(template: str, topic: str, context: str,
             f"因子列表（必须全部覆盖，顺序不可变）：\n{factors_text}\n\n"
             f"第 {new_factor_no} 项「{SENTIMENT_FACTOR}」是新增因子，必须单独占一行，"
             "不得并入消息面与情绪面；优先使用上下文中标注的本地预聚合结果和样本依据。\n\n"
+            f"「{INDUSTRY_POLICY_FACTOR}」只依据真实可见的政策/监管动态分析"
+            "（如实际发布的产业政策、监管文件、补贴或招标规则），禁止编造，"
+            "不得默认风电政策，也不得套用产业链传导逻辑。\n\n"
             "严格按以下 Markdown 格式输出，不要增删表格行：\n\n"
             "| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
             "| （逐因子填写） |\n\n"
@@ -1265,7 +1270,7 @@ def build_messages(template: str, topic: str, context: str,
     else:  # brief
         user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
                 "每个要点一句话；结尾一句小结。\n\n" + ctx)
-    system = ("你是一位严谨的跨市场分析师，深耕港股/A股风电与新能源链。"
+    system = ("你是一位严谨的跨市场分析师，深耕港股/A股市场，熟悉宏观与行业政策。"
               "输出必须是简体中文 Markdown，不要寒暄，不要使用代码块，"
               "所有概率用整数百分比表示。")
     return [{"role": "system", "content": system},
@@ -2227,6 +2232,10 @@ def selftest() -> int:
     check("analysis 提示词含新增因子", SENTIMENT_FACTOR in analysis_prompt)
     check(f"analysis 提示词声明 {FACTOR_COUNT} 个因子",
           f"{FACTOR_COUNT} 个因子" in analysis_prompt)
+    check("行业与政策面=真实政策分析，无风电装机/产业链套用",
+          INDUSTRY_POLICY_FACTOR in analysis_prompt
+          and "风电装机" not in analysis_prompt
+          and "不得套用产业链传导逻辑" in analysis_prompt)
     rule_analysis = gen_by_rule("金风科技", "analysis")
     check("rule 表格含新增因子", f"| {SENTIMENT_FACTOR} |" in rule_analysis)
     check("analysis 校验器逐项校验", validate_analysis(rule_analysis))
