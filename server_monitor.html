@@ -187,6 +187,24 @@
             box-shadow: var(--glow-cyan);
         }
 
+        /* 数据状态横幅：明确标注当前为静态演示数据，避免误以为实时更新 */
+        .data-status-banner {
+            background: rgba(255, 184, 0, 0.08);
+            border: 1px solid var(--amber);
+            box-shadow: 0 0 12px rgba(255, 184, 0, 0.18);
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+            color: var(--amber);
+            flex-wrap: wrap;
+        }
+        .data-status-banner .dsb-icon { font-size: 14px; }
+        .data-status-banner .dsb-strong { font-weight: bold; color: #ffd46b; }
+        .data-status-banner .dsb-hint { color: var(--text-muted); }
+        .data-status-banner .dsb-time { margin-left: auto; color: var(--text-dim); font-size: 10px; }
+
         /* 标的切换栏 (横排) */
         .stock-selector-ribbon {
             background: var(--bg-panel);
@@ -690,11 +708,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-07 11:23:28 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-07 15:48:50 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-07 03:23:28 UTC</span>
+                    <span id="utc-clock">2026-08-07 07:48:50 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -708,6 +726,14 @@
                 <button class="btn-action" style="background:var(--cyan);color:#000;" onclick="manualRefresh()">⚡ 实时刷新</button>
             </div>
         </header>
+
+        <!-- 数据状态横幅：说明当前为静态演示数据 -->
+        <div class="data-status-banner">
+            <span class="dsb-icon">⚠️</span>
+            <span class="dsb-strong">演示数据 (STATIC DEMO)</span>
+            <span class="dsb-hint">本页行情、快讯与因子为内置示例数据，不会随市场自动更新；时钟为前端实时显示。需刷新数据请重新运行 <code>python server_dashboard.py --export-only</code> 或重启服务。</span>
+            <span class="dsb-time">快照生成: 2026-08-07 15:48:50 CST (北京时间)</span>
+        </div>
 
         <!-- 标的切换栏 (横排) -->
         <div class="stock-selector-ribbon">
