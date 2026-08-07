@@ -122,7 +122,7 @@ result = deep_merge_dicts(base, incoming)
 
 ## 📲 微信推送 Workflow（PushPlus + DeepSeek）
 
-仓库内置手动触发的工作流 **Manual Run - Goldwind PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
+仓库内置手动触发的工作流 **Manual Run - Alibaba PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
 用 DeepSeek 生成内容，通过 PushPlus 推送到微信。
 
 ### 前置条件：配置 Secrets
@@ -139,22 +139,148 @@ result = deep_merge_dicts(base, incoming)
 
 ### 运行方式
 
-**Actions → Manual Run - Goldwind PushPlus+DeepSeek → Run workflow**：
+**Actions → Manual Run - Alibaba PushPlus+DeepSeek → Run workflow**：
 
 - `dry_run=false`：**真实推送**到微信（默认）
 - `dry_run=true`：只生成内容打印到日志，不推送（联调用）
 - `channel`：pushplus / wecom / serverchan / console / all
 - `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
-- `topic`：内容主题，留空默认"金风科技(Goldwind) 每日简报"
+- `topic`：内容主题，留空默认"阿里巴巴(Alibaba) 每日简报"
+- `theme`：pushplus 推送的 HTML 主题（整体默认 **game** = 8-bit 像素游戏风：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE 游戏元素）；可选 `klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`default`（普通 Markdown）
+- `hours`：量价舆情动量/十四平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
+
+主题预览：`examples/theme_preview.html`（game/klein/pixel 三主题对比）与
+`examples/game_theme_preview.html`（game 单独大图），可用 `examples/gen_theme_previews.py` 重新生成。
+
+### 📊 推送自带字符模拟图（纯字符，无图片，微信直接可见）
+
+只要给了 `hk_code`（默认 `09988`），每次推送自动在正文顶部附一段**字符模拟走势图**：
+
+1. **取数**：Yahoo Finance 日级 OHLC 为主源，东方财富日级数据兜底（均免 Key，取最近 60 个交易日）
+2. **渲染**：纯字符等宽模拟图（无图片依赖）——涨 `█` 跌 `▓` 影线 `│`，
+   叠加 MA5 `·` / MA10 `×` / MA20 `+` 点位、成交量字符条 `▁▂▃▄▅▆▇█`、近 20 日 S1/R1 支撑压力位虚线 `─`
+3. **嵌入**：直接以 Markdown 代码块 ````text```` / HTML `<pre>` 嵌入推送正文（PushPlus HTML 主题、企微、Server酱、console 均可显示，无需 CDN 与图床）
+4. **示例**：
+```text
+09988.HK 字符模拟走势（近 52 日 · YAHOO）
+ 17.20 ┤      █
+ 16.80 ┤  █ █ █ │ · ·
+       └──────────────────────┘
+   VOL │▁▂▃▄▅▆▇█▂▃▄
+S1 15.90 ── 支撑  ·  R1 17.40 ── 压力
+```
+
+- 任何一步失败（网络/渲染）都会**自动降级**：本次推送不含字符图，绝不影响发送
+- 本地 `--dry-run`：控制台直接打印字符图预览
+- `--no-chart`（兼容 `--no-kline`）可关闭
+- **无需额外权限**：纯字符无需提交图片回仓库，`permissions: contents: read` 即可；已移除图片上传与 jsDelivr CDN 流程
+
+### 分析框架与新增因子
+
+当前工作流提供 12 套模板。选择 `analysis` 时会逐行输出以下 7 个因子，新增的
+**量价舆情动量（48h）**不会再被合并到普通消息/情绪面：
+
+1. 基本面（业绩/订单/毛利率）
+2. 行业与政策面（平台经济监管/云计算/AI 等真实政策动态）
+3. 技术面（趋势/量价/关键价位）
+4. 资金面（主力/北向/两融动向）
+5. 消息面与情绪面（公告/舆情/行业事件）
+6. 估值面（PE/PB 与历史分位）
+7. **量价舆情动量（48h）**：基于窗口内价格/成交量、新闻和社媒样本，先本地预聚合，再交给 AI 分析
+8. **十四平台股票扫描（窗口跟随 `--hours`，支持 156h）**：输入股票代码后，在最近 156 小时内
+   检索十四个平台（**财经 7 源**：Google新闻/财联社电报/华尔街见闻/格隆汇/金十数据/MKTNews/雪球；
+   **社媒 7 源**：知乎/微博/抖音/虎扑/AI hot/联合早报/香港01），找出该股票的**相关新闻**
+   （按代码/名称/别名直接命中）与**有关板块**（档案预设板块 + 新闻动态提取「XX板块」），
+   逐条本地情绪打标后随附录输出，并注入 AI 上下文。
+
+展示样式：`analysis` 输出的「因子 | 方向 | 多头概率 | 依据」在 HTML 推送中以
+**卡片式内容展示**（不再是表格）——每个因子一张卡片：卡头为因子名 + 方向徽章
+（▲偏多绿 / ▼偏空红 / ●中性灰），卡身为大号多头概率 + 概率条（game 主题为像素
+血条 █░，其余主题为细框进度条）和「依据」标签正文；无【方向】列时按概率 50%
+上下自动推导徽章。AI/rule 的 Markdown 输出契约不变，卡片化在渲染层完成。
+
+当 `analysis` 搭配 `hk_code` 运行时，脚本会自动采集该新增因子所需的数据；采集失败会明确标注数据缺口，不会伪造概率。
+
+### 统一品牌头与声明
+
+所有模板、所有通道（含 dry-run/console）的最终结果都会自动加入统一品牌信息：
+
+- **标题**：章鱼 AI 全景分析（同时作为推送标题前缀）
+- **副标题**：全网多个境内境外多个大模型混合部署 AI 调研平台
+- **尾部声明**：声明：仅供参考，不作为投资建议。
+- **最后一行作者信息**：`作者：章鱼 ai` 及平台定位说明；不再放在标题下方。
+
+作者和声明由实际推送入口 `pushplus_deepseek.py` 统一组装。企业微信等有长度上限的通道会
+按 UTF-8 字节截断正文，但会保留尾部声明和最后一行作者信息。
 
 工作流会先运行 **Check required secrets** 步骤：缺少所需 Secret 时立即变红并指出缺哪一个。
+
+### 数据新鲜度看板（每次推送可验证"有没有更新"）
+
+每次推送正文顶部固定输出 **🧭 数据新鲜度 · 本次运行指纹**：
+
+- **行情对比**：三源共识价 + 在线源数 + 行情时间，并标注与上次推送的涨跌差/持平；
+- **🆕 新增样本**：与上次运行相比，数据窗口内新增的条数与来源分布，
+  附录中新增条目标 🆕 角标；
+- **本地计算**：综合多头概率锚点、量价动量、十四平台命中数；
+- **🔢 内容指纹**：由正文+行情+锚点+样本集合计算（不含时间戳）。
+  与上次完全一致时醒目标注「⚠️ 与上次推送内容一致（窗口内无新增信号）」，
+  否则标注「✅ 与上次推送相比已更新」；首次运行建立基线。
+
+指纹与上次一致且使用 AI 时，会自动追加差异化要求换表述重试一次，避免推文逐字复读。
+跨运行状态存于 `output/push_state.json`（已 gitignore），工作流用
+`actions/cache` 持久化；本地调试可用环境变量 `PUSH_STATE_PATH` 指定路径，
+或 `--no-state` 关闭对比。
+
 命令行本地调试：
 
 ```bash
 python pushplus_deepseek.py --check-only          # 只检查 Secret 配置
 python pushplus_deepseek.py --dry-run             # 生成但不推送
+python pushplus_deepseek.py --template analysis --hk-code 09988 --hours 48 --dry-run
+python pushplus_deepseek.py --template sentiment --hk-code 09988 --topic 阿里巴巴 --hours 156 --dry-run
 python pushplus_deepseek.py --channel all         # 三个通道全部推送
 ```
+
+### 量价舆情动量 · 十四平台股票扫描（`stock_news_scan.py`）
+
+单独使用（不依赖推送通道，纯标准库）：
+
+```bash
+# 输入股票代码，检索最近 156 小时内相关新闻与有关板块
+python stock_news_scan.py --code 09988 --name 阿里巴巴 --hours 156
+
+# 只给代码也能跑（内置档案自动补全名称/别名/板块）
+python stock_news_scan.py --code 9988.HK
+
+# 追加自定义板块关键词 / JSON 输出 / 离线自检
+python stock_news_scan.py --code 00700 --name 腾讯 --sectors 游戏,AI --json
+python stock_news_scan.py --selftest
+```
+
+输出分三组：**直接相关新闻**（代码/名称/别名命中）、**板块相关快讯**（板块关键词命中）、
+**有关板块**（档案预设 + 从命中标题动态提取「XX板块」，子串伪影按频次归属吸收）。
+带可靠时间戳的条目严格按 156h 过滤；雪球/社媒热榜为实时快照、标记「实时」不参与过滤。
+任何单源失败只进「数据缺口」，不拉高命中数、不伪造数据。
+
+## 📈 免费港股实时行情（`hk_quote.py` + 大屏 view 接入）
+
+大屏监视界面 `server_dashboard.py` 已接入免费港股实时行情，无任何 API Key：
+
+- **数据源对比（2026-08-07 实测）**：① 腾讯财经 `qt.gtimg.cn`（字段最全：现价/开高低/昨收/量额/涨跌/PE/振幅/市值/52周高低/币种）✅ 稳定；② 东方财富 `push2.eastmoney.com`（JSON 最干净，HK 无 PE，偶发 502 自动换 host 重试）✅；③ Yahoo Finance chart API（无 PE/成交额，境内访问不稳）✅ 参考源；新浪 `hq.sinajs.cn`（需 Referer）与 Stooq CSV 实测 ❌。
+- **默认链路**：腾讯财经(主) → 东方财富(备) → 静态演示兜底。视图横幅实时显示「🟢 实时行情 (LIVE) · 数据源 · 行情时间」或「⚠️ 演示数据 (STATIC DEMO)」。
+- **📊 字符模拟图 · 智能行情交互视图**：大屏已集成 **字符模拟图交互视图 (Char Simulation Chart Studio)**，支持双模式切换——① **字符点阵模拟图**（纯字符点阵渲染、60 周期历史与移动均线 MA5/10/20、实时成交量字符条、支撑压力位标注 S1/R1，涨 `█` 跌 `▓` 影线 `│`，100% 兼容静态文件与离线环境不白屏）；② **TradingView 官方高级图表控件**（支持一键切换加载官方 `s3.tradingview.com` 实时专业插件）。支持 `09988 阿里巴巴`、`00700 腾讯控股`、`03690 美团`、`BABA 阿里美股` 等多标的，以及分时(1D)/5日(5D)/日级(Daily)/周级/月级 多周期切换。
+- **后端接口支持**：前端每 30 秒自动轮询 `/api/quote` 更新价格卡片，`/api/chart`（兼容 `/api/kline`）返回标准化 60 根多空均线字符模拟图数据与指标 JSON，`/api/stock` 返回叠加实时行情的完整视图 JSON。
+
+```bash
+python hk_quote.py 00700            # 单只股票标准化行情（3 位小数 HKD）
+python hk_quote.py --selftest       # 三源真实网络对比测试（哪个好）
+python hk_quote.py --fixture-test   # 离线解析自检（内置真实抓包样本）
+python test_hk_quote.py             # 单元测试（8 项）
+python server_dashboard.py          # 启动大屏（8080，自动接入实时行情）
+```
+
+环境变量：`HK_QUOTE_CHAIN=tencent,eastmoney,yahoo`（链路）、`HK_QUOTE_TIMEOUT=3.5`（秒）、`HK_QUOTE_NO_LIVE=1`（强制静态演示）。
 
 ## 📝 Git 合并演示
 

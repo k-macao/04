@@ -1,9 +1,3 @@
-# 手动复制版（含 K 线图代码的最新 yml）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
-# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml。
-# 匹配 pushplus_deepseek.py v2.16-kline-2026-08-07（内置日K PNG 渲染 + 三源行情核验 + 图片提交回仓库）。
-# 要点：permissions.contents 需为 write —— K 线图模块会 git add/commit/push assets/kline_*.png
-#       生成公网 raw URL 供微信加载；其余 Secret 保持最小暴露。
-
 name: Manual Run - Alibaba PushPlus+DeepSeek
 on:
   workflow_dispatch:
@@ -37,7 +31,7 @@ on:
         required: false
         default: ''
       hk_code:
-        description: '港股代码（接入三源核验行情 + 日K线图，如 09988=阿里巴巴H；留空则不取数据、不生成 K 线图）'
+        description: '港股代码（接入三源核验行情，如 09988=阿里巴巴H；留空则不取数据）'
         required: false
         default: '09988'
       risk:
