@@ -97,9 +97,11 @@ class TestFetchDegradation(unittest.TestCase):
 
 class TestTradeViewIntegration(unittest.TestCase):
     def test_kline_view_data(self):
-        """测试服务器端 /api/kline 对应视图函数能否生成正确的 60 根 K 线与指标"""
+        """测试服务器端 /api/chart 对应视图函数能否生成正确的 60 根字符模拟图数据与指标（兼容旧 /api/kline）"""
         import server_dashboard
-        d = server_dashboard.get_kline_view("09988", tf="daily", count=60)
+        # 新名 get_chart_view，旧名 get_kline_view 仍保留兼容
+        fn = getattr(server_dashboard, "get_chart_view", None) or getattr(server_dashboard, "get_kline_view")
+        d = fn("09988", tf="daily", count=60)
         self.assertEqual(d["code"], "09988")
         self.assertEqual(len(d["bars"]), 60)
         self.assertIn("open", d["bars"][0])
@@ -109,16 +111,21 @@ class TestTradeViewIntegration(unittest.TestCase):
         self.assertIn("ma20", d["bars"][-1])
         self.assertIsNotNone(d["support"])
         self.assertIsNotNone(d["resistance"])
+        # 兼容旧名
+        if hasattr(server_dashboard, "get_kline_view"):
+            d2 = server_dashboard.get_kline_view("09988", tf="daily", count=60)
+            self.assertEqual(len(d2["bars"]), 60)
 
     def test_tradeview_html_present(self):
-        """测试 render_server_monitor_html 渲染出的 HTML 是否包含 TradeView 交互组件"""
+        """测试 render_server_monitor_html 渲染出的 HTML 是否包含字符模拟图交互组件"""
         import server_dashboard
         html = server_dashboard.render_server_monitor_html("09988")
         self.assertIn("tradeview-section", html)
-        self.assertIn("TRADEVIEW", html)
-        self.assertIn("tradeview-kline-canvas", html)
+        # 新版为 CHAR SIMULATION，兼容旧版 TRADEVIEW 关键字
+        self.assertTrue("CHAR SIMULATION" in html or "TRADEVIEW" in html)
+        self.assertIn("tradeview-char-canvas", html)
         self.assertIn("tradeview-vol-canvas", html)
-        self.assertIn("generateDefaultKlineBars", html)
+        self.assertTrue("generateDefaultChartBars" in html or "generateDefaultKlineBars" in html)
 
 
 if __name__ == "__main__":
