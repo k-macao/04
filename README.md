@@ -152,39 +152,28 @@ result = deep_merge_dicts(base, incoming)
 主题预览：`examples/theme_preview.html`（game/klein/pixel 三主题对比）与
 `examples/game_theme_preview.html`（game 单独大图），可用 `examples/gen_theme_previews.py` 重新生成。
 
-### 📊 推送自带 K 线图（真实图片，微信直接可见）
+### 📊 推送自带字符模拟图（纯字符，无图片，微信直接可见）
 
-只要给了 `hk_code`（默认 `09988`），每次推送自动在正文顶部附一张**真实日 K 线图**：
+只要给了 `hk_code`（默认 `09988`），每次推送自动在正文顶部附一段**字符模拟走势图**：
 
-1. **取数**：Yahoo Finance 日 K 为主源，东方财富日 K 兜底（均免 Key，取最近 60 个交易日）
-2. **渲染**：纯标准库画 PNG（无第三方依赖）——深夜蓝底、**红涨绿跌** K 线、
-   MA5（金）/MA10（青）/MA20（紫）均线、成交量副图、近 20 日 S1/R1 支撑压力位虚线
-3. **上传**：GitHub Actions 内自动把 `assets/kline_09988.png` 提交回仓库
-   （需 `permissions: contents: write`，已配置）
-4. **CDN**：图片用 **jsDelivr 全球 CDN** 地址
-   `https://cdn.jsdelivr.net/gh/k-macao/04@{commit}/assets/kline_09988.png`
-   嵌入推送（版本取上传时的 commit SHA，URL 每次唯一、无缓存滞后；
-   微信对 `raw.githubusercontent.com` 常做拦截导致图片空白，jsDelivr 是国内
-   可稳定访问的 GitHub 图床方案）
-5. **嵌入**：PushPlus 的 HTML 主题用 `<img referrerpolicy="no-referrer">` 内联
-   （微信可直接显示，不发送 Referer 规避防盗链）；Server酱 markdown 同样支持；
-   企业微信仅显示为链接
+1. **取数**：Yahoo Finance 日级 OHLC 为主源，东方财富日级数据兜底（均免 Key，取最近 60 个交易日）
+2. **渲染**：纯字符等宽模拟图（无图片依赖）——涨 `█` 跌 `▓` 影线 `│`，
+   叠加 MA5 `·` / MA10 `×` / MA20 `+` 点位、成交量字符条 `▁▂▃▄▅▆▇█`、近 20 日 S1/R1 支撑压力位虚线 `─`
+3. **嵌入**：直接以 Markdown 代码块 ````text```` / HTML `<pre>` 嵌入推送正文（PushPlus HTML 主题、企微、Server酱、console 均可显示，无需 CDN 与图床）
+4. **示例**：
+```text
+09988.HK 字符模拟走势（近 52 日 · YAHOO）
+ 17.20 ┤      █
+ 16.80 ┤  █ █ █ │ · ·
+       └──────────────────────┘
+   VOL │▁▂▃▄▅▆▇█▂▃▄
+S1 15.90 ── 支撑  ·  R1 17.40 ── 压力
+```
 
-![阿里巴巴 09988 日K线图示例](assets/kline_09988.png)
-
-- 任何一步失败（网络/渲染/上传）都会**自动降级**：本次推送不含图片，绝不影响发送
-- 本地 `--dry-run`：控制台输出图片本地路径，可直接打开预览
-- `--no-kline` 可关闭；同一代码的图片每次运行覆盖更新（commit SHA 变化，
-  jsDelivr URL 自动更新）
-- **权限要求**：把图提交回仓库需要 GITHUB_TOKEN 有 `contents: write`。
-  仓库根目录的手动复制版 `R_WORKFLOW_MANUAL_COPY.yml` 与 `WORKFLOW_HARDENED.yml`
-  已内置该权限块；若沿用旧的 `.github/workflows/r.yml` 且仓库默认 token 为只读，
-  请在 `manual-push` job 下补上：
-  ```yaml
-  permissions:
-    contents: write
-  ```
-  （缺权限时图片上传自动跳过，其余功能不受影响）
+- 任何一步失败（网络/渲染）都会**自动降级**：本次推送不含字符图，绝不影响发送
+- 本地 `--dry-run`：控制台直接打印字符图预览
+- `--no-chart`（兼容 `--no-kline`）可关闭
+- **无需额外权限**：纯字符无需提交图片回仓库，`permissions: contents: read` 即可；已移除图片上传与 jsDelivr CDN 流程
 
 ### 分析框架与新增因子
 
@@ -280,8 +269,8 @@ python stock_news_scan.py --selftest
 
 - **数据源对比（2026-08-07 实测）**：① 腾讯财经 `qt.gtimg.cn`（字段最全：现价/开高低/昨收/量额/涨跌/PE/振幅/市值/52周高低/币种）✅ 稳定；② 东方财富 `push2.eastmoney.com`（JSON 最干净，HK 无 PE，偶发 502 自动换 host 重试）✅；③ Yahoo Finance chart API（无 PE/成交额，境内访问不稳）✅ 参考源；新浪 `hq.sinajs.cn`（需 Referer）与 Stooq CSV 实测 ❌。
 - **默认链路**：腾讯财经(主) → 东方财富(备) → 静态演示兜底。视图横幅实时显示「🟢 实时行情 (LIVE) · 数据源 · 行情时间」或「⚠️ 演示数据 (STATIC DEMO)」。
-- **📊 TradeView 智能行情与 K 线交互视图**：大屏已集成 **TradeView Interactive K-Line & Chart Studio**，支持双引擎双模式切换——① **TradeView 内置交互 K 线**（HTML5 Canvas 极速高帧率渲染、60周期历史与移动均线 MA5/10/20、实时成交量副图、鼠标悬停十字光标 Crosshair 显示完整 OHLCV 详情、智能买卖支撑压力位标注 S1/R1，100% 兼容静态文件与离线环境不白屏）；② **TradingView 官方高级图表控件**（支持一键切换加载官方 `s3.tradingview.com` 实时专业插件）。支持 `09988 阿里巴巴`、`00700 腾讯控股`、`03690 美团`、`BABA 阿里美股` 等多标的，以及分时(1D)/5日(5D)/日K(Daily)/周K/月K 多周期切换。
-- **后端接口支持**：前端每 30 秒自动轮询 `/api/quote` 更新价格卡片，`/api/kline` 返回标准化 60 根多空均线 K 线与指标 JSON，`/api/stock` 返回叠加实时行情的完整视图 JSON。
+- **📊 字符模拟图 · 智能行情交互视图**：大屏已集成 **字符模拟图交互视图 (Char Simulation Chart Studio)**，支持双模式切换——① **字符点阵模拟图**（纯字符点阵渲染、60 周期历史与移动均线 MA5/10/20、实时成交量字符条、支撑压力位标注 S1/R1，涨 `█` 跌 `▓` 影线 `│`，100% 兼容静态文件与离线环境不白屏）；② **TradingView 官方高级图表控件**（支持一键切换加载官方 `s3.tradingview.com` 实时专业插件）。支持 `09988 阿里巴巴`、`00700 腾讯控股`、`03690 美团`、`BABA 阿里美股` 等多标的，以及分时(1D)/5日(5D)/日级(Daily)/周级/月级 多周期切换。
+- **后端接口支持**：前端每 30 秒自动轮询 `/api/quote` 更新价格卡片，`/api/chart`（兼容 `/api/kline`）返回标准化 60 根多空均线字符模拟图数据与指标 JSON，`/api/stock` 返回叠加实时行情的完整视图 JSON。
 
 ```bash
 python hk_quote.py 00700            # 单只股票标准化行情（3 位小数 HKD）

@@ -110,11 +110,11 @@ def get_stock_view(stock_code: str) -> dict:
     return data
 
 
-def get_kline_view(stock_code: str = "09988", tf: str = "daily", count: int = 60) -> dict:
+def get_chart_view(stock_code: str = "09988", tf: str = "daily", count: int = 60) -> dict:
     """
-    返回指定标的与时间周期（1d/5d/daily/weekly/monthly）的标准化 K 线及成交量指标数据。
-    支持连通服务器从 /api/kline 取实时走势，同时能够根据最近收盘价自动生成高品质趋势结构，
-    确保 TradeView 界面及交互式技术分析任何时候均可用。
+    返回指定标的与时间周期（1d/5d/daily/weekly/monthly）的标准化字符模拟图及成交量指标数据。
+    支持连通服务器从 /api/chart 取实时走势，同时能够根据最近收盘价自动生成高品质趋势结构，
+    确保字符模拟图界面及交互式技术分析任何时候均可用。
     """
     v = get_stock_view(stock_code)
     try:
@@ -176,6 +176,8 @@ def get_kline_view(stock_code: str = "09988", tf: str = "daily", count: int = 60
         "bars": bars,
     }
 
+
+get_kline_view = get_chart_view  # 兼容旧名（已迁移为字符模拟图）
 
 # ================================================================ 数据源与预置标的
 
@@ -549,12 +551,12 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     </div>
     """
 
-    # —— TradeView 智能行情与 K 线交互交易视图 ——
+    # —— 字符模拟图 · 智能行情交互视图 ——
     tradeview_html = f"""
-        <!-- 📊 TradeView 智能行情与 K 线交互图表界面 -->
+        <!-- 📊 TradeView 智能行情与字符模拟交互图表界面 -->
         <div class="section-header" id="tradeview-section">
-            <span>📊 TRADEVIEW 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO)</span>
-            <span class="section-tag">多周期 K 线 · 均线系统 (MA5/10/20) · 实时成交量 · 官方 TradingView 图表双模联动</span>
+            <span>📊 字符模拟图 · 智能行情交互视图 (CHAR SIMULATION CHART STUDIO)</span>
+            <span class="section-tag">多周期字符模拟走势 · 均线系统 (MA5/10/20) · 实时成交量 · 字符点阵与 TradingView 双模联动</span>
         </div>
         <div class="tradeview-panel">
             <div class="tradeview-toolbar">
@@ -575,12 +577,12 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 </div>
                 <div class="tv-group">
                     <span class="tv-label">渲染模式 (Engine):</span>
-                    <button class="tv-btn engine-btn active" id="btn-engine-canvas" onclick="switchTradeViewEngine('canvas', this)">🖥️ TradeView 交互 K 线 (内置 Canvas)</button>
+                    <button class="tv-btn engine-btn active" id="btn-engine-canvas" onclick="switchTradeViewEngine('canvas', this)">🖥️ 字符模拟图 (字符点阵)</button>
                     <button class="tv-btn engine-btn" id="btn-engine-widget" onclick="switchTradeViewEngine('widget', this)">🌐 TradingView 官方高级图表</button>
                 </div>
             </div>
 
-            <!-- 内置 HTML5 Canvas 交互 K 线与成交量视图面板 -->
+            <!-- 内置 HTML5 Canvas 字符模拟图与成交量视图面板 -->
             <div id="tradeview-canvas-panel">
                 <div class="tv-legend-bar" id="tv-legend-bar">
                     <div class="tv-legend-item"><span id="tv-symbol-name" style="color:var(--cyan);font-weight:bold;">{data["code"]} {data["name"]} · 日K</span></div>
@@ -596,7 +598,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     <div class="tv-legend-item tv-legend-ma20">MA20: <span id="tv-hover-ma20" class="tv-legend-val">--</span></div>
                 </div>
                 <div class="tv-canvas-wrap">
-                    <pre id="tradeview-kline-canvas" class="tv-dotmatrix" aria-label="点阵 K 线图"></pre>
+                    <pre id="tradeview-char-canvas" class="tv-dotmatrix" aria-label="字符模拟走势图"></pre>
                 </div>
                 <div class="tv-vol-wrap">
                     <pre id="tradeview-vol-canvas" class="tv-dotmatrix tv-volume" aria-label="点阵成交量"></pre>
@@ -604,7 +606,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <div class="tv-footer-bar">
                     <div>
                         <span class="tv-badge-live">LIVE READY</span>
-                        <span id="tv-engine-status">TradeView 内置高帧率 Canvas 渲染引擎 · 60 周期历史与均线多空共振 · 鼠标悬停可查看十字光标与 OHLCV 详情</span>
+                        <span id="tv-engine-status">字符点阵渲染引擎 · 60 周期历史与均线多空共振 · 字符模拟走势（涨 █ 跌 ▓ 影线 │）</span>
                     </div>
                     <div>
                         <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> |
@@ -1041,7 +1043,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
         .badge-green {{ background: rgba(0,255,157,0.15); color: var(--green); border-color: var(--green); }}
 
-        /* 📊 TradeView 智能行情与 K 线交互图表组件 */
+        /* 📊 字符模拟图 · 智能行情交互组件 */
         .tradeview-panel {{
             background: var(--bg-panel);
             border: 1px solid var(--border-subtle);
@@ -1583,7 +1585,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         <!-- 📈 横排核心量化指标带 (绝对零表格) -->
         {metrics_ribbon}
 
-        <!-- 📊 TradeView 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO) -->
+        <!-- 📊 字符模拟图 · 智能行情交互视图 (CHAR SIMULATION CHART STUDIO) -->
         {tradeview_html}
 
         <!-- 📊 横排七大因子多空矩阵 (绝对零表格，纯横排卡片流) -->
@@ -1748,7 +1750,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         setInterval(refreshQuote, 30000); // 每 30 秒自动更新
 
         // =================================================================
-        // 📊 TradeView 智能行情与 K 线图表交互控制系统 (TradeView Chart Engine)
+        // 📊 字符模拟图 · 智能行情交互控制系统 (TradeView Chart Engine)
         // =================================================================
         let currentTradeViewSymbol = '{stock_code}';
         let currentTradeViewName = '{data["code"]} {data["name"]}';
@@ -1757,7 +1759,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         let currentTradeViewSupport = '--';
         let currentTradeViewResistance = '--';
 
-        function generateDefaultKlineBars(symbol, tf) {{
+        function generateDefaultChartBars(symbol, tf) {{
             const basePrices = {{
                 '09988': 81.25,
                 '00700': 478.80,
@@ -1801,24 +1803,25 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             }}
             return bars;
         }}
+        const generateDefaultKlineBars = generateDefaultChartBars; // 兼容旧名
 
-        async function fetchAndRenderTradeView(symbol, tf, name) {{
+        async function fetchAndRenderChart(symbol, tf, name) {{
             currentTradeViewSymbol = symbol;
             currentTradeViewTF = tf;
             if (name) currentTradeViewName = name;
 
-            // 先画本地快照，再请求接口；这样网络慢/接口被拦截时 K 线不会空白。
-            // 原先必须等 /api/kline 返回后才首次绘制，离线或行情源超时会让用户看到空图。
-            const instantBars = generateDefaultKlineBars(symbol, tf);
+            // 先画本地快照，再请求接口；这样网络慢/接口被拦截时字符模拟图不会空白。
+            // 原先必须等 /api/chart 返回后才首次绘制，离线或行情源超时会让用户看到空图。
+            const instantBars = generateDefaultChartBars(symbol, tf);
             currentTradeViewBars = instantBars;
             currentTradeViewSupport = Math.min(...instantBars.slice(-20).map(b => b.low)).toFixed(2);
             currentTradeViewResistance = Math.max(...instantBars.slice(-20).map(b => b.high)).toFixed(2);
-            drawTradeViewChart(instantBars);
+            drawCharChart(instantBars);
             updateTradeViewLegend(instantBars[instantBars.length - 1]);
 
             let data = null;
             try {{
-                const resp = await fetch('/api/kline?code=' + encodeURIComponent(symbol) + '&tf=' + encodeURIComponent(tf));
+                const resp = await fetch('/api/chart?code=' + encodeURIComponent(symbol) + '&tf=' + encodeURIComponent(tf));
                 if (resp.ok) {{
                     data = await resp.json();
                 }}
@@ -1827,7 +1830,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             }}
 
             if (!data || !data.bars || !data.bars.length) {{
-                const fallbackBars = generateDefaultKlineBars(symbol, tf);
+                const fallbackBars = generateDefaultChartBars(symbol, tf);
                 const minLow = Math.min(...fallbackBars.slice(-20).map(b => b.low));
                 const maxHigh = Math.max(...fallbackBars.slice(-20).map(b => b.high));
                 data = {{
@@ -1849,15 +1852,16 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             if (resEl) resEl.textContent = data.resistance || '--';
             if (supEl) supEl.textContent = data.support || '--';
 
-            drawTradeViewChart(currentTradeViewBars);
+            drawCharChart(currentTradeViewBars);
             updateTradeViewLegend(currentTradeViewBars[currentTradeViewBars.length - 1]);
             setupTradeViewCrosshair();
         }}
+        const fetchAndRenderTradeView = fetchAndRenderChart; // 兼容旧名
 
-        function drawTradeViewChart(bars) {{
-            // 纯文本点阵渲染：不依赖 Canvas、图片或第三方图表库。
+        function drawCharChart(bars) {{
+            // 纯字符点阵渲染：字符模拟走势（涨 █ 跌 ▓ 影线 │），不依赖图片或第三方图表库。
             if (!bars || !bars.length) return;
-            const chart = document.getElementById('tradeview-kline-canvas');
+            const chart = document.getElementById('tradeview-char-canvas') || document.getElementById('tradeview-kline-canvas');
             const volume = document.getElementById('tradeview-vol-canvas');
             if (!chart || !volume) return;
             const cols = Math.min(72, bars.length);
@@ -1883,6 +1887,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             view.forEach((b,i) => {{ const n=Math.max(1,Math.round((Number(b.vol)||0)/maxVol*vrows)); for(let r=vrows-n;r<vrows;r++) vg[r][i]='▂'; }});
             volume.textContent = 'VOL  ' + vg.map(r => r.join('')).join('\n');
         }}
+        const drawTradeViewChart = drawCharChart; // 兼容旧名
 
         function updateTradeViewLegend(bar) {{
             if (!bar) return;
@@ -1908,7 +1913,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         function setupTradeViewCrosshair() {{
-            // 点阵模式保持轻量；鼠标悬停不再调用 Canvas API。
+            // 字符点阵模式保持轻量；鼠标悬停不再调用 Canvas API。
         }}
 
         function switchTradeViewSymbol(symbol, name, el) {{
@@ -1920,7 +1925,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             const nameEl = document.getElementById('tv-symbol-name');
             if (nameEl) nameEl.textContent = name + ' · ' + currentTradeViewTF.toUpperCase();
 
-            fetchAndRenderTradeView(symbol, currentTradeViewTF, name);
+            fetchAndRenderChart(symbol, currentTradeViewTF, name);
 
             const widgetPanel = document.getElementById('tradeview-widget-panel');
             if (widgetPanel && widgetPanel.style.display !== 'none') {{
@@ -1937,7 +1942,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             const nameEl = document.getElementById('tv-symbol-name');
             if (nameEl) nameEl.textContent = currentTradeViewName + ' · ' + label;
 
-            fetchAndRenderTradeView(currentTradeViewSymbol, tf, currentTradeViewName);
+            fetchAndRenderChart(currentTradeViewSymbol, tf, currentTradeViewName);
         }}
 
         function switchTradeViewEngine(mode, el) {{
@@ -1952,7 +1957,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             if (mode === 'canvas') {{
                 if (canvasPanel) canvasPanel.style.display = 'block';
                 if (widgetPanel) widgetPanel.style.display = 'none';
-                drawTradeViewChart(currentTradeViewBars);
+                drawCharChart(currentTradeViewBars);
             }} else if (mode === 'widget') {{
                 if (canvasPanel) canvasPanel.style.display = 'none';
                 if (widgetPanel) widgetPanel.style.display = 'block';
@@ -1998,7 +2003,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         setTimeout(() => {{
-            fetchAndRenderTradeView('{stock_code}', 'daily', '{data["code"]} {data["name"]}');
+            fetchAndRenderChart('{stock_code}', 'daily', '{data["code"]} {data["name"]}');
         }}, 400);
 
         function appendLog(tag, status, msg) {{
@@ -2086,10 +2091,10 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
             return
 
-        if path == "/api/kline":
+        if path in ("/api/chart", "/api/kline"):
             stock_code = qs.get("code", ["09988"])[0]
             tf = qs.get("tf", ["daily"])[0]
-            data = get_kline_view(stock_code, tf=tf)
+            data = get_chart_view(stock_code, tf=tf)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))

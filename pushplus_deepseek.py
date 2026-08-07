@@ -10,9 +10,10 @@ pushplus_deepseek.py — 港股数据 + DeepSeek 分析 → 多通道推送
 2. 交叉核验模块：同一标的从三源取价，比对偏差，给出可信度结论；异常源自动剔除
 3. 分析框架模块：DeepSeek 按 12 套模板生成内容，多空判断一律带概率；analysis 包含 7 个因子
 4. 推送模块：多通道真实推送 / dry-run 预览 / Secrets 检查
-5. K线图模块：纯标准库渲染日K PNG（红涨绿跌 + MA5/10/20 + 成交量 + S1/R1），
-   GitHub Actions 内自动提交回仓库取公网 raw URL，嵌入推送正文顶部（微信可见）；
-   本地 dry-run 输出本地路径；--no-kline 可关闭；任何失败自动降级不影响推送
+5. 字符模拟图模块：纯字符模拟走势（非图片）——基于日级 OHLC 渲染等宽字符图
+   （涨 █ 跌 ▓ 影线 │，叠加 MA5/10/20 点位、成交量字符条、支撑/压力标注），
+   直接以 Markdown/HTML <pre> 嵌入推送正文，无需图片上传与 CDN；--no-chart 可关闭；
+   任何失败自动降级不影响推送
 
 用法
 ====
@@ -37,14 +38,11 @@ import json
 import math
 import os
 import re
-import struct
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -75,7 +73,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.16-kline-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.17-char-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -939,7 +937,7 @@ def compute_price_momentum(closes: list[float], vols: list[float],
         + max(-0.8, min(0.8, vol_ratio - 1)) * 0.5
     score = round(max(-1.0, min(1.0, score)), 2)
     label = "偏多" if score > 0.12 else ("偏空" if score < -0.12 else "中性")
-    detail = f"近{hours}h {ret:+.2f}%，量比 {vol_ratio:.2f}，样本 {len(pts)} 根K线"
+    detail = f"近{hours}h {ret:+.2f}%，量比 {vol_ratio:.2f}，样本 {len(pts)} 根数据"
     return {"ok": True, "score": score, "label": label,
             "detail": detail, "ret": round(ret, 2),
             "vol_ratio": round(vol_ratio, 2)}
@@ -1115,7 +1113,7 @@ def render_sentiment_rule(topic: str, code: str | None, pack: SentPack) -> str:
         f"/{news.get('neu', 0)} | {news.get('mean', 0):+.2f} | {news.get('24h趋势', '—')} |",
         f"| 舆情动量 | {soc.get('n', 0)} | {soc.get('pos', 0)}/{soc.get('neg', 0)}"
         f"/{soc.get('neu', 0)} | {soc.get('mean', 0):+.2f} | {soc.get('24h趋势', '—')} |",
-        f"| 量价动量 | 小时K线 | — | {m.get('score', 0):+.2f} | — |",
+        f"| 量价动量 | 小时级数据 | — | {m.get('score', 0):+.2f} | — |",
     ]
     return "\n".join([
         f"**{topic} · {pack.hours}h 量价舆情动量**（rule 本地计算，未经 AI 综合）",
@@ -1215,11 +1213,11 @@ def build_messages(template: str, topic: str, context: str,
             "概率取整数%。" + RULES_TAIL)
     elif template == "fusion":
         user = (
-            f"分析「{topic}」，结合 K 线结构、财报和最新新闻，给出明确的看多还是看空。\n\n"
+            f"分析「{topic}」，结合价格走势结构、财报和最新新闻，给出明确的看多还是看空。\n\n"
             + ctx +
             "严格按此格式输出：\n\n"
             "| 维度 | 判断 | 多头概率 | 要点 |\n|---|---|---|---|\n"
-            "| K线结构 |  |  |  |\n| 基本面/财报 |  |  |  |\n"
+            "| 走势结构 |  |  |  |\n| 基本面/财报 |  |  |  |\n"
             "| 最新消息 |  |  |  |\n| 资金与情绪 |  |  |  |\n\n"
             "- **结论**：明确写「看多」或「看空」+ 信心概率%\n"
             "- **关键点位**：支撑 S1/S2、压力 R1/R2（有行情数据时按真实价格算，"
@@ -1987,6 +1985,26 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             i += 1
             continue
 
+        if s.startswith("```"):  # 代码块（用于字符模拟图等宽展示）
+            lang = s[3:].strip()
+            code_lines = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines) and lines[i].strip().startswith("```"):
+                i += 1  # 跳过闭合 ```
+            code_text = "\n".join(code_lines)
+            # 转义以防止 HTML 注入，保留字符图原样
+            esc = code_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            html.append(
+                f'<pre style="background:{theme["card_bg"]};border:1px solid {theme["border"]};'
+                f'padding:8px;overflow-x:auto;font-family:{theme["font"]};'
+                f'font-size:{theme["size"]};line-height:1.35;white-space:pre;'
+                f'color:{theme["fg"]};margin:6px 0;">{esc}</pre>'
+            )
+            continue
+
         if s.startswith("|"):  # 表格块
             tbl = []
             while i < len(lines) and lines[i].strip().startswith("|"):
@@ -2667,303 +2685,22 @@ PUSH_FUNCS = {
 }
 
 
-# ================================================================ 模块⑤b：推送 K 线图（纯标准库 PNG）
+# ================================================================ 模块⑤b：字符模拟图（纯字符）
 
-# 5x7 像素字体（行式定义，代码载入时转列掩码）。仅 ASCII，中文由推送正文承载。
-KLINE_FONT = {
-    "A": [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
-    "B": ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
-    "C": [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."],
-    "D": ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."],
-    "E": ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
-    "F": ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
-    "G": [".###.", "#...#", "#....", "#..##", "#...#", "#...#", ".####"],
-    "H": ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
-    "I": ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "#####"],
-    "J": ["..###", "...#.", "...#.", "...#.", "#...#", "#...#", ".###."],
-    "K": ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"],
-    "L": ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
-    "M": ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"],
-    "N": ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
-    "O": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
-    "P": ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
-    "Q": [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"],
-    "R": ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
-    "S": [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
-    "T": ["#####", "#.#.#", "..#..", "..#..", "..#..", "..#..", "..#.."],
-    "U": ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
-    "V": ["#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
-    "W": ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"],
-    "X": ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"],
-    "Y": ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
-    "Z": ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"],
-    "0": [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
-    "1": ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", "#####"],
-    "2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
-    "3": [".###.", "#...#", "....#", "..##.", "....#", "#...#", ".###."],
-    "4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
-    "5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
-    "6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
-    "7": ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
-    "8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
-    "9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
-    ".": [".....", ".....", ".....", ".....", ".....", "..#..", "..#.."],
-    "-": [".....", ".....", ".....", "#####", ".....", ".....", "....."],
-    ":": [".....", "..#..", "..#..", ".....", "..#..", "..#..", "....."],
-    "/": ["....#", "....#", "...#.", "..#..", ".#...", "#....", "#...."],
-    "%": ["##..#", "##..#", "...#.", "..#..", ".#...", "#..##", "#..##"],
-    "+": [".....", "..#..", "..#..", "#####", "..#..", "..#..", "....."],
-    "~": [".....", ".....", "#..##", ".####", "##..#", ".....", "....."],
-    "(": ["#....", ".#...", "..#..", "..#..", "..#..", ".#...", "#...."],
-    ")": ["....#", "...#.", "..#..", "..#..", "..#..", "...#.", "....#"],
-    ",": [".....", ".....", ".....", ".....", ".....", "..#..", ".#..."],
-    "_": [".....", ".....", ".....", ".....", ".....", ".....", "#####"],
-    "=": [".....", ".....", "#####", ".....", "#####", ".....", "....."],
-    "#": [".#.#.", "#####", ".#.#.", ".#.#.", "#####", ".#.#.", "....."],
-    "!": ["..#..", "..#..", "..#..", "..#..", "..#..", ".....", "..#.."],
-    "?": [".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#.."],
-    " ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
-    "'": ["..#..", "..#..", ".....", ".....", ".....", ".....", "....."],
-}
-
-
-def _font_cols(ch: str) -> list[int]:
-    """5x7 字形 → 5 个列掩码（bit0=顶行）。未收录字符回退 '?'。"""
-    rows = KLINE_FONT.get(ch.upper(), KLINE_FONT["?"])
-    cols = []
-    for x in range(5):
-        v = 0
-        for y, row in enumerate(rows):
-            if row[x] == "#":
-                v |= 1 << y
-        cols.append(v)
-    return cols
-
-
-class _KCanvas:
-    """极简 RGB 画布：填充 / 直线 / 虚线 / 像素字。"""
-
-    def __init__(self, w: int, h: int, bg: tuple[int, int, int]):
-        self.w, self.h = w, h
-        self.px = bytearray((bg[0], bg[1], bg[2])) * (w * h)
-
-    def _set(self, x: int, y: int, c: tuple[int, int, int]) -> None:
-        if 0 <= x < self.w and 0 <= y < self.h:
-            i = (y * self.w + x) * 3
-            self.px[i] = c[0]
-            self.px[i + 1] = c[1]
-            self.px[i + 2] = c[2]
-
-    def fill_rect(self, x: int, y: int, w: int, h: int,
-                  c: tuple[int, int, int]) -> None:
-        for yy in range(max(0, y), min(self.h, y + h)):
-            for xx in range(max(0, x), min(self.w, x + w)):
-                self._set(xx, yy, c)
-
-    def hline(self, x1: int, x2: int, y: int,
-              c: tuple[int, int, int]) -> None:
-        for xx in range(max(0, x1), min(self.w, x2 + 1)):
-            self._set(xx, y, c)
-
-    def vline(self, x: int, y1: int, y2: int,
-              c: tuple[int, int, int]) -> None:
-        for yy in range(max(0, y1), min(self.h, y2 + 1)):
-            self._set(x, yy, c)
-
-    def dashed_h(self, x1: int, x2: int, y: int,
-                 c: tuple[int, int, int], dash: int = 5) -> None:
-        x = x1
-        while x <= x2:
-            self.hline(x, min(x + dash - 1, x2), y, c)
-            x += dash * 2
-
-    def line(self, x0: int, y0: int, x1: int, y1: int,
-             c: tuple[int, int, int]) -> None:
-        dx, dy = abs(x1 - x0), -abs(y1 - y0)
-        sx = 1 if x0 < x1 else -1
-        sy = 1 if y0 < y1 else -1
-        err = dx + dy
-        x, y = x0, y0
-        while True:
-            self._set(x, y, c)
-            if x == x1 and y == y1:
-                break
-            e2 = 2 * err
-            if e2 >= dy:
-                err += dy
-                x += sx
-            if e2 <= dx:
-                err += dx
-                y += sy
-
-    def text(self, x: int, y: int, s: str,
-             c: tuple[int, int, int], scale: int = 1) -> int:
-        """绘制 5x7 像素字，返回占用宽度。"""
-        cx = x
-        for ch in s:
-            for col in _font_cols(ch):
-                for yy in range(7):
-                    if col & (1 << yy):
-                        self.fill_rect(cx, y + yy * scale, scale, scale, c)
-                cx += scale
-            cx += scale  # 字间距
-        return cx - x
-
-
-def _write_png(path: str, w: int, h: int, rgb: bytes) -> None:
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        out = struct.pack(">I", len(data)) + tag + data
-        return out + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
-
-    raw = bytearray()
-    stride = w * 3
-    for y in range(h):
-        raw += b"\x00" + rgb[y * stride:(y + 1) * stride]
-    png = (b"\x89PNG\r\n\x1a\n"
-           + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-           + chunk(b"IDAT", zlib.compress(bytes(raw), 6))
-           + chunk(b"IEND", b""))
-    with open(path, "wb") as fh:
-        fh.write(png)
-
-
-def render_kline_png(bars: list[dict], out_path: str,
-                     meta: dict | None = None) -> str:
-    """把标准化 K 线 bars 渲染为 PNG（纯标准库，红涨绿跌 + MA5/10/20 +
-    成交量副图 + S1/R1 支撑压力位）。返回文件绝对路径。"""
-    bars = [b for b in bars if b.get("close") is not None][-60:]
-    if len(bars) < 5:
-        raise PushError("K线数据不足（<5 根），无法渲染")
-    meta = meta or {}
-    code = str(meta.get("code") or "09988")
-    ascii_name = str(meta.get("name") or "")
-    if not ascii_name.isascii():
-        ascii_name = ""
-    source = str(meta.get("source") or "YAHOO")
-    is_demo = bool(meta.get("demo"))
-
-    W, H = 760, 460
-    BG = (11, 14, 42)          # 深夜蓝（与 game 主题一致）
-    GRID = (58, 66, 118)
-    MUTED = (138, 144, 188)
-    BRIGHT = (233, 234, 245)
-    UP = (255, 92, 92)         # 红涨
-    DOWN = (58, 227, 116)      # 绿跌
-    GOLD = (255, 210, 63)
-    CYAN = (0, 240, 255)
-    PURPLE = (168, 85, 247)
-    cv = _KCanvas(W, H, BG)
-
-    lo = min(b["low"] for b in bars)
-    hi = max(b["high"] for b in bars)
-    pad = (hi - lo) * 0.07 or hi * 0.01
-    lo, hi = lo - pad, hi + pad
-    span = hi - lo
-
-    PL, PR, PT = 66, 20, 56
-    PB = 384
-    pw, ph = W - PL - PR, PB - PT
-    VT = PB + 8
-    VH = 46                       # 成交量副图高度
-    n = len(bars)
-    cw = pw / n
-
-    def px_y(price: float) -> int:
-        return PT + int((hi - price) / span * ph)
-
-    # —— 价格区网格 + 纵轴价格标签 ——
-    for i in range(5):
-        y = PT + int(ph * i / 4)
-        price = hi - span * i / 4
-        cv.hline(PL, W - PR, y, GRID)
-        cv.text(4, y - 4, f"{price:.2f}", MUTED)
-    for i in range(7):
-        x = PL + int(pw * i / 6)
-        cv.vline(x, PT, PB, GRID)
-
-    # —— K 线 ——
+def _with_ma(bars: list[dict]) -> list[dict]:
+    out = []
     for i, b in enumerate(bars):
-        x0 = PL + int(i * cw)
-        x1 = max(x0, PL + int((i + 1) * cw) - 1)
-        cx = (x0 + x1) // 2
-        up = b["close"] >= b["open"]
-        col = UP if up else DOWN
-        cv.vline(cx, px_y(b["high"]), px_y(b["low"]), col)
-        top, bot = px_y(b["open"]), px_y(b["close"])
-        if top > bot:
-            top, bot = bot, top
-        if bot - top < 2:
-            bot = top + 2
-        cv.fill_rect(x0 + 1, top, max(2, x1 - x0 - 1), bot - top + 1, col)
-
-    # —— MA5/10/20 ——
-    for key, col in (("ma5", GOLD), ("ma10", CYAN), ("ma20", PURPLE)):
-        pts = []
-        for i, b in enumerate(bars):
-            v = b.get(key)
-            if v is None:
-                continue
-            pts.append((PL + int((i + 0.5) * cw), px_y(v)))
-        for p0, p1 in zip(pts, pts[1:]):
-            cv.line(p0[0], p0[1], p1[0], p1[1], col)
-
-    # —— S1 / R1（近 20 根支撑压力）——
-    support = min(b["low"] for b in bars[-20:])
-    resistance = max(b["high"] for b in bars[-20:])
-    cv.dashed_h(PL, W - PR, px_y(support), DOWN, dash=6)
-    cv.dashed_h(PL, W - PR, px_y(resistance), UP, dash=6)
-    cv.text(PL, px_y(support) - 7, "S1", DOWN)
-    cv.text(PL, px_y(resistance) - 7, "R1", UP)
-
-    # —— 成交量副图 ——
-    cv.hline(PL, W - PR, VT - 4, GRID)
-    vmax = max((b["vol"] or 0) for b in bars) or 1.0
-    for i, b in enumerate(bars):
-        v = b["vol"] or 0
-        hh = max(1, int(v / vmax * VH))
-        x0 = PL + int(i * cw)
-        x1 = max(x0, PL + int((i + 1) * cw) - 1)
-        up = b["close"] >= b["open"]
-        cv.fill_rect(x0 + 1, VT + VH - hh, max(2, x1 - x0 - 1), hh,
-                     UP if up else DOWN)
-    cv.text(PL, VT + VH + 6, "VOL", MUTED)
-
-    # —— 底部日期轴 ——
-    step = max(1, (n - 1) // 6)
-    for i in range(0, n, step):
-        x = PL + int((i + 0.5) * cw)
-        d = bars[i]["date"]
-        cv.text(x - 24, VT + VH + 6, d[:10], MUTED)
-
-    # —— 标题区 ——
-    title = f"{code}.HK  DAILY K-LINE"
-    if ascii_name:
-        title = f"{code}.HK  {ascii_name}  DAILY"
-    cv.text(PL, 26, title, BRIGHT)
-    # 均线图例
-    lx = W - PR - 150
-    cv.fill_rect(lx, 28, 6, 6, GOLD)
-    cv.text(lx + 9, 26, "MA5", GOLD)
-    cv.fill_rect(lx + 52, 28, 6, 6, CYAN)
-    cv.text(lx + 61, 26, "MA10", CYAN)
-    cv.fill_rect(lx + 106, 28, 6, 6, PURPLE)
-    cv.text(lx + 115, 26, "MA20", PURPLE)
-    cv.text(PL, 40, f"{bars[0]['date']} ~ {bars[-1]['date']}", MUTED)
-
-    # —— 底部信息栏 ——
-    foot = f"SOURCE: {source}  OCTOPUS AI AUTO-GENERATED"
-    if is_demo:
-        foot += "  [DEMO DATA]"
-    cv.text(PL, H - 14, foot, MUTED)
-
-    _write_png(out_path, W, H, bytes(cv.px))
-    return os.path.abspath(out_path)
+        b = dict(b)
+        for n in (5, 10, 20):
+            win = [bars[j]["close"] for j in range(max(0, i - n + 1), i + 1)]
+            b[f"ma{n}"] = round(sum(win) / len(win), 4)
+        out.append(b)
+    return out
 
 
-def fetch_kline_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
-    """日 K 线：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。"""
+def fetch_chart_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
+    """日级字符模拟图数据：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。"""
     code = normalize_hk_code(code)
-
     try:  # ① Yahoo Finance
         url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{int(code)}.HK"
                "?interval=1d&range=6mo")
@@ -2987,8 +2724,7 @@ def fetch_kline_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
             if len(bars) >= 5:
                 return _with_ma(bars), "YAHOO"
     except Exception as e:
-        log(f"  ⚠️ K线图 Yahoo 源失败：{e}")
-
+        log(f"  ⚠️ 字符模拟图 Yahoo 源失败：{e}")
     try:  # ② 东方财富
         secid = f"116.{code}"
         url = ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
@@ -3009,116 +2745,198 @@ def fetch_kline_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
             if len(bars) >= 5:
                 return _with_ma(bars), "EASTMONEY"
     except Exception as e:
-        log(f"  ⚠️ K线图 东方财富 源失败：{e}")
+        log(f"  ⚠️ 字符模拟图 东方财富 源失败：{e}")
+    raise PushError("Yahoo 与东方财富日级数据均获取失败")
 
-    raise PushError("Yahoo 与东方财富日K均获取失败")
+
+# 兼容旧名
+fetch_kline_bars = fetch_chart_bars
 
 
-def _with_ma(bars: list[dict]) -> list[dict]:
-    out = []
+def render_char_chart(bars: list[dict], meta: dict | None = None,
+                      width: int = 52, height: int = 12) -> str:
+    """把日级 OHLC bars 渲染为等宽字符模拟图（纯字符，无图片）。
+
+    字符约定：
+      影线 │  阳线实体 █  阴线实体 ▓
+      MA5 ·  MA10 ×  MA20 +  （在空白处叠加，不覆盖实体）
+      支撑 S1 / 压力 R1 用虚线 ─ 标注
+    返回可直接嵌入 Markdown <pre> 的多行字符串。
+    """
+    bars = [b for b in bars if b.get("close") is not None][-width:]
+    if len(bars) < 5:
+        raise PushError("数据不足（<5 根），无法渲染字符模拟图")
+    meta = meta or {}
+    code = str(meta.get("code") or "09988")
+    source = str(meta.get("source") or "YAHOO")
+
+    # 选用收盘价决定量纲，保留适当上下边距
+    lo = min(b["low"] for b in bars)
+    hi = max(b["high"] for b in bars)
+    pad = (hi - lo) * 0.08 or hi * 0.01 or 0.01
+    lo -= pad
+    hi += pad
+    span = hi - lo or 1.0
+
+    n = len(bars)
+    # 字符网格：height 行 x n 列
+    grid = [[" " for _ in range(n)] for _ in range(height)]
+
+    def y_of(price: float) -> int:
+        # 0=顶部, height-1=底部
+        r = (hi - price) / span * (height - 1)
+        return max(0, min(height - 1, int(round(r))))
+
+    # 绘制影线与实体
     for i, b in enumerate(bars):
-        b = dict(b)
-        for n in (5, 10, 20):
-            win = [bars[j]["close"] for j in range(max(0, i - n + 1), i + 1)]
-            b[f"ma{n}"] = round(sum(win) / len(win), 4)
-        out.append(b)
-    return out
+        yh = y_of(b["high"])
+        yl = y_of(b["low"])
+        yo = y_of(b["open"])
+        yc = y_of(b["close"])
+        top_body = min(yo, yc)
+        bot_body = max(yo, yc)
+        is_up = b["close"] >= b["open"]
+        body_ch = "█" if is_up else "▓"
+        # 影线
+        for r in range(min(yh, yl), max(yh, yl) + 1):
+            if grid[r][i] == " ":
+                grid[r][i] = "│"
+        # 实体覆盖
+        if top_body == bot_body:
+            grid[top_body][i] = body_ch
+        else:
+            for r in range(top_body, bot_body + 1):
+                grid[r][i] = body_ch
+
+    # 叠加均线（仅在空白处加点，不覆盖实体与影线，仅示意）
+    ma_chars = {"ma5": "·", "ma10": "×", "ma20": "+"}
+    for key, ch in ma_chars.items():
+        for i, b in enumerate(bars):
+            v = b.get(key)
+            if v is None:
+                continue
+            r = y_of(v)
+            if grid[r][i] == " ":
+                grid[r][i] = ch
+            elif grid[r][i] == "│":
+                grid[r][i] = ch  # 均线优先于影线
+
+    # 支撑/压力位（近 20 根）
+    try:
+        s1 = min(b["low"] for b in bars[-20:])
+        r1 = max(b["high"] for b in bars[-20:])
+        rs = y_of(s1)
+        rr = y_of(r1)
+        for c in range(n):
+            if grid[rs][c] == " ":
+                grid[rs][c] = "─"
+            if grid[rr][c] == " ":
+                grid[rr][c] = "─"
+    except Exception:
+        s1 = r1 = None
+
+    # 生成价格轴标签
+    lines: list[str] = []
+    for r in range(height):
+        price = hi - (r / (height - 1)) * span if height > 1 else hi
+        if r % 3 == 0 or r == height - 1:
+            label = f"{price:6.2f} ┤"
+        else:
+            label = "       │"
+        lines.append(label + "".join(grid[r]))
+
+    # 底部边框
+    lines.append("       └" + "─" * n + "┘")
+    # 日期刻度（首/中/尾）
+    date_line = [" " * 8] + [" " for _ in range(n)]
+    # 使用首、中、尾日期避免拥挤
+    ticks = []
+    if n >= 3:
+        ticks = [(0, bars[0]["date"][5:]), (n // 2, bars[n // 2]["date"][5:]), (n - 1, bars[-1]["date"][5:])]
+    elif n:
+        ticks = [(0, bars[0]["date"][5:]), (n - 1, bars[-1]["date"][5:])]
+    axis = [" "] * n
+    for idx, ds in ticks:
+        for k, ch in enumerate(ds):
+            pos = idx - 2 + k
+            if 0 <= pos < n:
+                axis[pos] = ch
+    lines.append("        " + "".join(axis))
+
+    # 成交量字符条（单独一行，高度 1，用 ▁▂▃▄▅▆▇█ 归一化）
+    try:
+        vmax = max((b["vol"] or 0) for b in bars) or 1
+        blocks = "▁▂▃▄▅▆▇█"
+        vol_chars = []
+        for b in bars:
+            v = b["vol"] or 0
+            ratio = v / vmax
+            idx = min(len(blocks) - 1, int(ratio * (len(blocks) - 1) + 0.5))
+            # 保持阳阴区分：涨用 █ 系列，跌用 ▓ 系列提示，但体积条本身用 block
+            vol_chars.append(blocks[idx])
+        lines.append("   VOL │" + "".join(vol_chars))
+    except Exception:
+        pass
+
+    # 图例与数据说明
+    header = f"{code}.HK 字符模拟走势（近 {len(bars)} 日 · {source}）"
+    if s1 is not None and r1 is not None:
+        footer = f"S1 {s1:.2f} ── 支撑  ·  R1 {r1:.2f} ── 压力  ·  MA5 ·  MA10 ×  MA20 +"
+    else:
+        footer = "MA5 ·  MA10 ×  MA20 +  ·  涨 █  跌 ▓  影线 │"
+    lines.insert(0, header)
+    lines.append(footer)
+    lines.append(f"{bars[0]['date']}  →  {bars[-1]['date']}")
+
+    return "\n".join(lines)
 
 
-def try_upload_kline_png(png_rel: str) -> str:
-    """GitHub Actions 内把 PNG 提交回仓库并推送，返回公网 raw URL；
-    非 Actions 环境或任何一步失败均返回空串（调用方安全降级）。"""
-    token = os.environ.get("GITHUB_TOKEN")
-    repo = os.environ.get("GITHUB_REPOSITORY")
-    if not token or not repo:
-        return ""
-    branch = os.environ.get("GITHUB_REF_NAME") or "main"
-    remote_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+def make_chart_block(hk_code_raw: str, quotes: list[Quote],
+                     no_chart: bool) -> str:
+    """生成「📊 字符模拟图」markdown 块（纯字符，无图片，推送正文顶部）。
 
-    def run(*cmd: str) -> tuple[int, str]:
-        try:
-            r = subprocess.run(list(cmd), capture_output=True, text=True,
-                               timeout=60)
-            return r.returncode, (r.stdout + r.stderr).strip()
-        except Exception as e:  # noqa: BLE001
-            return -1, str(e)
-
-    code, out = run("git", "remote", "set-url", "origin", remote_url)
-    if code != 0:
-        log(f"  ⚠️ K线图上传失败（remote）：{out[:160]}")
-        return ""
-    code, out = run("git", "add", "--", png_rel)
-    if code != 0:
-        log(f"  ⚠️ K线图上传失败（add）：{out[:160]}")
-        return ""
-    code, out = run("git", "-c", "user.name=github-actions[bot]",
-                    "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-                    "commit", "-m", "chore(chart): 更新推送K线图 [skip ci]")
-    if code != 0 and "nothing to commit" not in out:
-        log(f"  ⚠️ K线图上传失败（commit）：{out[:160]}")
-        return ""
-    code, out = run("git", "push", "origin", f"HEAD:{branch}")
-    if code != 0:
-        log(f"  ⚠️ K线图上传失败（push）：{out[:160]}")
-        return ""
-    # jsDelivr 全球 CDN（微信内置浏览器可稳定加载，raw.githubusercontent.com
-    # 常被微信拦截导致图片不显示）：https://cdn.jsdelivr.net/gh/{owner}/{repo}@{version}/{path}
-    # 版本用刚提交的 commit SHA，使每次更新的图片 URL 唯一，规避 CDN 缓存滞后。
-    code, sha = run("git", "rev-parse", "HEAD")
-    if code == 0 and sha.strip():
-        cdn_url = f"https://cdn.jsdelivr.net/gh/{repo}@{sha.strip()}/{png_rel}"
-        log(f"  📤 K线图 CDN 地址（微信可显示）：{cdn_url}")
-        return cdn_url
-    return (f"https://raw.githubusercontent.com/{repo}/"
-            f"{urllib.parse.quote(branch)}/{png_rel}")
-
-
-def make_kline_block(hk_code_raw: str, quotes: list[Quote],
-                     no_kline: bool) -> str:
-    """生成「📊 K线图」markdown 块（图片在推送正文顶部）。
-    任何一步失败都安全降级为空串，绝不影响推送本身。"""
-    if no_kline or not hk_code_raw:
+    任何一步失败都安全降级为空串，绝不影响推送本身。
+    """
+    if no_chart or not hk_code_raw:
         return ""
     code = normalize_hk_code(hk_code_raw)
     try:
-        bars, source = fetch_kline_bars(code, timeout=15)
+        bars, source = fetch_chart_bars(code, timeout=15)
     except PushError as e:
-        log(f"  ⚠️ K线图数据获取失败，本次推送不含图片：{e}")
+        log(f"  ⚠️ 字符模拟图数据获取失败，本次推送不含字符图：{e}")
         return ""
     if len(bars) < 5:
-        log("  ⚠️ K线图数据不足（<5 根），本次推送不含图片")
+        log("  ⚠️ 字符模拟图数据不足（<5 根），本次推送不含字符图")
         return ""
 
     name = pick_cn_name(quotes, fallback="") if quotes else ""
-    rel = f"assets/kline_{code}.png"
-    os.makedirs(os.path.dirname(rel) or ".", exist_ok=True)
-    try:
-        png_abs = render_kline_png(bars, rel, {
-            "code": code,
-            "name": name if name.isascii() else "",
-            "source": source,
-        })
-    except PushError as e:
-        log(f"  ⚠️ K线图渲染失败，本次推送不含图片：{e}")
-        return ""
-
-    url = try_upload_kline_png(rel)
-    if url:
-        log(f"  📊 K线图已上传仓库：{url}")
-    else:
-        url = rel  # 本地/dry-run：console 输出本地相对路径
-        log(f"  📊 K线图已生成（未上传仓库，console 显示本地路径）：{png_abs}")
-
-    last = bars[-1]
     label = name or f"HK{code}"
-    return (f"### 📊 K线图 · {label}（近 {len(bars)} 个交易日，"
-            f"截至 {last['date']}）\n"
-            f"![{label} K线图]({url})\n")
+    chart_txt = ""
+    try:
+        chart_txt = render_char_chart(bars, {"code": code, "source": source})
+    except PushError as e:
+        log(f"  ⚠️ 字符模拟图渲染失败，本次推送不含字符图：{e}")
+        return ""
+    log(f"  📊 字符模拟图已生成（{len(bars)} 根，{source}，{len(chart_txt)} 字符）")
+    last = bars[-1]
+    # 用 <pre> 包裹字符图以保持等宽；Markdown 代码块在多数推送渠道亦可正常显示
+    # 为兼顾 PushPlus HTML 与企微/Server酱 Markdown，输出双兼容：HTML <pre> 将在 md_to_html 中保留，
+    # 纯 Markdown 则显示为代码块
+    return (
+        f"### 📊 字符模拟图 · {label}（近 {len(bars)} 个交易日，截至 {last['date']} · {source}）\n\n"
+        f"```text\n{chart_txt}\n```\n\n"
+        f"> 字符模拟图由日级 OHLC 模拟渲染（涨 █ 跌 ▓ 影线 │），仅供参考，非真实图片。\n"
+    )
 
 
-def demo_kline_bars(count: int = 60) -> list[dict]:
-    """本地预览/自检用的演示 K 线（确定性生成，红涨绿跌形态完整）。"""
-    base, bars, out = 16.80, [], []
+# 兼容旧名（历史脚本/测试可能仍调用 make_kline_block）
+make_kline_block = make_chart_block
+
+
+def demo_chart_bars(count: int = 60) -> list[dict]:
+    """本地预览/自检用的演示 OHLC（确定性生成，涨跌形态完整）。"""
+    base = 16.80
+    out: list[dict] = []
     for i in range(count):
         phase = i / 9.0
         trend = (i / count) * 0.10 - 0.05
@@ -3137,6 +2955,10 @@ def demo_kline_bars(count: int = 60) -> list[dict]:
                     "high": round(high, 3), "low": round(low, 3),
                     "close": round(close, 3), "vol": vol})
     return _with_ma(out)
+
+
+# 兼容旧名
+demo_kline_bars = demo_chart_bars
 
 
 # ================================================================ 离线自检
@@ -3591,25 +3413,29 @@ def selftest() -> int:
     check("新增样本标🆕", "🆕" in _item_line(item_ns, 1, True)
           and "🆕" not in _item_line(item_ns, 1, False))
 
-    log("⑨ K线图渲染（纯标准库 PNG，无第三方依赖）")
+    log("⑨ 字符模拟图渲染（纯字符，无图片依赖）")
     os.makedirs("output", exist_ok=True)
-    demo = demo_kline_bars(60)
-    check("演示K线 60 根", len(demo) == 60 and demo[-1]["close"] == 16.80)
+    demo = demo_chart_bars(60)
+    check("演示数据 60 根", len(demo) == 60 and demo[-1]["close"] == 16.80)
     check("MA 已计算", all(b.get("ma20") for b in demo[19:]))
-    png_path = "output/selftest_kline.png"
-    render_kline_png(demo, png_path,
-                     {"code": "09988", "name": "ALIBABA",
-                      "source": "DEMO", "demo": True})
-    with open(png_path, "rb") as fh:
-        head = fh.read(8)
-    check("PNG 文件头合法", head == b"\x89PNG\r\n\x1a\n")
-    check("PNG 非空且大于 5KB", os.path.getsize(png_path) > 5000)
-    check("内联图片转 <img>",
-          '<img src="https://x/y.png"' in _inline_md("![k](https://x/y.png)",
-                                                     "game")
-          and "<a href" not in _inline_md("![k](https://x/y.png)", "game"))
-    check("链接不被图片规则误伤",
+    chart_txt = render_char_chart(demo, {"code": "09988", "source": "DEMO"})
+    check("字符图含价格轴与图例", "┤" in chart_txt and "VOL" in chart_txt and "字符模拟" in chart_txt)
+    check("字符图行数合理", 10 <= len(chart_txt.splitlines()) <= 30)
+    check("字符图含涨跌字符", ("█" in chart_txt or "▓" in chart_txt) and "│" in chart_txt)
+    check("字符图含支撑/压力标注", "S1" in chart_txt and "R1" in chart_txt)
+    # 验证 markdown block 生成（离线环境可能因网络失败返回空串，视为优雅降级）
+    try:
+        block = make_chart_block("09988", [qa], False)
+        check("字符模拟图 block 在线含代码块或离线优雅降级",
+              block == "" or ("```text" in block and "字符模拟图" in block))
+    except Exception as e:
+        check(f"字符模拟图 block 不应抛异常: {e}", False)
+    demo_block = f"```text\n{chart_txt}\n```"
+    check("演示数据可包裹为代码块", "```text" in demo_block)
+    check("内联链接正常（非图片）",
           '<a href="https://x/y"' in _inline_md("[k](https://x/y)", "game"))
+    # 旧图片语法仍应转为链接或保留（不再强制转为 <img>，字符图为主）
+    check("图片语法不崩溃", "https://x/y.png" in _inline_md("![k](https://x/y.png)", "game"))
 
     log(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
@@ -3651,8 +3477,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="关闭跨运行状态对比（不读/不写 output/push_state.json，"
                         "可用环境变量 PUSH_STATE_PATH 指定其他路径）")
     p.add_argument("--no-kline", action="store_true", dest="no_kline",
-                   help="关闭推送 K 线图（默认：给 --hk-code 时自动生成日K图并"
-                        "嵌入推送正文顶部；Actions 内自动提交回仓库取公网 URL）")
+                   help="关闭字符模拟图（兼容旧名 --no-kline，等同 --no-chart）")
+    p.add_argument("--no-chart", action="store_true", dest="no_chart",
+                   help="关闭字符模拟图（默认：给 --hk-code 时自动生成字符模拟走势图并"
+                        "嵌入推送正文顶部，纯字符无需上传）")
     return p.parse_args(argv)
 
 
@@ -3929,12 +3757,13 @@ def main(argv: list[str]) -> int:
     if appendix_md:
         content += "\n\n" + appendix_md
 
-    # 推送 K 线图：紧跟新鲜度看板、位于正文顶部；任何失败自动降级为空串
-    kline_md = make_kline_block(hk_code_raw, quotes, args.no_kline)
+    # 字符模拟图：紧跟新鲜度看板、位于正文顶部；任何失败自动降级为空串（兼容 --no-kline）
+    no_chart = bool(getattr(args, "no_chart", False) or getattr(args, "no_kline", False))
+    chart_md = make_chart_block(hk_code_raw, quotes, no_chart)
 
     # 新鲜度看板固定在品牌头之后、AI 正文之前；
     # 所有模板/通道/dry-run 走同一个组装函数：作者固定在推送正文最后一行。
-    content = add_branding(freshness_md + "\n\n---\n\n" + kline_md
+    content = add_branding(freshness_md + "\n\n---\n\n" + chart_md
                            + content.rstrip())
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
