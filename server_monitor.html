@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>章鱼 AI · 服务器大屏监视中心 (NOC Telemetry Wallboard)</title>
+    <style>
+        :root {
+            --bg-deep: #06090e;
+            --bg-panel: #0a0f1d;
+            --bg-card: #0d1527;
+            --bg-card-hover: #121c33;
+            --border-glow: #00f0ff;
+            --border-dim: #1e293b;
+            --border-subtle: rgba(0, 240, 255, 0.2);
+            --cyan: #00f0ff;
+            --green: #00ff9d;
+            --amber: #ffb800;
+            --red: #ff3366;
+            --purple: #a855f7;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --font-mono: 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
+            --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.35);
+            --glow-green: 0 0 15px rgba(0, 255, 157, 0.35);
+            --glow-red: 0 0 15px rgba(255, 51, 102, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.5;
+            min-height: 100vh;
+            padding: 12px;
+            position: relative;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
+                repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px),
+                repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px);
+        }
+
+        /* CRT 扫描线特效 (可开关) */
+        .crt-scanline {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 6px 100%;
+            z-index: 9999;
+            opacity: 0.7;
+        }
+
+        /* 大屏主容器 */
+        .dashboard-container {
+            max-width: 1720px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* 顶部 HUD 状态栏 */
+        .hud-header {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            box-shadow: var(--glow-cyan);
+            padding: 10px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            position: relative;
+        }
+
+        .hud-header::before, .hud-header::after {
+            content: "⌜";
+            position: absolute;
+            top: -2px; left: -2px;
+            color: var(--cyan);
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .hud-header::after {
+            content: "⌟";
+            top: auto; left: auto;
+            bottom: -2px; right: -2px;
+        }
+
+        .hud-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .hud-logo {
+            width: 24px;
+            height: 24px;
+            background: var(--cyan);
+            color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 14px;
+            box-shadow: var(--glow-cyan);
+        }
+
+        .hud-title {
+            font-size: 15px;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            color: var(--cyan);
+            text-transform: uppercase;
+        }
+
+        .hud-subtitle {
+            font-size: 10px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+        }
+
+        .hud-clocks {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            font-size: 11px;
+        }
+
+        .clock-badge {
+            background: rgba(0, 240, 255, 0.08);
+            border: 1px solid var(--border-subtle);
+            padding: 3px 8px;
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.4; }
+        }
+
+        .hud-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn-action {
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            padding: 4px 10px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-action:hover {
+            background: var(--cyan);
+            color: #000;
+            box-shadow: var(--glow-cyan);
+        }
+
+        /* 标的切换栏 (横排) */
+        .stock-selector-ribbon {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-x: auto;
+        }
+
+        .selector-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            white-space: nowrap;
+            letter-spacing: 1px;
+        }
+
+        .stock-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-muted);
+            padding: 4px 12px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .stock-btn.active {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: rgba(0, 240, 255, 0.12);
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            font-weight: bold;
+        }
+
+        /* 横排集群节点状态流 */
+        .node-stream {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 8px 12px;
+        }
+
+        .node-pill {
+            flex: 1 1 200px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            padding: 5px 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .node-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--green);
+            border-radius: 50%;
+            box-shadow: 0 0 6px var(--green);
+        }
+
+        .node-id {
+            color: var(--cyan);
+            font-weight: bold;
+        }
+
+        .node-role {
+            color: var(--text-muted);
+        }
+
+        .node-stat {
+            margin-left: auto;
+            color: var(--green);
+            font-size: 10px;
+        }
+
+        /* 横排核心 KPI 指标带 (零表格) */
+        .metric-ribbon {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .kpi-card {
+            flex: 1 1 calc(20% - 10px);
+            min-width: 220px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 10px 14px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .kpi-card:hover {
+            border-color: var(--cyan);
+            background: var(--bg-card);
+        }
+
+        .kpi-card.highlight-cyan { border-left: 3px solid var(--cyan); }
+        .kpi-card.highlight-green { border-left: 3px solid var(--green); }
+        .kpi-card.highlight-red { border-left: 3px solid var(--red); }
+
+        .kpi-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .kpi-value {
+            font-size: 20px;
+            font-weight: 900;
+            line-height: 1.2;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .kpi-foot {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .cyan-glow { color: var(--cyan); text-shadow: 0 0 10px rgba(0,240,255,0.4); }
+        .green-glow { color: var(--green); text-shadow: 0 0 10px rgba(0,255,157,0.4); }
+        .amber-glow { color: var(--amber); text-shadow: 0 0 10px rgba(255,184,0,0.4); }
+        .purple-glow { color: var(--purple); text-shadow: 0 0 10px rgba(168,85,247,0.4); }
+
+        .pill-badge {
+            font-size: 11px;
+            padding: 1px 6px;
+            border: 1px solid;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+        .badge-green { background: rgba(0,255,157,0.15); color: var(--green); border-color: var(--green); }
+
+        /* 模块通用标题 */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            border-left: 3px solid var(--cyan);
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--cyan);
+            letter-spacing: 1px;
+        }
+
+        .section-tag {
+            font-size: 10px;
+            color: var(--text-dim);
+            font-weight: normal;
+        }
+
+        /* 横排七大因子矩阵 (零表格，纯横向卡片流) */
+        .factors-matrix-horiz {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 10px;
+        }
+
+        .factor-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .factor-card:hover {
+            background: var(--bg-card);
+            border-color: var(--cyan);
+            transform: translateY(-1px);
+        }
+
+        .factor-card.factor-up { border-top: 2px solid var(--green); }
+        .factor-card.factor-down { border-top: 2px solid var(--red); }
+
+        .factor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .factor-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .cyber-bullet {
+            font-size: 10px;
+        }
+
+        .dir-up { color: var(--green); font-weight: bold; }
+        .dir-down { color: var(--red); font-weight: bold; }
+
+        .factor-meter-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .meter-bar {
+            flex: 1;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .meter-fill {
+            height: 100%;
+            transition: width 0.6s ease;
+        }
+        .fill-green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .fill-red { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+        .meter-val {
+            font-size: 11px;
+            font-weight: bold;
+            width: 32px;
+            text-align: right;
+        }
+        .val-green { color: var(--green); }
+        .val-red { color: var(--red); }
+
+        .factor-badges {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .factor-pill {
+            font-size: 9px;
+            padding: 1px 5px;
+            background: rgba(0, 240, 255, 0.1);
+            color: var(--cyan);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+        }
+        .tag-muted {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .factor-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+            margin-top: 2px;
+        }
+
+        /* 深度文字研判解读 */
+        .text-analysis-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .analysis-headline {
+            font-size: 13px;
+            font-weight: bold;
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .analysis-paragraph {
+            font-size: 12px;
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        /* 横排关联板块流 */
+        .sectors-stream {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 0;
+        }
+
+        .sector-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 4px 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        .sector-chip:hover {
+            border-color: var(--cyan);
+        }
+
+        .sector-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .chip-up .sector-dot { background: var(--green); }
+        .chip-down .sector-dot { background: var(--red); }
+
+        .sector-name { color: var(--text-main); font-weight: bold; }
+        .sector-count { color: var(--text-dim); font-size: 10px; }
+        .sector-trend { font-weight: bold; }
+        .trend-up { color: var(--green); }
+        .trend-down { color: var(--red); }
+
+        /* 横排预警与监控项清单 */
+        .alerts-stream {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 4px 0;
+        }
+
+        .alert-chip {
+            flex: 1 1 300px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+        }
+        .alert-up { border-left: 3px solid var(--green); }
+        .alert-down { border-left: 3px solid var(--red); }
+
+        .alert-tag {
+            font-size: 10px;
+            font-weight: bold;
+            padding: 1px 5px;
+            background: rgba(255, 255, 255, 0.05);
+            white-space: nowrap;
+        }
+        .alert-up .alert-tag { color: var(--green); }
+        .alert-down .alert-tag { color: var(--red); }
+
+        .alert-body { color: var(--text-muted); }
+
+        /* 横排十四平台实时情报雷达流 (卡片横排流) */
+        .feeds-matrix-horiz {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+        }
+
+        .feed-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+
+        .feed-card:hover {
+            background: var(--bg-card);
+            border-color: var(--cyan);
+        }
+
+        .feed-top {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+        }
+
+        .feed-src {
+            color: var(--cyan);
+            font-weight: bold;
+        }
+
+        .feed-cat {
+            padding: 0 4px;
+            font-size: 9px;
+        }
+        .cat-fin { background: rgba(0, 240, 255, 0.1); color: var(--cyan); }
+        .cat-soc { background: rgba(168, 85, 247, 0.1); color: var(--purple); }
+
+        .feed-time {
+            color: var(--text-dim);
+            margin-left: auto;
+        }
+
+        .feed-badge {
+            padding: 0 4px;
+            font-size: 9px;
+            font-weight: bold;
+        }
+        .badge-pos { background: rgba(0, 255, 157, 0.15); color: var(--green); }
+        .badge-neg { background: rgba(255, 51, 102, 0.15); color: var(--red); }
+        .badge-neu { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+
+        .feed-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: var(--text-main);
+            line-height: 1.3;
+        }
+
+        .feed-summary {
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* 终端实时日志流 */
+        .terminal-panel {
+            background: #04060a;
+            border: 1px solid var(--border-dim);
+            padding: 8px 12px;
+            font-size: 11px;
+            color: var(--text-muted);
+            max-height: 90px;
+            overflow-y: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .log-line {
+            display: flex;
+            gap: 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .log-ts { color: var(--text-dim); }
+        .log-tag { color: var(--cyan); }
+        .log-msg { color: var(--text-main); }
+
+        /* 底部品牌与声明 */
+        .hud-footer {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            padding: 8px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .footer-brand {
+            color: var(--cyan);
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .footer-author {
+            color: var(--amber);
+        }
+
+        .footer-disclaimer {
+            color: var(--text-dim);
+            font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="scanline" class="crt-scanline"></div>
+
+    <div class="dashboard-container">
+        <!-- 顶部 HUD 状态栏 -->
+        <header class="hud-header">
+            <div class="hud-brand">
+                <div class="hud-logo">🐙</div>
+                <div>
+                    <div class="hud-title">OCTOPUS-AI · 服务器大屏智能监视中心</div>
+                    <div class="hud-subtitle">NOC TELEMETRY WALLBOARD · 全网多源大模型混合部署 AI 调研平台</div>
+                </div>
+            </div>
+
+            <div class="hud-clocks">
+                <div class="clock-badge">
+                    <span class="pulse-dot"></span>
+                    <span id="cst-clock">2026-08-07 11:23:28 CST (北京时间)</span>
+                </div>
+                <div class="clock-badge">
+                    <span style="color:var(--text-dim);">UTC</span>
+                    <span id="utc-clock">2026-08-07 03:23:28 UTC</span>
+                </div>
+                <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
+                    <span>● REC LIVE 60 FPS</span>
+                </div>
+            </div>
+
+            <div class="hud-controls">
+                <button class="btn-action" onclick="toggleAudio()">🔊 音效: <span id="audio-state">开</span></button>
+                <button class="btn-action" onclick="toggleScanline()">📺 扫描线</button>
+                <button class="btn-action" onclick="toggleFullscreen()">⛶ 全屏大屏</button>
+                <button class="btn-action" style="background:var(--cyan);color:#000;" onclick="manualRefresh()">⚡ 实时刷新</button>
+            </div>
+        </header>
+
+        <!-- 标的切换栏 (横排) -->
+        <div class="stock-selector-ribbon">
+            <span class="selector-label">📡 监视标的切换:</span>
+            <button class="stock-btn active" onclick="switchStock('09988')">09988 阿里巴巴 (Alibaba)</button>
+            <button class="stock-btn " onclick="switchStock('00700')">00700 腾讯控股 (Tencent)</button>
+            <button class="stock-btn " onclick="switchStock('03690')">03690 美团 (Meituan)</button>
+            <span style="margin-left:auto;color:var(--green);font-size:11px;">三源核验可信度: <strong>99.4% (三源核验一致)</strong></span>
+        </div>
+
+        <!-- 🖥️ 横排服务器集群节点状态流 -->
+        <div class="node-stream">
+            
+    <div class="node-pill">
+        <span class="node-dot"></span>
+        <span class="node-id">HK-Master-01</span>
+        <span class="node-role">香港主控调度中心</span>
+        <span class="node-stat">ONLINE · 2ms · 负载 24%</span>
+    </div>
+    
+    <div class="node-pill">
+        <span class="node-dot"></span>
+        <span class="node-id">SH-Edge-02</span>
+        <span class="node-role">上海低延时接入点</span>
+        <span class="node-stat">ONLINE · 11ms · 负载 31%</span>
+    </div>
+    
+    <div class="node-pill">
+        <span class="node-dot"></span>
+        <span class="node-id">SG-Compute-03</span>
+        <span class="node-role">新加坡多云算力池</span>
+        <span class="node-stat">ONLINE · 28ms · 负载 42%</span>
+    </div>
+    
+    <div class="node-pill">
+        <span class="node-dot"></span>
+        <span class="node-id">AI-Node-04</span>
+        <span class="node-role">DeepSeek 推理执行集群</span>
+        <span class="node-stat">ACTIVE · 5ms · 负载 68%</span>
+    </div>
+    
+    <div class="node-pill">
+        <span class="node-dot"></span>
+        <span class="node-id">TS-Database-05</span>
+        <span class="node-role">十四源时序与情绪数据库</span>
+        <span class="node-stat">SYNCED · 1ms · 负载 19%</span>
+    </div>
+    
+        </div>
+
+        <!-- 📈 横排核心量化指标带 (绝对零表格) -->
+        
+    <div class="metric-ribbon">
+        <div class="kpi-card highlight-cyan">
+            <div class="kpi-label">标的代码 / 名称</div>
+            <div class="kpi-value cyan-glow">09988 阿里巴巴 (Alibaba)</div>
+            <div class="kpi-foot">港股行情实时核验</div>
+        </div>
+        <div class="kpi-card highlight-red">
+            <div class="kpi-label">现价 / 涨跌幅</div>
+            <div class="kpi-value" style="color:#ff3366;">
+                16.80 <span style="font-size:14px;">HKD</span>
+                <span class="pill-badge" style="background:rgba(255,51,102,0.15);color:#ff3366;border-color:#ff3366;">
+                    ▼ -1.2% (-0.20)
+                </span>
+            </div>
+            <div class="kpi-foot">24h 波动区间: 16.50 - 17.40</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">24H 成交量 / 估值</div>
+            <div class="kpi-value amber-glow">8.42M <span style="font-size:13px;color:#94a3b8;">(PE 12.4x)</span></div>
+            <div class="kpi-foot">历史分位: 15% (深度价值区)</div>
+        </div>
+        <div class="kpi-card highlight-green">
+            <div class="kpi-label">AI 预测目标价</div>
+            <div class="kpi-value green-glow">18.20 <span class="pill-badge badge-green">+8.3%</span></div>
+            <div class="kpi-foot">研判周期: 48h - 156h 窗口</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">综合研判 / 多头胜率</div>
+            <div class="kpi-value purple-glow">偏多 <span style="font-size:18px;color:#00ff9d;">68%</span></div>
+            <div class="kpi-foot">全网舆情指数: 74/100</div>
+        </div>
+    </div>
+    
+
+        <!-- 📊 横排七大因子多空矩阵 (绝对零表格，纯横排卡片流) -->
+        <div class="section-header">
+            <span>📊 七大维度多空雷达矩阵 (FACTOR TELEMETRY MATRIX)</span>
+            <span class="section-tag">横排因子流 · 包含 48H 量价舆情动量 · 绝无表格</span>
+        </div>
+        <div class="factors-matrix-horiz">
+            
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 基本面
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:65%;"></div>
+            </div>
+            <span class="meter-val val-green">65%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">业绩超预期</span>
+            <span class="factor-pill tag-muted">营收提速</span>
+        </div>
+        <div class="factor-desc">云计算营收增长提速，公共云收入双位数增长，AI相关产品收入连续五季度三位数增长。</div>
+    </div>
+    
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 行业与政策面
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:78%;"></div>
+            </div>
+            <span class="meter-val val-green">78%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">政策支持</span>
+            <span class="factor-pill tag-muted">常态化监管</span>
+        </div>
+        <div class="factor-desc">平台经济常态化监管体系明朗，数字经济与人工智能出海政策红利持续释放。</div>
+    </div>
+    
+    <div class="factor-card factor-down">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▼</span> 技术面
+            </span>
+            <span class="factor-dir dir-down">偏空</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-red" style="width:42%;"></div>
+            </div>
+            <span class="meter-val val-red">42%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">均线承压</span>
+            <span class="factor-pill tag-muted">蓄势回踩</span>
+        </div>
+        <div class="factor-desc">20日均线短期形成技术压制，MACD底部金叉酝酿中，关键支撑位在15.90附近。</div>
+    </div>
+    
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 资金面
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:71%;"></div>
+            </div>
+            <span class="meter-val val-green">71%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">+2.5% 净流入</span>
+            <span class="factor-pill tag-muted">北向增持</span>
+        </div>
+        <div class="factor-desc">主力资金连续3日维持净流入，北向与南向资金量价配合良好，机构仓位稳步提升。</div>
+    </div>
+    
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 消息与情绪面
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:68%;"></div>
+            </div>
+            <span class="meter-val val-green">68%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">全网正面</span>
+            <span class="factor-pill tag-muted">热搜发酵</span>
+        </div>
+        <div class="factor-desc">财报与自研大模型开源引发科技社媒高度关注，全网情绪得分74，利好研报集中。</div>
+    </div>
+    
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 估值面
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:82%;"></div>
+            </div>
+            <span class="meter-val val-green">82%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">12.4x PE</span>
+            <span class="factor-pill tag-muted">15%分位</span>
+        </div>
+        <div class="factor-desc">滚动市盈率位于近五年15%极低分位，现金流充沛且回购力度持续加大，安全边际深厚。</div>
+    </div>
+    
+    <div class="factor-card factor-up">
+        <div class="factor-header">
+            <span class="factor-title">
+                <span class="cyber-bullet">▲</span> 量价舆情动量（48h）
+            </span>
+            <span class="factor-dir dir-up">偏多</span>
+        </div>
+        <div class="factor-meter-wrap">
+            <div class="meter-bar">
+                <div class="meter-fill fill-green" style="width:75%;"></div>
+            </div>
+            <span class="meter-val val-green">75%</span>
+        </div>
+        <div class="factor-badges">
+            <span class="factor-pill">动量强劲</span>
+            <span class="factor-pill tag-muted">量增价升</span>
+        </div>
+        <div class="factor-desc">48小时窗口内量价与新闻样本本地预聚合，放量上攻形态确认，多头动量占优。</div>
+    </div>
+    
+        </div>
+
+        <!-- 📝 核心文字解读与研判要点 -->
+        <div class="text-analysis-panel">
+            <div class="analysis-headline">
+                <span>✦</span> 标的深度综述与多空研判解读 (DEEPSEEK STRATEGIC BRIEF)
+            </div>
+            <div class="analysis-paragraph">
+                阿里巴巴当前处于估值历史低位与基本面复苏拐点。阿里云业务与海外电商保持稳健提速，主力资金连续3日净流入。尽管短期技术面受20日均线压制震荡整固，但基本面与估值安全边际较高，综合研判维持偏多基调。
+            </div>
+        </div>
+
+        <!-- 🏷️ 横排关联板块与动态标签流 -->
+        <div class="section-header">
+            <span>🏷️ 关联板块与动态标签流 (SECTOR & TOPIC TAGS)</span>
+            <span class="section-tag">频次动态提取 · 子串伪影吸收</span>
+        </div>
+        <div class="sectors-stream">
+            
+    <div class="sector-chip chip-up">
+        <span class="sector-dot"></span>
+        <span class="sector-name">电商板块</span>
+        <span class="sector-count">命中 8 次</span>
+        <span class="sector-trend trend-up">+1.8%</span>
+    </div>
+    
+    <div class="sector-chip chip-up">
+        <span class="sector-dot"></span>
+        <span class="sector-name">云计算基础设施</span>
+        <span class="sector-count">命中 5 次</span>
+        <span class="sector-trend trend-up">+3.2%</span>
+    </div>
+    
+    <div class="sector-chip chip-up">
+        <span class="sector-dot"></span>
+        <span class="sector-name">AI大模型应用</span>
+        <span class="sector-count">命中 6 次</span>
+        <span class="sector-trend trend-up">+4.5%</span>
+    </div>
+    
+    <div class="sector-chip chip-up">
+        <span class="sector-dot"></span>
+        <span class="sector-name">跨境出海业务</span>
+        <span class="sector-count">命中 3 次</span>
+        <span class="sector-trend trend-up">+2.1%</span>
+    </div>
+    
+    <div class="sector-chip chip-down">
+        <span class="sector-dot"></span>
+        <span class="sector-name">新零售物流体系</span>
+        <span class="sector-count">命中 4 次</span>
+        <span class="sector-trend trend-down">-0.4%</span>
+    </div>
+    
+        </div>
+
+        <!-- 🚨 横排预警与监控项清单 -->
+        <div class="section-header">
+            <span>🚨 实时预警与监控项清单 (ACTIVE ALERT TRIGGERS)</span>
+            <span class="section-tag">动态点位跟踪 · 突破与止损防线</span>
+        </div>
+        <div class="alerts-stream">
+            
+    <div class="alert-chip alert-up">
+        <span class="alert-tag">● 监控突破</span>
+        <span class="alert-body">第一监控项：突破 20 日新高线 17.50 触发上攻警报</span>
+    </div>
+    
+    <div class="alert-chip alert-down">
+        <span class="alert-tag">▼ 风控防线</span>
+        <span class="alert-body">第二监控项：下档关键预警线 15.90 ▼（跌破需规避）</span>
+    </div>
+    
+    <div class="alert-chip alert-up">
+        <span class="alert-tag">● 监控突破</span>
+        <span class="alert-body">第三监控项：大单成交比超过 35% 且主力单笔流入超 5000 万</span>
+    </div>
+    
+        </div>
+
+        <!-- 🌐 横排十四平台实时情报雷达流 (财经7源 + 社媒7源) -->
+        <div class="section-header">
+            <span>🌐 十四平台实时情报雷达流 (14-PLATFORM INTELLIGENCE RADAR)</span>
+            <span class="section-tag">财经7源 + 社媒7源 · 156H 窗口过滤 · 横排卡片流</span>
+        </div>
+        <div class="feeds-matrix-horiz">
+            
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">Google 新闻</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">12m 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">阿里巴巴云栖大会发布最新一代开源大模型，企业客户采用率激增</div>
+        <div class="feed-summary">算力基础设施投资回报显著，商业化进程提速。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">财联社电报</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">28m 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">南向资金连续第4日净买入阿里巴巴，合计增持逾12亿港元</div>
+        <div class="feed-summary">机构资金在低估值区间积极加仓。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">华尔街见闻</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">45m 前</span>
+            <span class="feed-badge badge-neu">中性</span>
+        </div>
+        <div class="feed-title">全球科技股震荡整固，中概互联网ETF出现规模资金申购</div>
+        <div class="feed-summary">海外宏观利率预期出现调整，科技板块波动加剧。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">格隆汇</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">1h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">高盛上调阿里巴巴目标价至 18.50 港元，重申强力买入评级</div>
+        <div class="feed-summary">核心电商与云计算双轮驱动战略成效显现。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">金十数据</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">2h 前</span>
+            <span class="feed-badge badge-neu">中性</span>
+        </div>
+        <div class="feed-title">离岸人民币汇率窄幅波动，港股核心资产流动性保持充裕</div>
+        <div class="feed-summary">大市成交额维持在千亿以上水平。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">MKTNews</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">3h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">菜鸟海外本地快递网络拓展至欧洲五国，跨境时效大幅提升</div>
+        <div class="feed-summary">海外电商基础设施网络竞争力巩固。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">雪球热帖</span>
+            <span class="feed-cat cat-fin">财经</span>
+            <span class="feed-time">实时</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">【深度剖析】阿里自由现金流与回购收益率测算，当前估值性价比极高</div>
+        <div class="feed-summary">社区热度破万，多头观点占绝对主导。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">知乎热议</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">1h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">如何看待阿里最新开源的模型测评超越多项基准？</div>
+        <div class="feed-summary">技术社区开发者好评如潮，生态扩张迅猛。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">微博财经</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">实时</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">#阿里云计算提速# 登上同城财经热搜榜 Top 3</div>
+        <div class="feed-summary">公众舆情正面词频占比达 82%。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">抖音热榜</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">实时</span>
+            <span class="feed-badge badge-neu">中性</span>
+        </div>
+        <div class="feed-title">AI 赋能电商主播实测：阿里新工具降低中小商家运营成本</div>
+        <div class="feed-summary">视频播放量破千万，展现技术落地应用。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">虎扑步行街</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">4h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">聊聊港股科技股，这轮阿里回调是不是黄金坑？</div>
+        <div class="feed-summary">投票统计中 71% 网友认为当前属于高胜率买点。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">AI hot 追踪</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">2h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">Global AI Models Benchmark：Qwen 系列开源模型下载量破亿</div>
+        <div class="feed-summary">全球开发者社区关注度与星标数跃居前列。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">联合早报</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">5h 前</span>
+            <span class="feed-badge badge-neu">中性</span>
+        </div>
+        <div class="feed-title">亚太数字经济峰会聚焦中资科技企业出海新机遇</div>
+        <div class="feed-summary">东南亚市场电商与云服务渗透率持续攀升。</div>
+    </div>
+    
+    <div class="feed-card">
+        <div class="feed-top">
+            <span class="feed-src">香港01</span>
+            <span class="feed-cat cat-soc">社媒</span>
+            <span class="feed-time">6h 前</span>
+            <span class="feed-badge badge-pos">利好</span>
+        </div>
+        <div class="feed-title">恒指成份股检讨：科技巨头权重稳固，阿里交投活跃度居前</div>
+        <div class="feed-summary">港股核心指数权重股支撑作用突出。</div>
+    </div>
+    
+        </div>
+
+        <!-- 📟 终端实时日志流 -->
+        <div class="terminal-panel" id="terminal-log">
+            <div class="log-line"><span class="log-ts">[SYS.INIT]</span> <span class="log-tag">OK</span> <span class="log-msg">NOC Telemetry Cluster 04 initialized. High-frequency feeds listening.</span></div>
+            <div class="log-line"><span class="log-ts">[FEED.SYNC]</span> <span class="log-tag">OK</span> <span class="log-msg">14 platforms queried (Yahoo / EastMoney / Tencent / Google / CLS / WSCN / GLH / Jin10 / MKT / Xueqiu / Zhihu / Weibo / Douyin / Hupu / AIHot / ZaoBao / HK01).</span></div>
+            <div class="log-line"><span class="log-ts">[SENTIMENT]</span> <span class="log-tag">CALC</span> <span class="log-msg">Momentum score computed at +8.4. Cross-source confidence verified at 99.4%.</span></div>
+        </div>
+
+        <!-- 底部品牌与声明 -->
+        <footer class="hud-footer">
+            <div class="footer-brand">章鱼 AI 全景调研平台 · OCTOPUS AI LABS</div>
+            <div class="footer-author">作者：章鱼 ai 调研团队</div>
+            <div class="footer-disclaimer">声明：本大屏数据与分析结果仅供参考，不构成任何实质性投资建议。</div>
+        </footer>
+    </div>
+
+    <script>
+        // Web Audio API 模拟大屏科幻按键声与遥测脉冲
+        let audioCtx = null;
+        let audioEnabled = true;
+
+        function playBeep(freq = 880, type = 'sine', duration = 0.05) {
+            if (!audioEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            document.getElementById('audio-state').textContent = audioEnabled ? '开' : '关';
+            if (audioEnabled) playBeep(1200, 'triangle', 0.08);
+        }
+
+        function toggleScanline() {
+            const el = document.getElementById('scanline');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            playBeep(600, 'sine', 0.04);
+        }
+
+        function toggleFullscreen() {
+            playBeep(1000, 'sine', 0.06);
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        }
+
+        function switchStock(code) {
+            playBeep(920, 'triangle', 0.06);
+            window.location.href = '/?code=' + code;
+        }
+
+        function manualRefresh() {
+            playBeep(1400, 'sine', 0.08);
+            appendLog('MANUAL.REFRESH', 'QUERY', 'Triggering live cross-verification & momentum recalculation...');
+            setTimeout(() => {
+                window.location.reload();
+            }, 300);
+        }
+
+        function appendLog(tag, status, msg) {
+            const term = document.getElementById('terminal-log');
+            if (!term) return;
+            const now = new Date().toISOString().substring(11, 19);
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.innerHTML = `<span class="log-ts">[${now}]</span> <span class="log-tag">[${tag}]</span> <span class="log-msg">${msg}</span>`;
+            term.appendChild(line);
+            if (term.childNodes.length > 5) term.removeChild(term.firstChild);
+        }
+
+        // 实时时钟更新
+        setInterval(() => {
+            const now = new Date();
+            const utc = now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            // CST
+            const cstDate = new Date(now.getTime() + 8 * 3600 * 1000);
+            const cst = cstDate.toISOString().replace('T', ' ').substring(0, 19) + ' CST (北京时间)';
+            
+            const utcEl = document.getElementById('utc-clock');
+            const cstEl = document.getElementById('cst-clock');
+            if (utcEl) utcEl.textContent = utc;
+            if (cstEl) cstEl.textContent = cst;
+        }, 1000);
+
+        // 模拟遥测日志滚动
+        const logSamples = [
+            ["HEARTBEAT", "TICK", "Node HK-Master-01 reported 0 packet loss (latency 2.1ms)"],
+            ["AI.INFERENCE", "OK", "DeepSeek sentiment embedding batch completed in 18ms"],
+            ["MARKET.DATA", "FLOW", "Cross-checking price quotes across Yahoo, EastMoney, Tencent Finance... OK"],
+            ["RADAR.SCAN", "PULSE", "14 platforms active. No anomalous divergence detected."]
+        ];
+        let sampleIdx = 0;
+        setInterval(() => {
+            const s = logSamples[sampleIdx % logSamples.length];
+            appendLog(s[0], s[1], s[2]);
+            sampleIdx++;
+        }, 4500);
+    </script>
+</body>
+</html>
