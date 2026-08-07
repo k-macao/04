@@ -95,5 +95,31 @@ class TestFetchDegradation(unittest.TestCase):
         self.assertIsNone(hk_quote.fetch_quote(""))
 
 
+class TestTradeViewIntegration(unittest.TestCase):
+    def test_kline_view_data(self):
+        """测试服务器端 /api/kline 对应视图函数能否生成正确的 60 根 K 线与指标"""
+        import server_dashboard
+        d = server_dashboard.get_kline_view("09988", tf="daily", count=60)
+        self.assertEqual(d["code"], "09988")
+        self.assertEqual(len(d["bars"]), 60)
+        self.assertIn("open", d["bars"][0])
+        self.assertIn("close", d["bars"][-1])
+        self.assertIn("ma5", d["bars"][-1])
+        self.assertIn("ma10", d["bars"][-1])
+        self.assertIn("ma20", d["bars"][-1])
+        self.assertIsNotNone(d["support"])
+        self.assertIsNotNone(d["resistance"])
+
+    def test_tradeview_html_present(self):
+        """测试 render_server_monitor_html 渲染出的 HTML 是否包含 TradeView 交互组件"""
+        import server_dashboard
+        html = server_dashboard.render_server_monitor_html("09988")
+        self.assertIn("tradeview-section", html)
+        self.assertIn("TRADEVIEW", html)
+        self.assertIn("tradeview-kline-canvas", html)
+        self.assertIn("tradeview-vol-canvas", html)
+        self.assertIn("generateDefaultKlineBars", html)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
