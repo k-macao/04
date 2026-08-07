@@ -1,4 +1,4 @@
-name: Manual Run - Goldwind PushPlus+DeepSeek
+name: Manual Run - Alibaba PushPlus+DeepSeek
 on:
   workflow_dispatch:
     inputs:
@@ -27,13 +27,13 @@ on:
         type: choice
         options: [deepseek, rule, openai]
       topic:
-        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 金风科技；留空用默认）'
+        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 阿里巴巴；留空用默认）'
         required: false
         default: ''
       hk_code:
-        description: '港股代码（接入三源核验行情，如 02208=金风科技H；留空则不取数据）'
+        description: '港股代码（接入三源核验行情，如 09988=阿里巴巴H；留空则不取数据）'
         required: false
-        default: '02208'
+        default: '09988'
       risk:
         description: '风险偏好档位（仅 portfolio 模板使用）'
         required: true
@@ -51,7 +51,7 @@ on:
         required: false
         default: ''
       hours:
-        description: '数据窗口小时数（analysis/sentiment/feedscan 用，默认 48）'
+        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描 用，默认 48，支持 24/48/72/156）'
         required: false
         default: '48'
 

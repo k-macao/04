@@ -75,8 +75,8 @@ ZHIHU_SAMPLE = json.dumps({
     "data": [
         {
             "target": {
-                "title_area": {"text": "如何看待金风科技中标500MW海上风电？"},
-                "excerpt_area": {"text": "订单超预期，风电板块..."},
+                "title_area": {"text": "如何看待阿里巴巴Q3财报大超预期？"},
+                "excerpt_area": {"text": "云计算营收提速，电商板块..."},
                 "metrics_area": {"text": "1234 万热度"},
                 "link": {"url": "https://www.zhihu.com/question/123456"}
             }
@@ -124,8 +124,8 @@ DOUYIN_LOGIN_URL = "https://login.douyin.com/"
 DOUYIN_SAMPLE = json.dumps({
     "data": {
         "word_list": [
-            {"sentence_id": "123", "word": "金风科技股价大涨", "hot_value": "1234567"},
-            {"sentence_id": "124", "word": "风电装机破纪录", "hot_value": "987654"}
+            {"sentence_id": "123", "word": "阿里巴巴股价大涨", "hot_value": "1234567"},
+            {"sentence_id": "124", "word": "电商成交额破纪录", "hot_value": "987654"}
         ]
     }
 })
@@ -168,7 +168,7 @@ WEIBO_COOKIE = "SUB=_2AkMWIuNSf8NxqwJRmP8dy2rhaoV2ygrEieKgfhKJJRMxHRl-yT9jqk86tR
 
 WEIBO_SAMPLE = """
 <div id="pl_top_realtimehot"><table><tbody>
-<tr><td>1</td><td class="td-02"><a href="/weibo?q=%23%E9%87%91%E9%A3%8E%E7%A7%91%E6%8A%80%23">金风科技中标</a></td><td class="td-03">热</td></tr>
+<tr><td>1</td><td class="td-02"><a href="/weibo?q=%23%E9%87%91%E9%A3%8E%E7%A7%91%E6%8A%80%23">阿里巴巴财报</a></td><td class="td-03">热</td></tr>
 <tr><td>2</td><td class="td-02"><a href="/weibo?q=%23AI%E7%83%AD%E6%A6%9C%23">AI热榜更新</a></td><td class="td-03">新</td></tr>
 </tbody></table></div>
 """
@@ -205,8 +205,8 @@ def fetch_weibo(timeout: int = 15) -> List[HotItem]:
 # ---------------- 4. 虎扑热搜 ----------------
 HUPU_URL = "https://bbs.hupu.com/topic-daily-hot"
 HUPU_SAMPLE = """
-<li class="bbs-sl-web-post-body"><a href="/123456.html" class="p-title">虎扑NBA：金风科技跨界赞助</a></li>
-<li class="bbs-sl-web-post-body"><a href="/654321.html" class="p-title">虎扑热帖：风电板块大涨</a></li>
+<li class="bbs-sl-web-post-body"><a href="/123456.html" class="p-title">虎扑NBA：阿里巴巴冠名赞助</a></li>
+<li class="bbs-sl-web-post-body"><a href="/654321.html" class="p-title">虎扑热帖：电商板块大涨</a></li>
 """
 
 def parse_hupu(html: str) -> List[HotItem]:
@@ -234,7 +234,7 @@ AIHOT_RSS = "https://aihot.virxact.com/feed/all.xml"
 AIHOT_SAMPLE_JSON = json.dumps({
     "items": [
         {"id": "a1", "title": "OpenAI 发布新模型", "url": "https://aihot.virxact.com/a1", "source": "OpenAI", "category": "模型", "summary": "性能提升", "publishedAt": "2026-08-06T10:00:00Z"},
-        {"id": "a2", "title": "金风科技用AI优化风机", "url": "https://aihot.virxact.com/a2", "source": "Goldwind", "category": "风电AI"}
+        {"id": "a2", "title": "阿里巴巴开源新一代AI模型", "url": "https://aihot.virxact.com/a2", "source": "Alibaba", "category": "云计算AI"}
     ]
 })
 
@@ -288,8 +288,8 @@ ZAOBAO_URL = "https://www.zaochenbao.com/realtime/"
 
 ZAOBAO_SAMPLE = """
 <div class="list-block">
-<a class="item" href="/realtime/china/story123"><div class="eps">金风科技海外订单大增</div><div class="pdt10">今天 10:20</div></a>
-<a class="item" href="/realtime/world/story124"><div class="eps">全球风电装机创新高</div><div class="pdt10">今天 09:15</div></a>
+<a class="item" href="/realtime/china/story123"><div class="eps">阿里巴巴国际电商增速翻倍</div><div class="pdt10">今天 10:20</div></a>
+<a class="item" href="/realtime/world/story124"><div class="eps">全球云计算支出回升</div><div class="pdt10">今天 09:15</div></a>
 </div>
 """
 
@@ -333,8 +333,8 @@ HK01_URLS = [
 ]
 
 HK01_SAMPLE_HTML = """
-<div class="content"><a href="/news/123" title="香港01：风电新闻上热榜">香港01：风电新闻上热榜</a></div>
-<div class="content"><a href="/news/124" title="港股金风科技大涨">港股金风科技大涨</a></div>
+<div class="content"><a href="/news/123" title="香港01：电商新闻上热榜">香港01：电商新闻上热榜</a></div>
+<div class="content"><a href="/news/124" title="港股阿里巴巴大涨">港股阿里巴巴大涨</a></div>
 """
 
 def parse_hk01_json(text: str) -> List[HotItem]:
@@ -522,7 +522,7 @@ def selftest_newsnow() -> int:
             fails += 1
 
     print("④ NewsNow 7源解析器（离线样本）")
-    check("知乎解析 2条", len(parse_zhihu(ZHIHU_SAMPLE)) == 2 and "金风科技" in parse_zhihu(ZHIHU_SAMPLE)[0].title)
+    check("知乎解析 2条", len(parse_zhihu(ZHIHU_SAMPLE)) == 2 and "阿里巴巴" in parse_zhihu(ZHIHU_SAMPLE)[0].title)
     check("抖音解析 2条", len(parse_douyin(DOUYIN_SAMPLE)) == 2)
     check("微博解析 2条 新/热标识", len(parse_weibo(WEIBO_SAMPLE)) == 2 and parse_weibo(WEIBO_SAMPLE)[0].extra_info == "热")
     check("虎扑解析 2条", len(parse_hupu(HUPU_SAMPLE)) == 2)
@@ -537,10 +537,10 @@ def selftest_newsnow() -> int:
         "抖音热搜": parse_douyin(DOUYIN_SAMPLE),
     }
     pack.agg = {"total": 4, "sources_ok": 2, "sources_total": 7}
-    md = render_newsnow_rule("金风科技", pack)
+    md = render_newsnow_rule("阿里巴巴", pack)
     check("newsnow rule 渲染含表格", "| 来源 |" in md and "知乎热榜" in md)
     ctx = newsnow_context(pack)
-    check("newsnow context 含标的", "金风科技" in ctx or "热榜" in ctx)
+    check("newsnow context 含标的", "阿里巴巴" in ctx or "热榜" in ctx)
 
     print(f"\n{'✅ NewsNow 自检通过' if fails==0 else f'❌ {fails}项失败'}")
     return 1 if fails else 0

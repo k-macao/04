@@ -72,7 +72,7 @@ manual-push: .github#51 / .github#52
 
 1. 打开 GitHub → 仓库 `k-macao/04` → `Add file → Upload files` 或直接点 `.github/workflows/r.yml` → ✏️ Edit。
 2. 将本仓库根目录的 `WORKFLOW_HARDENED.yml` 内容**全选覆盖**到 `.github/workflows/r.yml`，Commit message 填 `chore: harden workflow against marketplace 503`，Commit to `main`。
-3. 回到 **Actions → Manual Run - Goldwind PushPlus+DeepSeek → Run workflow**，选 `dry_run=true`, `channel=console`, `ai_provider=rule` 先做一次 dry-run 验证；成功后切回真实推送。
+3. 回到 **Actions → Manual Run - Alibaba PushPlus+DeepSeek → Run workflow**，选 `dry_run=true`, `channel=console`, `ai_provider=rule` 先做一次 dry-run 验证；成功后切回真实推送。
 
 **方式 B — 本地推送（需有 `workflows` 权限的 PAT）**：
 
@@ -94,7 +94,7 @@ git push origin main
 ## 5. 附：加固版完整内容（即 WORKFLOW_HARDENED.yml）
 
 ```yaml
-name: Manual Run - Goldwind PushPlus+DeepSeek
+name: Manual Run - Alibaba PushPlus+DeepSeek
 on:
   workflow_dispatch:
     inputs:
@@ -103,7 +103,7 @@ on:
       channel: { description: '推送通道', required: true, default: 'pushplus', type: choice, options: [pushplus, wecom, serverchan, console, all] }
       ai_provider: { description: 'AI 提供商（rule=固定模板，不调用 AI）', required: true, default: 'deepseek', type: choice, options: [deepseek, rule, openai] }
       topic: { description: '分析标的/主题', required: false, default: '' }
-      hk_code: { description: '港股代码', required: false, default: '02208' }
+      hk_code: { description: '港股代码', required: false, default: '09988' }
       risk: { description: '风险偏好档位', required: true, default: 'mid', type: choice, options: [low, mid, high] }
       theme: { description: '推送主题', required: true, default: 'klein', type: choice, options: [klein, default] }
       context: { description: '背景信息', required: false, default: '' }

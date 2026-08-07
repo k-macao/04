@@ -122,7 +122,7 @@ result = deep_merge_dicts(base, incoming)
 
 ## 📲 微信推送 Workflow（PushPlus + DeepSeek）
 
-仓库内置手动触发的工作流 **Manual Run - Goldwind PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
+仓库内置手动触发的工作流 **Manual Run - Alibaba PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
 用 DeepSeek 生成内容，通过 PushPlus 推送到微信。
 
 ### 前置条件：配置 Secrets
@@ -139,14 +139,14 @@ result = deep_merge_dicts(base, incoming)
 
 ### 运行方式
 
-**Actions → Manual Run - Goldwind PushPlus+DeepSeek → Run workflow**：
+**Actions → Manual Run - Alibaba PushPlus+DeepSeek → Run workflow**：
 
 - `dry_run=false`：**真实推送**到微信（默认）
 - `dry_run=true`：只生成内容打印到日志，不推送（联调用）
 - `channel`：pushplus / wecom / serverchan / console / all
 - `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
-- `topic`：内容主题，留空默认"金风科技(Goldwind) 每日简报"
-- `hours`：量价舆情动量/全市场快讯的数据窗口，支持 24/48/72 小时
+- `topic`：内容主题，留空默认"阿里巴巴(Alibaba) 每日简报"
+- `hours`：量价舆情动量/十四平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
 
 ### 分析框架与新增因子
 
@@ -154,12 +154,17 @@ result = deep_merge_dicts(base, incoming)
 **量价舆情动量（48h）**不会再被合并到普通消息/情绪面：
 
 1. 基本面（业绩/订单/毛利率）
-2. 行业与政策面（风电装机/招标/电价政策）
+2. 行业与政策面（平台经济监管/云计算/AI 等真实政策动态）
 3. 技术面（趋势/量价/关键价位）
 4. 资金面（主力/北向/两融动向）
 5. 消息面与情绪面（公告/舆情/行业事件）
 6. 估值面（PE/PB 与历史分位）
 7. **量价舆情动量（48h）**：基于窗口内价格/成交量、新闻和社媒样本，先本地预聚合，再交给 AI 分析
+8. **十四平台股票扫描（窗口跟随 `--hours`，支持 156h）**：输入股票代码后，在最近 156 小时内
+   检索十四个平台（**财经 7 源**：Google新闻/财联社电报/华尔街见闻/格隆汇/金十数据/MKTNews/雪球；
+   **社媒 7 源**：知乎/微博/抖音/虎扑/AI hot/联合早报/香港01），找出该股票的**相关新闻**
+   （按代码/名称/别名直接命中）与**有关板块**（档案预设板块 + 新闻动态提取「XX板块」），
+   逐条本地情绪打标后随附录输出，并注入 AI 上下文。
 
 当 `analysis` 搭配 `hk_code` 运行时，脚本会自动采集该新增因子所需的数据；采集失败会明确标注数据缺口，不会伪造概率。
 
@@ -181,9 +186,31 @@ result = deep_merge_dicts(base, incoming)
 ```bash
 python pushplus_deepseek.py --check-only          # 只检查 Secret 配置
 python pushplus_deepseek.py --dry-run             # 生成但不推送
-python pushplus_deepseek.py --template analysis --hk-code 02208 --hours 48 --dry-run
+python pushplus_deepseek.py --template analysis --hk-code 09988 --hours 48 --dry-run
+python pushplus_deepseek.py --template sentiment --hk-code 09988 --topic 阿里巴巴 --hours 156 --dry-run
 python pushplus_deepseek.py --channel all         # 三个通道全部推送
 ```
+
+### 量价舆情动量 · 十四平台股票扫描（`stock_news_scan.py`）
+
+单独使用（不依赖推送通道，纯标准库）：
+
+```bash
+# 输入股票代码，检索最近 156 小时内相关新闻与有关板块
+python stock_news_scan.py --code 09988 --name 阿里巴巴 --hours 156
+
+# 只给代码也能跑（内置档案自动补全名称/别名/板块）
+python stock_news_scan.py --code 9988.HK
+
+# 追加自定义板块关键词 / JSON 输出 / 离线自检
+python stock_news_scan.py --code 00700 --name 腾讯 --sectors 游戏,AI --json
+python stock_news_scan.py --selftest
+```
+
+输出分三组：**直接相关新闻**（代码/名称/别名命中）、**板块相关快讯**（板块关键词命中）、
+**有关板块**（档案预设 + 从命中标题动态提取「XX板块」，子串伪影按频次归属吸收）。
+带可靠时间戳的条目严格按 156h 过滤；雪球/社媒热榜为实时快照、标记「实时」不参与过滤。
+任何单源失败只进「数据缺口」，不拉高命中数、不伪造数据。
 
 ## 📝 Git 合并演示
 
