@@ -1616,6 +1616,160 @@ def _inline_md(s: str, theme_name: str = "game") -> str:
     return s
 
 
+def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
+    """「因子 | 方向 | 多头概率 | 依据」表 → 卡片式内容展示（每个因子一张卡）。
+
+    卡片结构（全主题统一，无 <table>）：
+      ① 卡头：像素方块 + 因子名（加粗）+ 方向徽章（▲偏多绿 / ▼偏空红 / ●中性灰）
+      ② 概率行：多头概率大号数字 + 概率条（game 主题为像素血条 █░，
+         其余主题为细框进度条）；无【方向】列时按概率 50% 上下推导徽章
+      ③ 额外列：逐行“列名：值”补充展示
+      ④ 依据行：「依据」标签（标题栏配色）+ 辅助色正文
+    色值全部取自主题常量，未硬编码。
+    """
+    theme = _get_theme(theme_name)
+
+    def cells(r: str) -> list[str]:
+        return [c.strip() for c in r.strip().strip("|").split("|")]
+
+    head = cells(rows[0])
+    body = [cells(r) for r in rows[2:]] if len(rows) > 2 else []
+
+    def col(*names: str):
+        for want in names:
+            for idx, h in enumerate(head):
+                if h == want:
+                    return idx
+        return None
+
+    dir_i = col("方向")
+    prob_i = col("多头概率", "概率")
+    ev_i = col("依据")
+    prob_label = head[prob_i] if prob_i is not None else "多头概率"
+    known = {i for i in (0, dir_i, prob_i, ev_i) if i is not None}
+
+    # 卡片阴影：monitor 用辉光，game/pixel 用硬偏移像素阴影，klein 用黑框硬阴影
+    if theme.get("glow"):
+        shadow_css = f'box-shadow:0 0 6px {theme["glow"]};'
+    elif theme.get("shadow"):
+        shadow_css = f'box-shadow:2px 2px 0 {theme["shadow"]};'
+    else:
+        shadow_css = f'box-shadow:2px 2px 0 {theme["border"]};'
+
+    cards: list[str] = []
+    for r in body:
+        if not r or not r[0]:
+            continue
+
+        def cell(i) -> str:
+            return r[i] if (i is not None and 0 <= i < len(r)) else ""
+
+        name = r[0]
+        direction = cell(dir_i)
+        prob_raw = cell(prob_i)
+        evidence = cell(ev_i)
+        extras = [(h, r[idx]) for idx, h in enumerate(head)
+                  if idx not in known and idx < len(r) and r[idx]]
+
+        m_prob = re.search(r"(\d{1,3})\s*%", prob_raw)
+        p_val = max(0, min(100, int(m_prob.group(1)))) if m_prob else None
+        if direction:
+            is_up = _contains_up(direction)
+            is_down = (not is_up) and _contains_down(direction)
+            badge_text = direction
+        elif p_val is not None:
+            is_up, is_down = p_val > 50, p_val < 50
+            badge_text = "偏多" if is_up else ("偏空" if is_down else "中性")
+        else:
+            joined = " ".join(r)
+            is_up = _contains_up(joined)
+            is_down = (not is_up) and _contains_down(joined)
+            badge_text = "偏多" if is_up else ("偏空" if is_down else "")
+
+        edge = theme["up"] if is_up else (
+            theme["down"] if is_down else theme["border"])
+        if is_up:
+            badge_html = (
+                f'<span style="color:{theme["up"]};background:{theme["up_bg"]};'
+                f'border:1px solid {theme["up"]};padding:0 4px;font-weight:bold;'
+                f'font-size:10px;white-space:nowrap;">▲ {badge_text}</span>')
+        elif is_down:
+            badge_html = (
+                f'<span style="color:{theme["down"]};background:{theme["down_bg"]};'
+                f'border:1px solid {theme["down"]};padding:0 4px;font-weight:bold;'
+                f'font-size:10px;white-space:nowrap;">▼ {badge_text}</span>')
+        elif badge_text:
+            badge_html = (
+                f'<span style="color:{theme["muted"]};border:1px solid '
+                f'{theme["border"]};padding:0 4px;font-size:10px;'
+                f'white-space:nowrap;">● {badge_text}</span>')
+        else:
+            badge_html = ""
+
+        # 概率条：game 主题用像素血条字符，其余主题用细框进度条
+        if p_val is None:
+            bar_html = ""
+        elif theme_name == "game":
+            filled = max(0, min(10, round(p_val / 10)))
+            bar_txt = "█" * filled + "░" * (10 - filled)
+            bar_html = (
+                f' <span style="color:{theme["hp_full"]};font-size:9px;'
+                f'letter-spacing:-1px;">{bar_txt}</span>')
+        else:
+            bar_html = (
+                f' <span style="display:inline-block;width:70px;height:6px;'
+                f'border:1px solid {theme["border"]};background:{theme["bg"]};'
+                f'vertical-align:middle;margin-left:4px;">'
+                f'<span style="display:block;width:{p_val}%;height:100%;'
+                f'background:{edge};"></span></span>')
+
+        prob_html = ""
+        if prob_raw:
+            prob_html = (
+                f'<div style="margin-top:4px;font-size:10px;'
+                f'color:{theme["muted"]};">'
+                f'{prob_label} '
+                f'<span style="color:{edge};font-weight:bold;'
+                f'font-size:{theme["size_title"]};">'
+                f'{_inline_md(prob_raw, theme_name)}</span>{bar_html}</div>')
+
+        extras_html = "".join(
+            f'<div style="margin-top:3px;font-size:10px;color:{theme["muted"]};">'
+            f'{_inline_md(h, theme_name)} '
+            f'<span style="color:{theme["fg"]};font-weight:bold;">'
+            f'{_inline_md(v, theme_name)}</span></div>'
+            for h, v in extras)
+
+        evidence_html = ""
+        if evidence:
+            evidence_html = (
+                f'<div style="margin-top:4px;color:{theme["muted"]};'
+                f'font-size:{theme["size"]};line-height:{theme["line"]};">'
+                f'<span style="background:{theme["hbg"]};color:{theme["hfg"]};'
+                f'padding:0 3px;font-size:9px;margin-right:4px;">依据</span>'
+                f'{_inline_md(evidence, theme_name)}</div>')
+
+        cards.append(
+            f'<div style="background:{theme["card_bg"]};'
+            f'border:1px solid {theme["border"]};'
+            f'border-left:4px solid {edge};{shadow_css}'
+            f'padding:6px 8px;margin:0 0 6px 0;box-sizing:border-box;">'
+            f'<div style="display:flex;justify-content:space-between;'
+            f'align-items:center;">'
+            f'<span style="font-weight:bold;color:{theme["fg"]};'
+            f'font-size:{theme["size"]};">'
+            f'<span style="display:inline-block;width:6px;height:6px;'
+            f'background:{theme["accent"]};margin-right:5px;'
+            f'vertical-align:middle;"></span>{_inline_md(name, theme_name)}</span>'
+            f'{badge_html}</div>'
+            f'{prob_html}{extras_html}{evidence_html}</div>')
+
+    return (
+        f'<div style="margin:6px 0;'
+        f'font-family:{theme.get("font", KLEIN["font"])};">'
+        f'{"".join(cards)}</div>')
+
+
 def _render_table(rows: list[str], theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
 
@@ -1624,6 +1778,10 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
 
     head = cells(rows[0])
     body = [cells(r) for r in rows[2:]] if len(rows) > 2 else []
+
+    # 因子分析表（因子/方向/多头概率/依据）→ 卡片式内容展示，不再渲染表格
+    if head and head[0] == "因子":
+        return _render_factor_cards(rows, theme_name)
 
     if theme.get("table_free") or theme_name in ("monitor", "noc"):
         # 服务器大屏监视风格：零表格（NO TABLES），文字 + 列表横排
@@ -2441,7 +2599,7 @@ def selftest() -> int:
     check("pushplus 5000字不限", len(unlim_c) == 5000)
 
     log("③f game 主题渲染（8-bit 像素游戏风·整体默认）")
-    gh = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
+    gh = md_to_html("## 标题\n\n| 板块 | 概率 |\n|---|---|\n| 云计算 | 65% |\n\n"
                     "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
     check("game 表格+金色粗框", "<table" in gh and GAME["border"] in gh
           and "<th" in gh and "<td" in gh)
@@ -2463,7 +2621,7 @@ def selftest() -> int:
     check("game 状态栏含 UTC 戳", "UTC" in gfull)
 
     log("③f-1 klein 主题渲染（游戏复古像素风）")
-    h = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
+    h = md_to_html("## 标题\n\n| 板块 | 概率 |\n|---|---|\n| 云计算 | 65% |\n\n"
                    "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项", "klein")
     check("klein 表格→table+表头底色", "<table" in h and KLEIN["hbg"] in h
           and "<th" in h and "<td" in h)
@@ -2480,7 +2638,7 @@ def selftest() -> int:
     check("klein RETRO 角标", "[RETRO]" in full)
 
     log("③f-2 pixel 像素主题渲染（复古监控风·服务器大屏）")
-    ph = md_to_html("## 标题\n\n| 因子 | 涨跌 |\n|---|---|\n| 基本面 | +2.5% |\n| 技术面 | -1.2% |\n| 价格 | 16.80 |\n\n"
+    ph = md_to_html("## 标题\n\n| 指标 | 涨跌 |\n|---|---|\n| 基本面 | +2.5% |\n| 技术面 | -1.2% |\n| 价格 | 16.80 |\n\n"
                     "- **要点**一\n> 备注：重点 16.80\n\n---\n\n1. 有序项", "pixel")
     check("pixel 表格+细线框", "<table" in ph and "1px solid" in ph and PIXEL["border"] in ph)
     check("pixel 小字体 11px", "11px" in ph)
@@ -2493,6 +2651,36 @@ def selftest() -> int:
     check("pixel 硬阴影+深色状态栏", "box-shadow" in pfull and PIXEL["hbg"] in pfull)
     check("pixel 摄像头元素(●REC+CAM-01+UTC戳)", "● REC" in pfull and "CAM-01" in pfull and "UTC" in pfull)
     check("pixel CRT扫描线+面板网格", PIXEL["scan"] in pfull and PIXEL["grid"] in pfull)
+
+    log("③f-3 因子分析表 → 卡片式内容展示（因子/方向/多头概率/依据）")
+    fmd = ("| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
+           "| 基本面 | 偏多 | 65% | 云计算营收增长提速 |\n"
+           "| 技术面 | 偏空 | 42% | 跌破 20 日均线 |\n"
+           "| 资金面 | 中性 | 50% | 北向资金持平 |")
+    fc = md_to_html(fmd, "game")
+    check("game 因子表不再渲染 table", "<table" not in fc and "<th" not in fc)
+    check("game 因子卡片含方向徽章▲▼+涨跌色", "▲ 偏多" in fc and "▼ 偏空" in fc
+          and GAME["up"] in fc and GAME["down"] in fc)
+    check("game 因子卡片概率血条", "█" in fc and "░" in fc and GAME["hp_full"] in fc)
+    check("game 因子卡片依据标签+正文", ">依据</span>" in fc
+          and "云计算营收增长提速" in fc and "跌破 20 日均线" in fc)
+    check("game 因子卡片金色边框+硬阴影+面板卡底", GAME["border"] in fc
+          and GAME["shadow"] in fc and GAME["card_bg"] in fc)
+    fk = md_to_html(fmd, "klein")
+    check("klein 因子卡片式无 table", "<table" not in fk and KLEIN["card_bg"] in fk
+          and "▲ 偏多" in fk and ">依据</span>" in fk)
+    check("klein 因子卡片细框进度条", "width:65%;" in fk and KLEIN["up"] in fk)
+    fp2 = md_to_html(fmd, "pixel")
+    check("pixel 因子卡片式无 table", "<table" not in fp2 and PIXEL["card_bg"] in fp2
+          and "▼ 偏空" in fp2 and ">依据</span>" in fp2 and "width:42%;" in fp2)
+    fm2 = md_to_html(fmd, "monitor")
+    check("monitor 因子卡片保持零表格", "<table" not in fm2
+          and MONITOR["card_bg"] in fm2 and "▲ 偏多" in fm2)
+    fq = md_to_html("| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n| 技术面 | 42% |")
+    check("无方向列按概率 50% 上下推导徽章", "▲ 偏多" in fq and "▼ 偏空" in fq)
+    fz = md_to_html("| 因子 | 方向 | 概率 | 依据 | 备注 |\n|---|---|---|---|---|\n"
+                    "| 基本面 | 偏多 | 65% | 超预期 | 观察北向 |")
+    check("因子表额外列以列名:值附在卡片", "备注" in fz and "观察北向" in fz)
 
     log("③g 主题集中化（一行改动全局生效）")
     bak = dict(GAME)
