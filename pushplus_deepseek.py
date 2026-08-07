@@ -1531,10 +1531,41 @@ GAME = {
     "status_bg": "#0E1130",             # 状态栏深底
 }
 
+MONITOR = {
+    # ---- 服务器大屏监视风：深空暗底 + 荧光青绿 + 零表格（文字+列表横排） ----
+    "bg": "#06090F",            # 深空暗黑科技底
+    "card_bg": "#0B121E",       # 监控面板暗底
+    "hbg": "#0F1E33",           # 顶部 HUD 栏深底
+    "hfg": "#00F0FF",           # 荧光青标题
+    "fg": "#E2E8F0",            # 正文亮白灰
+    "muted": "#64748B",         # 辅助蓝灰
+    "border": "#00F0FF",        # 荧光青发光边框
+    "accent": "#00FF9D",        # 荧光绿重点
+    "accent_fg": "#06090F",
+    "up": "#00FF9D",            # 荧光绿 涨
+    "down": "#FF3366",          # 警示红 跌
+    "up_bg": "#072418",
+    "down_bg": "#2B0B14",
+    "size": "12px",
+    "size_title": "13px",
+    "size_h1": "14px",
+    "size_h2": "12px",
+    "size_h3": "12px",
+    "line": "1.5",
+    "font": "'Courier New','Nimbus Mono PS',Consolas,monospace",
+    "shadow": "rgba(0,0,0,0.85)",
+    "grid": "rgba(0,240,255,0.04)",
+    "scan": "rgba(0,240,255,0.03)",
+    "glow": "rgba(0,240,255,0.25)",
+    "table_free": True,
+}
+
 THEMES = {
     "game": GAME,
     "klein": KLEIN,
     "pixel": PIXEL,
+    "monitor": MONITOR,
+    "noc": MONITOR,
 }
 
 
@@ -1593,6 +1624,45 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
 
     head = cells(rows[0])
     body = [cells(r) for r in rows[2:]] if len(rows) > 2 else []
+
+    if theme.get("table_free") or theme_name in ("monitor", "noc"):
+        # 服务器大屏监视风格：零表格（NO TABLES），文字 + 列表横排
+        card_items = []
+        for r in body:
+            if not r:
+                continue
+            name = _inline_md(r[0], theme_name) if len(r) > 0 else ""
+            orig = " ".join(r)
+            is_up = _contains_up(orig)
+            is_down = not is_up and _contains_down(orig)
+
+            b_color = theme["up"] if is_up else (theme["down"] if is_down else theme["border"])
+            dir_html = (
+                f'<span style="color:{theme["up"]};font-weight:bold;font-size:10px;">▲ 偏多</span>'
+                if is_up
+                else (f'<span style="color:{theme["down"]};font-weight:bold;font-size:10px;">▼ 偏空</span>' if is_down else "")
+            )
+            val_strs = [
+                f'<span style="padding:1px 4px;background:{theme["card_bg"]};border:1px solid {theme["border"]};color:{theme["accent"]};font-weight:bold;">{_inline_md(x, theme_name)}</span>'
+                for x in r[1:]
+            ]
+            vals_line = " ".join(val_strs)
+
+            card_items.append(
+                f'<div style="flex:1 1 calc(50% - 6px);min-width:130px;background:{theme["card_bg"]};'
+                f'border:1px solid {b_color};padding:6px 8px;font-size:{theme["size"]};'
+                f'box-sizing:border-box;display:flex;flex-direction:column;gap:3px;">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<span style="font-weight:bold;color:{theme["fg"]};font-size:{theme["size"]};">{name}</span>'
+                f'{dir_html}</div>'
+                f'<div style="color:{theme["muted"]};font-size:10px;">{vals_line}</div>'
+                f'</div>'
+            )
+        return (
+            f'<div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;margin:6px 0;'
+            f'font-family:{theme.get("font", KLEIN["font"])};">'
+            f'{"".join(card_items)}</div>'
+        )
 
     # 表头 - 细线框 1px
     th_style_base = (
@@ -2002,6 +2072,48 @@ def themed_html(title: str, content_md: str, theme_name: str = "game") -> str:
             f'</div>'
             f'</div></div>'
         )
+    if theme_name in ("monitor", "noc"):
+        # 服务器大屏监视风：深空暗底 + 荧光青绿 + 零表格（文字+横排卡片流） + HUD 双时钟
+        safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        return (
+            f'<div style="background:{theme["bg"]};padding:12px 8px;'
+            f'font-size:{theme["size"]};line-height:{theme["line"]};'
+            f'color:{theme["fg"]};font-family:{theme["font"]};'
+            f'background-image:repeating-linear-gradient(0deg,{theme["scan"]} 0 1px,'
+            f'rgba(0,0,0,0) 1px 24px),'
+            f'repeating-linear-gradient(90deg,{theme["grid"]} 0 1px,'
+            f'rgba(0,0,0,0) 1px 24px);">'
+            f'<div style="background:{theme["card_bg"]};'
+            f'border:1px solid {theme["border"]};'
+            f'box-shadow:0 0 10px {theme["glow"]};'
+            f'padding:0;">'
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};'
+            f'font-size:{theme["size_title"]};font-weight:bold;'
+            f'padding:6px 10px;border-bottom:1px solid {theme["border"]};'
+            f'font-family:{theme["font"]};letter-spacing:1px;'
+            f'display:flex;justify-content:space-between;align-items:center;">'
+            f'<span><span style="color:{theme["accent"]};">⌜</span> {safe_title} <span style="color:{theme["accent"]};">⌟</span></span>'
+            f'<span style="color:{theme["down"]};font-size:9px;'
+            f'font-weight:bold;letter-spacing:1px;">● REC LIVE</span>'
+            f'</div>'
+            f'<div style="border-bottom:1px dashed {theme["border"]};'
+            f'padding:3px 10px;color:{theme["muted"]};font-size:9px;'
+            f'letter-spacing:0.5px;font-family:{theme["font"]};'
+            f'display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;">'
+            f'<span><span style="color:{theme["accent"]};">●</span> NOC-SERVER-04 · LIVE TELEMETRY</span>'
+            f'<span>✦ {stamp} UTC</span>'
+            f'</div>'
+            f'<div style="padding:10px 8px;">{body}</div>'
+            f'<div style="border-top:1px dashed {theme["border"]};'
+            f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
+            f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;'
+            f'display:flex;justify-content:space-between;">'
+            f'<span><span style="color:{theme["accent"]};">▚▞</span> SYS.NOMINAL · CH-04 · 12ms</span>'
+            f'<span style="color:{theme["accent"]};">ALL FEEDS VERIFIED ▮</span>'
+            f'</div>'
+            f'</div></div>'
+        )
     # klein 游戏复古像素风：米黄纸底 + 白卡片 + 1px黑细框 + 像素阴影 + 黑底标题栏
     return (
         f'<div style="background:{theme["bg"]};padding:10px;'
@@ -2397,7 +2509,7 @@ def selftest() -> int:
         src = open(__file__, encoding="utf-8").read()
         theme_zone = src.split("模块④b")[1].split("模块⑤")[0]
         # 移除所有主题常量定义（避免颜色被误判为硬编码）
-        theme_zone = re.sub(r"(GAME|KLEIN|PIXEL|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
+        theme_zone = re.sub(r"(GAME|KLEIN|PIXEL|MONITOR|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
         # 注释行不参与扫描（文档里允许出现色值说明）
         theme_zone = "\n".join(l for l in theme_zone.splitlines()
                                if not l.lstrip().startswith("#"))
@@ -2539,9 +2651,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="港股代码（如 09988），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
-    p.add_argument("--theme", default="", choices=["", "default", "game", "klein", "pixel"],
+    p.add_argument("--theme", default="", choices=["", "default", "game", "klein", "pixel", "monitor", "noc"],
                    help="pushplus 通道主题（整体默认 game=8-bit像素游戏风：深夜蓝屏+金色粗框+"
-                        "HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏"
+                        "HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏；"
+                        "monitor/noc=服务器大屏监视风格（零表格，文字+横排卡片流）"
                         "（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
                    help="analysis/sentiment/feedscan/十四平台扫描的数据窗口小时数"

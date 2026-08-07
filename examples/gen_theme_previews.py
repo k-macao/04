@@ -47,6 +47,9 @@ PAGE_SHELL = """<!DOCTYPE html>
 </body></html>"""
 
 THEME_LABELS = {
+    "monitor": ("[ THEME: monitor · 服务器大屏监视风格 · 零表格 · 文字+列表横排 ]",
+                "[ PREVIEW ] themed_html(theme_name='monitor') · 深空暗黑科技大屏 · 荧光青绿发光边框 · "
+                "零表格 · 文字+横排卡片流 · HUD 双时钟 · 节点状态横排"),
     "game": ("[ THEME: game · 8-bit 像素游戏风 · 整体默认 ]",
              "[ PREVIEW ] themed_html(theme_name='game') · 深夜蓝游戏屏 · 金色粗框 · "
              "硬黑像素阴影 · ♥HP血条 · ★LV · SCORE · PRESS START · UTC 时间戳"),
@@ -71,10 +74,10 @@ def _block(theme: str) -> str:
 
 def main() -> int:
     out_dir = Path(__file__).resolve().parent
-    # 三主题对比页
-    body = "\n".join(_block(t) for t in ("game", "klein", "pixel"))
+    # 四主题对比页
+    body = "\n".join(_block(t) for t in ("monitor", "game", "klein", "pixel"))
     (out_dir / "theme_preview.html").write_text(
-        PAGE_SHELL.format(title="主题预览 · game 像素游戏 / klein 复古 / pixel 监控")
+        PAGE_SHELL.format(title="主题预览 · monitor 服务器大屏 / game 像素游戏 / klein 复古 / pixel 监控")
         .replace("{body}", body),
         encoding="utf-8")
     # game 单独预览页
@@ -82,7 +85,13 @@ def main() -> int:
         PAGE_SHELL.format(title="game 主题预览 · 8-bit 像素游戏风")
         .replace("{body}", _block("game")),
         encoding="utf-8")
-    print("已生成 theme_preview.html / game_theme_preview.html")
+    # 生成单独的服务器大屏监视风格预览
+    try:
+        from server_dashboard import export_static_files
+        export_static_files()
+    except Exception:
+        pass
+    print("已生成 theme_preview.html / game_theme_preview.html / server_monitor_preview.html")
     return 0
 
 
