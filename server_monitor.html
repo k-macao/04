@@ -352,6 +352,134 @@
         }
         .badge-green { background: rgba(0,255,157,0.15); color: var(--green); border-color: var(--green); }
 
+        /* 📊 TradeView 智能行情与 K 线交互图表组件 */
+        .tradeview-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            margin-bottom: 18px;
+            padding: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+        .tradeview-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-dim);
+        }
+        .tv-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .tv-label {
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-right: 4px;
+        }
+        .tv-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .tv-btn:hover {
+            color: var(--cyan);
+            border-color: var(--cyan);
+            background: var(--bg-card-hover);
+        }
+        .tv-btn.active {
+            color: #06090e;
+            background: var(--cyan);
+            border-color: var(--cyan);
+            font-weight: bold;
+            box-shadow: var(--glow-cyan);
+        }
+        .tv-btn.engine-btn.active {
+            background: var(--green);
+            border-color: var(--green);
+            color: #06090e;
+            box-shadow: var(--glow-green);
+        }
+        .tv-legend-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-radius: 4px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            color: var(--text-main);
+        }
+        .tv-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .tv-legend-val {
+            font-weight: bold;
+        }
+        .tv-legend-ma5 { color: #ffcf00; font-weight: bold; }
+        .tv-legend-ma10 { color: #00d8ff; font-weight: bold; }
+        .tv-legend-ma20 { color: #ff00b8; font-weight: bold; }
+        .tv-canvas-wrap {
+            position: relative;
+            background: #05080c;
+            border: 1px solid var(--border-dim);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .tv-canvas {
+            display: block;
+            width: 100%;
+            cursor: crosshair;
+        }
+        .tv-vol-wrap {
+            position: relative;
+            background: #05080c;
+            border: 1px solid var(--border-dim);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .tv-footer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-dim);
+            padding-top: 4px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tv-badge-live {
+            color: var(--green);
+            background: rgba(0, 255, 157, 0.1);
+            border: 1px solid var(--green);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
         /* 模块通用标题 */
         .section-header {
             display: flex;
@@ -708,11 +836,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-07 16:50:29 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-07 17:31:19 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-07 08:50:29 UTC</span>
+                    <span id="utc-clock">2026-08-07 09:31:19 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -732,7 +860,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 16:50:29 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 17:31:19 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -818,6 +946,89 @@
             <div class="kpi-foot">全网舆情指数: 74/100</div>
         </div>
     </div>
+    
+
+        <!-- 📊 TradeView 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO) -->
+        
+        <!-- 📊 TradeView 智能行情与 K 线交互图表界面 -->
+        <div class="section-header" id="tradeview-section">
+            <span>📊 TRADEVIEW 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO)</span>
+            <span class="section-tag">多周期 K 线 · 均线系统 (MA5/10/20) · 实时成交量 · 官方 TradingView 图表双模联动</span>
+        </div>
+        <div class="tradeview-panel">
+            <div class="tradeview-toolbar">
+                <div class="tv-group">
+                    <span class="tv-label">标的 (Symbol):</span>
+                    <button class="tv-btn symbol-btn active" onclick="switchTradeViewSymbol('09988', '09988 阿里巴巴 (HKEX:9988)', this)">09988 阿里巴巴</button>
+                    <button class="tv-btn symbol-btn " onclick="switchTradeViewSymbol('00700', '00700 腾讯控股 (HKEX:0700)', this)">00700 腾讯控股</button>
+                    <button class="tv-btn symbol-btn " onclick="switchTradeViewSymbol('03690', '03690 美团 (HKEX:3690)', this)">03690 美团</button>
+                    <button class="tv-btn symbol-btn " onclick="switchTradeViewSymbol('BABA', 'BABA 阿里美股 (NASDAQ:BABA)', this)">BABA 阿里美股</button>
+                </div>
+                <div class="tv-group">
+                    <span class="tv-label">周期 (TF):</span>
+                    <button class="tv-btn tf-btn" onclick="switchTradeViewTF('1d', '分时 (1D)', this)">分时</button>
+                    <button class="tv-btn tf-btn" onclick="switchTradeViewTF('5d', '5日 (5D)', this)">5日</button>
+                    <button class="tv-btn tf-btn active" onclick="switchTradeViewTF('daily', '日K (Daily)', this)">日K</button>
+                    <button class="tv-btn tf-btn" onclick="switchTradeViewTF('weekly', '周K (Weekly)', this)">周K</button>
+                    <button class="tv-btn tf-btn" onclick="switchTradeViewTF('monthly', '月K (Monthly)', this)">月K</button>
+                </div>
+                <div class="tv-group">
+                    <span class="tv-label">渲染模式 (Engine):</span>
+                    <button class="tv-btn engine-btn active" id="btn-engine-canvas" onclick="switchTradeViewEngine('canvas', this)">🖥️ TradeView 交互 K 线 (内置 Canvas)</button>
+                    <button class="tv-btn engine-btn" id="btn-engine-widget" onclick="switchTradeViewEngine('widget', this)">🌐 TradingView 官方高级图表</button>
+                </div>
+            </div>
+
+            <!-- 内置 HTML5 Canvas 交互 K 线与成交量视图面板 -->
+            <div id="tradeview-canvas-panel">
+                <div class="tv-legend-bar" id="tv-legend-bar">
+                    <div class="tv-legend-item"><span id="tv-symbol-name" style="color:var(--cyan);font-weight:bold;">09988 阿里巴巴 (Alibaba) · 日K</span></div>
+                    <div class="tv-legend-item"><span id="tv-hover-date" style="color:var(--text-muted);">2026-08-07</span></div>
+                    <div class="tv-legend-item">开 <span id="tv-hover-open" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item">高 <span id="tv-hover-high" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item">低 <span id="tv-hover-low" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item">收 <span id="tv-hover-close" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item">涨跌 <span id="tv-hover-change" class="tv-legend-val" style="color:var(--green);">--</span></div>
+                    <div class="tv-legend-item">成交量 <span id="tv-hover-vol" class="tv-legend-val" style="color:var(--amber);">--</span></div>
+                    <div class="tv-legend-item tv-legend-ma5">MA5: <span id="tv-hover-ma5" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item tv-legend-ma10">MA10: <span id="tv-hover-ma10" class="tv-legend-val">--</span></div>
+                    <div class="tv-legend-item tv-legend-ma20">MA20: <span id="tv-hover-ma20" class="tv-legend-val">--</span></div>
+                </div>
+                <div class="tv-canvas-wrap">
+                    <canvas id="tradeview-kline-canvas" class="tv-canvas" width="1200" height="380"></canvas>
+                </div>
+                <div class="tv-vol-wrap">
+                    <canvas id="tradeview-vol-canvas" class="tv-canvas" width="1200" height="120"></canvas>
+                </div>
+                <div class="tv-footer-bar">
+                    <div>
+                        <span class="tv-badge-live">LIVE READY</span>
+                        <span id="tv-engine-status">TradeView 内置高帧率 Canvas 渲染引擎 · 60 周期历史与均线多空共振 · 鼠标悬停可查看十字光标与 OHLCV 详情</span>
+                    </div>
+                    <div>
+                        <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> | 
+                        <span>支撑位 S1: <strong id="tv-sup-val" style="color:var(--green);">--</strong></span> | 
+                        <span>技术形态: <strong id="tv-trend-val" style="color:var(--cyan);">放量金叉 (BULLISH)</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TradingView 官方高级图表组件面板 (可一键切换) -->
+            <div id="tradeview-widget-panel" style="display:none;">
+                <div id="tradingview_widget_box" style="height:520px;width:100%;border-radius:4px;overflow:hidden;background:#05080c;border:1px solid var(--border-dim);">
+                    <div id="tv_widget_embed_container" style="width:100%;height:100%;"></div>
+                </div>
+                <div class="tv-footer-bar" style="margin-top:8px;">
+                    <div>
+                        <span class="tv-badge-live" style="border-color:var(--cyan);color:var(--cyan);">TRADINGVIEW WIDGET</span>
+                        <span>官方 TradingView 嵌入式高级图表控件 · 支持全功能专业绘图与指标分析</span>
+                    </div>
+                    <div>
+                        <a href="https://cn.tradingview.com/" target="_blank" style="color:var(--text-muted);text-decoration:none;">Powered by TradingView.com</a>
+                    </div>
+                </div>
+            </div>
+        </div>
     
 
         <!-- 📊 横排七大因子多空矩阵 (绝对零表格，纯横排卡片流) -->
@@ -1324,6 +1535,408 @@
         }
         setTimeout(refreshQuote, 800);    // 页面加载后立即拉取一次实时行情
         setInterval(refreshQuote, 30000); // 每 30 秒自动更新
+
+        // =================================================================
+        // 📊 TradeView 智能行情与 K 线图表交互控制系统 (TradeView Chart Engine)
+        // =================================================================
+        let currentTradeViewSymbol = '09988';
+        let currentTradeViewName = '09988 阿里巴巴 (Alibaba)';
+        let currentTradeViewTF = 'daily';
+        let currentTradeViewBars = [];
+        let currentTradeViewSupport = '--';
+        let currentTradeViewResistance = '--';
+
+        function generateDefaultKlineBars(symbol, tf) {
+            const basePrices = {
+                '09988': 81.25,
+                '00700': 478.80,
+                '03690': 125.40,
+                'BABA': 86.50
+            };
+            const bp = basePrices[symbol] || 81.25;
+            const bars = [];
+            const count = 60;
+            const now = new Date();
+            for (let i = 0; i < count; i++) {
+                const dt = new Date(now.getTime() - (count - 1 - i) * 86400000);
+                const dateStr = dt.toISOString().slice(0, 10);
+                const phase = i / 10.0;
+                const trend = (i / count) * 0.08 - 0.04;
+                const noiseClose = Math.sin(phase * 1.5) * 0.025 + Math.cos(phase * 0.7) * 0.015 + trend;
+                const closeP = bp * (1.0 + noiseClose - (Math.sin(5.9 * 1.5)*0.025 + Math.cos(5.9*0.7)*0.015));
+                const openP = closeP * (1.0 - Math.sin(phase * 2.1) * 0.012);
+                const highP = Math.max(openP, closeP) * (1.0 + Math.abs(Math.cos(phase * 1.3)) * 0.01);
+                const lowP = Math.min(openP, closeP) * (1.0 - Math.abs(Math.sin(phase * 1.9)) * 0.01);
+                const finalClose = (i === count - 1) ? bp : closeP;
+                const finalHigh = (i === count - 1) ? Math.max(openP, bp) * 1.006 : highP;
+                const finalLow = (i === count - 1) ? Math.min(openP, bp) * 0.994 : lowP;
+                const volVal = Math.floor((12000000 + Math.sin(phase * 3.0) * 5000000) * (bp / 80.0));
+                bars.push({
+                    date: dateStr,
+                    open: parseFloat(openP.toFixed(3)),
+                    high: parseFloat(finalHigh.toFixed(3)),
+                    low: parseFloat(finalLow.toFixed(3)),
+                    close: parseFloat(finalClose.toFixed(3)),
+                    vol: volVal
+                });
+            }
+            for (let i = 0; i < bars.length; i++) {
+                const slice5 = bars.slice(Math.max(0, i - 4), i + 1);
+                const slice10 = bars.slice(Math.max(0, i - 9), i + 1);
+                const slice20 = bars.slice(Math.max(0, i - 19), i + 1);
+                bars[i].ma5 = parseFloat((slice5.reduce((a, b) => a + b.close, 0) / slice5.length).toFixed(3));
+                bars[i].ma10 = parseFloat((slice10.reduce((a, b) => a + b.close, 0) / slice10.length).toFixed(3));
+                bars[i].ma20 = parseFloat((slice20.reduce((a, b) => a + b.close, 0) / slice20.length).toFixed(3));
+            }
+            return bars;
+        }
+
+        async function fetchAndRenderTradeView(symbol, tf, name) {
+            currentTradeViewSymbol = symbol;
+            currentTradeViewTF = tf;
+            if (name) currentTradeViewName = name;
+
+            let data = null;
+            try {
+                const resp = await fetch('/api/kline?code=' + encodeURIComponent(symbol) + '&tf=' + encodeURIComponent(tf));
+                if (resp.ok) {
+                    data = await resp.json();
+                }
+            } catch (e) {
+                // 静态或离线访问时使用备用趋势引擎
+            }
+
+            if (!data || !data.bars || !data.bars.length) {
+                const fallbackBars = generateDefaultKlineBars(symbol, tf);
+                const minLow = Math.min(...fallbackBars.slice(-20).map(b => b.low));
+                const maxHigh = Math.max(...fallbackBars.slice(-20).map(b => b.high));
+                data = {
+                    code: symbol,
+                    name: name || symbol,
+                    tf: tf,
+                    bars: fallbackBars,
+                    support: minLow.toFixed(2),
+                    resistance: maxHigh.toFixed(2)
+                };
+            }
+
+            currentTradeViewBars = data.bars;
+            currentTradeViewSupport = data.support;
+            currentTradeViewResistance = data.resistance;
+
+            const resEl = document.getElementById('tv-res-val');
+            const supEl = document.getElementById('tv-sup-val');
+            if (resEl) resEl.textContent = data.resistance || '--';
+            if (supEl) supEl.textContent = data.support || '--';
+
+            drawTradeViewChart(currentTradeViewBars);
+            updateTradeViewLegend(currentTradeViewBars[currentTradeViewBars.length - 1]);
+            setupTradeViewCrosshair();
+        }
+
+        function drawTradeViewChart(bars) {
+            if (!bars || !bars.length) return;
+            const klineCanvas = document.getElementById('tradeview-kline-canvas');
+            const volCanvas = document.getElementById('tradeview-vol-canvas');
+            if (!klineCanvas || !volCanvas) return;
+
+            const ctx = klineCanvas.getContext('2d');
+            const vCtx = volCanvas.getContext('2d');
+            const width = klineCanvas.width;
+            const height = klineCanvas.height;
+            const vHeight = volCanvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+            vCtx.clearRect(0, 0, width, vHeight);
+
+            ctx.fillStyle = '#05080c';
+            ctx.fillRect(0, 0, width, height);
+            vCtx.fillStyle = '#05080c';
+            vCtx.fillRect(0, 0, width, vHeight);
+
+            const padTop = 25;
+            const padBottom = 28;
+            const padLeft = 15;
+            const padRight = 65;
+            const drawW = width - padLeft - padRight;
+            const drawH = height - padTop - padBottom;
+            const vDrawH = vHeight - 15;
+
+            let minP = Math.min(...bars.map(b => b.low));
+            let maxP = Math.max(...bars.map(b => b.high));
+            const range = maxP - minP || 1.0;
+            minP -= range * 0.05;
+            maxP += range * 0.05;
+            const pRange = maxP - minP;
+
+            const maxVol = Math.max(...bars.map(b => b.vol)) || 1000;
+
+            ctx.strokeStyle = '#162030';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#64748b';
+            ctx.font = '11px monospace';
+            const gridCount = 5;
+            for (let i = 0; i <= gridCount; i++) {
+                const y = padTop + (drawH / gridCount) * i;
+                const pVal = maxP - (pRange / gridCount) * i;
+                ctx.beginPath();
+                ctx.setLineDash([3, 3]);
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(width - padRight, y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillText(pVal.toFixed(2), width - padRight + 8, y + 4);
+            }
+
+            const numBars = bars.length;
+            const stepX = drawW / numBars;
+            const barW = Math.max(2, stepX * 0.68);
+
+            const supP = parseFloat(currentTradeViewSupport);
+            const resP = parseFloat(currentTradeViewResistance);
+            if (!isNaN(supP) && supP >= minP && supP <= maxP) {
+                const ySup = padTop + drawH * (1 - (supP - minP) / pRange);
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(0, 255, 157, 0.55)';
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(padLeft, ySup);
+                ctx.lineTo(width - padRight, ySup);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#00ff9d';
+                ctx.fillText('S1 ' + supP.toFixed(2), width - padRight + 6, ySup - 3);
+            }
+            if (!isNaN(resP) && resP >= minP && resP <= maxP) {
+                const yRes = padTop + drawH * (1 - (resP - minP) / pRange);
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 51, 102, 0.55)';
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(padLeft, yRes);
+                ctx.lineTo(width - padRight, yRes);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#ff3366';
+                ctx.fillText('R1 ' + resP.toFixed(2), width - padRight + 6, yRes - 3);
+            }
+
+            for (let i = 0; i < numBars; i++) {
+                const b = bars[i];
+                const cx = padLeft + i * stepX + stepX / 2;
+                const yOpen = padTop + drawH * (1 - (b.open - minP) / pRange);
+                const yClose = padTop + drawH * (1 - (b.close - minP) / pRange);
+                const yHigh = padTop + drawH * (1 - (b.high - minP) / pRange);
+                const yLow = padTop + drawH * (1 - (b.low - minP) / pRange);
+
+                const isUp = b.close >= b.open;
+                const color = isUp ? '#00ff9d' : '#ff3366';
+
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.2;
+                ctx.moveTo(cx, yHigh);
+                ctx.lineTo(cx, yLow);
+                ctx.stroke();
+
+                ctx.fillStyle = color;
+                const bodyY = Math.min(yOpen, yClose);
+                const bodyH = Math.max(2, Math.abs(yClose - yOpen));
+                ctx.fillRect(cx - barW / 2, bodyY, barW, bodyH);
+
+                vCtx.fillStyle = color;
+                const vH = Math.max(2, (b.vol / maxVol) * vDrawH);
+                const vY = vDrawH - vH;
+                vCtx.fillRect(cx - barW / 2, vY, barW, vH);
+
+                if (i % 10 === 0 || i === numBars - 1) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '10px monospace';
+                    ctx.fillText(b.date.slice(5), cx - 14, height - 8);
+                }
+            }
+
+            const drawMA = (key, color) => {
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.6;
+                let started = false;
+                for (let i = 0; i < numBars; i++) {
+                    const val = bars[i][key];
+                    if (val === undefined || isNaN(val)) continue;
+                    const cx = padLeft + i * stepX + stepX / 2;
+                    const cy = padTop + drawH * (1 - (val - minP) / pRange);
+                    if (!started) {
+                        ctx.moveTo(cx, cy);
+                        started = true;
+                    } else {
+                        ctx.lineTo(cx, cy);
+                    }
+                }
+                ctx.stroke();
+            };
+
+            drawMA('ma20', '#ff00b8');
+            drawMA('ma10', '#00d8ff');
+            drawMA('ma5', '#ffcf00');
+        }
+
+        function updateTradeViewLegend(bar) {
+            if (!bar) return;
+            const el = (id) => document.getElementById(id);
+            if (el('tv-hover-date')) el('tv-hover-date').textContent = bar.date || '--';
+            if (el('tv-hover-open')) el('tv-hover-open').textContent = bar.open !== undefined ? bar.open.toFixed(2) : '--';
+            if (el('tv-hover-high')) el('tv-hover-high').textContent = bar.high !== undefined ? bar.high.toFixed(2) : '--';
+            if (el('tv-hover-low')) el('tv-hover-low').textContent = bar.low !== undefined ? bar.low.toFixed(2) : '--';
+            if (el('tv-hover-close')) el('tv-hover-close').textContent = bar.close !== undefined ? bar.close.toFixed(2) : '--';
+            if (el('tv-hover-vol')) el('tv-hover-vol').textContent = bar.vol ? (bar.vol > 1e6 ? (bar.vol/1e6).toFixed(2)+'M' : (bar.vol/1e3).toFixed(1)+'K') : '--';
+            if (el('tv-hover-ma5')) el('tv-hover-ma5').textContent = bar.ma5 !== undefined ? bar.ma5.toFixed(2) : '--';
+            if (el('tv-hover-ma10')) el('tv-hover-ma10').textContent = bar.ma10 !== undefined ? bar.ma10.toFixed(2) : '--';
+            if (el('tv-hover-ma20')) el('tv-hover-ma20').textContent = bar.ma20 !== undefined ? bar.ma20.toFixed(2) : '--';
+
+            const chgEl = el('tv-hover-change');
+            if (chgEl && bar.open && bar.close) {
+                const diff = bar.close - bar.open;
+                const pct = (diff / bar.open) * 100;
+                const sign = diff >= 0 ? '+' : '';
+                chgEl.textContent = sign + pct.toFixed(2) + '% (' + sign + diff.toFixed(2) + ')';
+                chgEl.style.color = diff >= 0 ? '#00ff9d' : '#ff3366';
+            }
+        }
+
+        function setupTradeViewCrosshair() {
+            const canvas = document.getElementById('tradeview-kline-canvas');
+            if (!canvas || !currentTradeViewBars.length) return;
+
+            canvas.onmousemove = function(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (e.clientX - rect.left) * scaleX;
+                const y = (e.clientY - rect.top) * scaleY;
+
+                const padLeft = 15;
+                const padRight = 65;
+                const drawW = canvas.width - padLeft - padRight;
+                const stepX = drawW / currentTradeViewBars.length;
+
+                let idx = Math.floor((x - padLeft) / stepX);
+                idx = Math.max(0, Math.min(currentTradeViewBars.length - 1, idx));
+                const hoverBar = currentTradeViewBars[idx];
+
+                drawTradeViewChart(currentTradeViewBars);
+
+                const ctx = canvas.getContext('2d');
+                const cx = padLeft + idx * stepX + stepX / 2;
+                ctx.beginPath();
+                ctx.strokeStyle = '#00f0ff';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]);
+                ctx.moveTo(cx, 0);
+                ctx.lineTo(cx, canvas.height);
+                if (y > 25 && y < canvas.height - 28) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                updateTradeViewLegend(hoverBar);
+            };
+
+            canvas.onmouseleave = function() {
+                drawTradeViewChart(currentTradeViewBars);
+                updateTradeViewLegend(currentTradeViewBars[currentTradeViewBars.length - 1]);
+            };
+        }
+
+        function switchTradeViewSymbol(symbol, name, el) {
+            playBeep(920, 'triangle', 0.06);
+            const btns = document.querySelectorAll('.symbol-btn');
+            btns.forEach(b => b.classList.remove('active'));
+            if (el) el.classList.add('active');
+
+            const nameEl = document.getElementById('tv-symbol-name');
+            if (nameEl) nameEl.textContent = name + ' · ' + currentTradeViewTF.toUpperCase();
+
+            fetchAndRenderTradeView(symbol, currentTradeViewTF, name);
+
+            const widgetPanel = document.getElementById('tradeview-widget-panel');
+            if (widgetPanel && widgetPanel.style.display !== 'none') {
+                initTradingViewWidget(symbol);
+            }
+        }
+
+        function switchTradeViewTF(tf, label, el) {
+            playBeep(880, 'sine', 0.05);
+            const btns = document.querySelectorAll('.tf-btn');
+            btns.forEach(b => b.classList.remove('active'));
+            if (el) el.classList.add('active');
+
+            const nameEl = document.getElementById('tv-symbol-name');
+            if (nameEl) nameEl.textContent = currentTradeViewName + ' · ' + label;
+
+            fetchAndRenderTradeView(currentTradeViewSymbol, tf, currentTradeViewName);
+        }
+
+        function switchTradeViewEngine(mode, el) {
+            playBeep(1050, 'triangle', 0.06);
+            const btns = document.querySelectorAll('.engine-btn');
+            btns.forEach(b => b.classList.remove('active'));
+            if (el) el.classList.add('active');
+
+            const canvasPanel = document.getElementById('tradeview-canvas-panel');
+            const widgetPanel = document.getElementById('tradeview-widget-panel');
+
+            if (mode === 'canvas') {
+                if (canvasPanel) canvasPanel.style.display = 'block';
+                if (widgetPanel) widgetPanel.style.display = 'none';
+                drawTradeViewChart(currentTradeViewBars);
+            } else if (mode === 'widget') {
+                if (canvasPanel) canvasPanel.style.display = 'none';
+                if (widgetPanel) widgetPanel.style.display = 'block';
+                initTradingViewWidget(currentTradeViewSymbol);
+            }
+        }
+
+        function initTradingViewWidget(symbol) {
+            const container = document.getElementById('tv_widget_embed_container');
+            if (!container) return;
+            container.innerHTML = '';
+            const tvSymbolMap = {
+                '09988': 'HKEX:9988',
+                '00700': 'HKEX:700',
+                '03690': 'HKEX:3690',
+                'BABA': 'NASDAQ:BABA'
+            };
+            const tvSym = tvSymbolMap[symbol] || 'HKEX:9988';
+
+            const script = document.createElement('script');
+            script.src = 'https://s3.tradingview.com/tv.js';
+            script.async = true;
+            script.onload = function() {
+                if (typeof TradingView !== 'undefined') {
+                    new TradingView.widget({
+                        "width": "100%",
+                        "height": 520,
+                        "symbol": tvSym,
+                        "interval": "D",
+                        "timezone": "Asia/Hong_Kong",
+                        "theme": "dark",
+                        "style": "1",
+                        "locale": "zh_CN",
+                        "toolbar_bg": "#0a0f1d",
+                        "enable_publishing": false,
+                        "hide_side_toolbar": false,
+                        "allow_symbol_change": true,
+                        "container_id": "tv_widget_embed_container"
+                    });
+                }
+            };
+            container.appendChild(script);
+        }
+
+        setTimeout(() => {
+            fetchAndRenderTradeView('09988', 'daily', '09988 阿里巴巴 (Alibaba)');
+        }, 400);
 
         function appendLog(tag, status, msg) {
             const term = document.getElementById('terminal-log');

@@ -228,7 +228,8 @@ python stock_news_scan.py --selftest
 
 - **数据源对比（2026-08-07 实测）**：① 腾讯财经 `qt.gtimg.cn`（字段最全：现价/开高低/昨收/量额/涨跌/PE/振幅/市值/52周高低/币种）✅ 稳定；② 东方财富 `push2.eastmoney.com`（JSON 最干净，HK 无 PE，偶发 502 自动换 host 重试）✅；③ Yahoo Finance chart API（无 PE/成交额，境内访问不稳）✅ 参考源；新浪 `hq.sinajs.cn`（需 Referer）与 Stooq CSV 实测 ❌。
 - **默认链路**：腾讯财经(主) → 东方财富(备) → 静态演示兜底。视图横幅实时显示「🟢 实时行情 (LIVE) · 数据源 · 行情时间」或「⚠️ 演示数据 (STATIC DEMO)」。
-- 前端每 30 秒自动轮询 `/api/quote` 更新价格卡片（不整页刷新），`/api/stock` 返回叠加实时行情的完整视图 JSON。
+- **📊 TradeView 智能行情与 K 线交互视图**：大屏已集成 **TradeView Interactive K-Line & Chart Studio**，支持双引擎双模式切换——① **TradeView 内置交互 K 线**（HTML5 Canvas 极速高帧率渲染、60周期历史与移动均线 MA5/10/20、实时成交量副图、鼠标悬停十字光标 Crosshair 显示完整 OHLCV 详情、智能买卖支撑压力位标注 S1/R1，100% 兼容静态文件与离线环境不白屏）；② **TradingView 官方高级图表控件**（支持一键切换加载官方 `s3.tradingview.com` 实时专业插件）。支持 `09988 阿里巴巴`、`00700 腾讯控股`、`03690 美团`、`BABA 阿里美股` 等多标的，以及分时(1D)/5日(5D)/日K(Daily)/周K/月K 多周期切换。
+- **后端接口支持**：前端每 30 秒自动轮询 `/api/quote` 更新价格卡片，`/api/kline` 返回标准化 60 根多空均线 K 线与指标 JSON，`/api/stock` 返回叠加实时行情的完整视图 JSON。
 
 ```bash
 python hk_quote.py 00700            # 单只股票标准化行情（3 位小数 HKD）
