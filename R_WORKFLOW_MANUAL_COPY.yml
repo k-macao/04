@@ -60,6 +60,9 @@ on:
 jobs:
   manual-push:
     runs-on: ubuntu-latest
+    # K线图需要把 assets/kline_*.png 提交回仓库（生成公网 raw URL 供微信加载）
+    permissions:
+      contents: write
     env:
       PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
