@@ -1,0 +1,105 @@
+# 手动复制版：此文件位于仓库根目录，不会被 GitHub Actions 执行。
+# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml。
+
+name: Manual Run - Alibaba PushPlus+DeepSeek
+on:
+  workflow_dispatch:
+    inputs:
+      template:
+        description: '分析框架（8套框架+简报+多空因子）'
+        required: true
+        default: 'analysis'
+        type: choice
+        options: [analysis, brief, scan, picker, fusion, plan, earnings, portfolio, review, regime, sentiment, feedscan]
+      dry_run:
+        description: 'true=只生成不推送（联调用）；false=真实推送到微信'
+        required: true
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      channel:
+        description: '推送通道'
+        required: true
+        default: 'pushplus'
+        type: choice
+        options: [pushplus, wecom, serverchan, console, all]
+      ai_provider:
+        description: 'AI 提供商（rule=固定模板，不调用 AI）'
+        required: true
+        default: 'deepseek'
+        type: choice
+        options: [deepseek, rule, openai]
+      topic:
+        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 阿里巴巴；留空用默认）'
+        required: false
+        default: ''
+      hk_code:
+        description: '港股代码（接入三源核验行情，如 09988=阿里巴巴H；留空则不取数据）'
+        required: false
+        default: '09988'
+      risk:
+        description: '风险偏好档位（仅 portfolio 模板使用）'
+        required: true
+        default: 'mid'
+        type: choice
+        options: [low, mid, high]
+      theme:
+        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
+        required: true
+        default: 'game'
+        type: choice
+        options: [game, klein, default, pixel]
+      context:
+        description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
+        required: false
+        default: ''
+      hours:
+        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描使用，支持 24/48/72/156）'
+        required: false
+        default: '48'
+jobs:
+  manual-push:
+    runs-on: ubuntu-latest
+    env:
+      PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      WECOM_KEY: ${{ secrets.WECOM_KEY }}
+      SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+      TOPIC: ${{ inputs.topic }}
+      CONTEXT: ${{ inputs.context }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Check required secrets
+        run: >-
+          python pushplus_deepseek.py --check-only
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
+      - name: Dry run (只生成内容，不真实推送)
+        if: ${{ inputs.dry_run == 'true' }}
+        run: >-
+          python pushplus_deepseek.py --dry-run
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
+          --template "${{ inputs.template }}"
+          --hk-code "${{ inputs.hk_code }}"
+          --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
+      - name: Real push (真实推送到微信)
+        if: ${{ inputs.dry_run == 'false' }}
+        run: >-
+          python pushplus_deepseek.py
+          --channel "${{ inputs.channel }}"
+          --ai-provider "${{ inputs.ai_provider }}"
+          --template "${{ inputs.template }}"
+          --hk-code "${{ inputs.hk_code }}"
+          --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
