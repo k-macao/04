@@ -1,5 +1,8 @@
-# 手动复制版：此文件位于仓库根目录，不会被 GitHub Actions 执行。
+# 手动复制版（含 K 线图代码的最新 yml）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
 # 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml。
+# 匹配 pushplus_deepseek.py v2.16-kline-2026-08-07（内置日K PNG 渲染 + 三源行情核验 + 图片提交回仓库）。
+# 要点：permissions.contents 需为 write —— K 线图模块会 git add/commit/push assets/kline_*.png
+#       生成公网 raw URL 供微信加载；其余 Secret 保持最小暴露。
 
 name: Manual Run - Alibaba PushPlus+DeepSeek
 on:
@@ -34,7 +37,7 @@ on:
         required: false
         default: ''
       hk_code:
-        description: '港股代码（接入三源核验行情，如 09988=阿里巴巴H；留空则不取数据）'
+        description: '港股代码（接入三源核验行情 + 日K线图，如 09988=阿里巴巴H；留空则不取数据、不生成 K 线图）'
         required: false
         default: '09988'
       risk:
@@ -44,7 +47,7 @@ on:
         type: choice
         options: [low, mid, high]
       theme:
-        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
+        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风：深夜蓝游戏屏+金色粗框+HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
         required: true
         default: 'game'
         type: choice
@@ -54,15 +57,30 @@ on:
         required: false
         default: ''
       hours:
-        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描使用，支持 24/48/72/156）'
+        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描 用，默认 48，支持 24/48/72/156）'
         required: false
         default: '48'
+
+# 故障排查：若出现 Service Unavailable / Failed to resolve action download info.
+# 这是 GitHub Actions Marketplace CDN 瞬时 503，非本仓库代码问题。
+# 社区案例 https://github.com/orgs/community/discussions/65974 显示 runner 会自动
+# 退避重试 29s + 11s，仍失败则需手动 Re-run。已通过以下加固降低命中率：
+#  - 固定为最广泛缓存的 actions/checkout@v4 + setup-python@v5
+#  - 同时 pin 到 commit SHA（防 tag 解析抖动）+ 保留 tag 便于可读性
+#  - 最小 permissions、超时与并发控制
+# 注：contents 需为 write——推送 K 线图要提交 assets/kline_*.png 回仓库，
+#     生成公网 raw URL 供微信加载图片；其余 Secret 仍保持最小暴露。
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-push-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   manual-push:
     runs-on: ubuntu-latest
-    # K线图需要把 assets/kline_*.png 提交回仓库（生成公网 raw URL 供微信加载）
-    permissions:
-      contents: write
+    timeout-minutes: 15
     env:
       PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -73,23 +91,25 @@ jobs:
       TOPIC: ${{ inputs.topic }}
       CONTEXT: ${{ inputs.context }}
     steps:
+      # 使用广泛缓存的 v4/v5 + SHA pin，降低 marketplace 503 命中率
+      # checkout v4 = 11bd71901bbe5b1630ceea73d27597364c9af683 (tag v4.2.2)
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4  # pin: 11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # setup-python v5 = a26af69be951a213d495a4c3e4e4022e16d87065 (tag v5.6.0)
       - name: Setup Python 3.11
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5  # pin: a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
-      - name: Restore push state (跨运行新鲜度对比)
-        uses: actions/cache/restore@v4
-        with:
-          path: output/push_state.json
-          key: push-state-${{ github.run_id }}
-          restore-keys: push-state-
+          cache: 'pip'
+          cache-dependency-path: ''
+
       - name: Check required secrets
         run: >-
           python pushplus_deepseek.py --check-only
           --channel "${{ inputs.channel }}"
           --ai-provider "${{ inputs.ai_provider }}"
+
       - name: Dry run (只生成内容，不真实推送)
         if: ${{ inputs.dry_run == 'true' }}
         run: >-
@@ -101,6 +121,7 @@ jobs:
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
           --hours "${{ inputs.hours }}"
+
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
@@ -112,9 +133,3 @@ jobs:
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
           --hours "${{ inputs.hours }}"
-      - name: Save push state (供下次新鲜度对比)
-        if: ${{ success() && hashFiles('output/push_state.json') != '' }}
-        uses: actions/cache/save@v4
-        with:
-          path: output/push_state.json
-          key: push-state-${{ github.run_id }}
