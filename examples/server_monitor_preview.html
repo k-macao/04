@@ -43,7 +43,7 @@
             padding: 12px;
             position: relative;
             overflow-x: hidden;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
                 repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px),
                 repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px);
@@ -452,6 +452,20 @@
             width: 100%;
             cursor: crosshair;
         }
+        .tv-dotmatrix {
+            display: block;
+            width: 100%;
+            min-height: 22em;
+            margin: 0;
+            padding: 12px 10px;
+            overflow: hidden;
+            white-space: pre;
+            color: #00ff9d;
+            background: #05080c;
+            font: 12px/1.15 monospace;
+            letter-spacing: 1px;
+        }
+        .tv-dotmatrix.tv-volume { min-height: 6em; color: #ffcf00; }
         .tv-vol-wrap {
             position: relative;
             background: #05080c;
@@ -836,11 +850,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-07 17:31:19 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-07 19:20:23 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-07 09:31:19 UTC</span>
+                    <span id="utc-clock">2026-08-07 11:20:23 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -860,7 +874,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 17:31:19 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 19:20:23 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -874,46 +888,46 @@
 
         <!-- 🖥️ 横排服务器集群节点状态流 -->
         <div class="node-stream">
-            
+
     <div class="node-pill">
         <span class="node-dot"></span>
         <span class="node-id">HK-Master-01</span>
         <span class="node-role">香港主控调度中心</span>
         <span class="node-stat">ONLINE · 2ms · 负载 24%</span>
     </div>
-    
+
     <div class="node-pill">
         <span class="node-dot"></span>
         <span class="node-id">SH-Edge-02</span>
         <span class="node-role">上海低延时接入点</span>
         <span class="node-stat">ONLINE · 11ms · 负载 31%</span>
     </div>
-    
+
     <div class="node-pill">
         <span class="node-dot"></span>
         <span class="node-id">SG-Compute-03</span>
         <span class="node-role">新加坡多云算力池</span>
         <span class="node-stat">ONLINE · 28ms · 负载 42%</span>
     </div>
-    
+
     <div class="node-pill">
         <span class="node-dot"></span>
         <span class="node-id">AI-Node-04</span>
         <span class="node-role">DeepSeek 推理执行集群</span>
         <span class="node-stat">ACTIVE · 5ms · 负载 68%</span>
     </div>
-    
+
     <div class="node-pill">
         <span class="node-dot"></span>
         <span class="node-id">TS-Database-05</span>
         <span class="node-role">十四源时序与情绪数据库</span>
         <span class="node-stat">SYNCED · 1ms · 负载 19%</span>
     </div>
-    
+
         </div>
 
         <!-- 📈 横排核心量化指标带 (绝对零表格) -->
-        
+
     <div class="metric-ribbon">
         <div class="kpi-card highlight-cyan">
             <div class="kpi-label">标的代码 / 名称</div>
@@ -946,10 +960,10 @@
             <div class="kpi-foot">全网舆情指数: 74/100</div>
         </div>
     </div>
-    
+
 
         <!-- 📊 TradeView 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO) -->
-        
+
         <!-- 📊 TradeView 智能行情与 K 线交互图表界面 -->
         <div class="section-header" id="tradeview-section">
             <span>📊 TRADEVIEW 智能行情与 K 线交互交易视图 (TRADEVIEW INTERACTIVE K-LINE & CHART STUDIO)</span>
@@ -995,10 +1009,10 @@
                     <div class="tv-legend-item tv-legend-ma20">MA20: <span id="tv-hover-ma20" class="tv-legend-val">--</span></div>
                 </div>
                 <div class="tv-canvas-wrap">
-                    <canvas id="tradeview-kline-canvas" class="tv-canvas" width="1200" height="380"></canvas>
+                    <pre id="tradeview-kline-canvas" class="tv-dotmatrix" aria-label="点阵 K 线图"></pre>
                 </div>
                 <div class="tv-vol-wrap">
-                    <canvas id="tradeview-vol-canvas" class="tv-canvas" width="1200" height="120"></canvas>
+                    <pre id="tradeview-vol-canvas" class="tv-dotmatrix tv-volume" aria-label="点阵成交量"></pre>
                 </div>
                 <div class="tv-footer-bar">
                     <div>
@@ -1006,8 +1020,8 @@
                         <span id="tv-engine-status">TradeView 内置高帧率 Canvas 渲染引擎 · 60 周期历史与均线多空共振 · 鼠标悬停可查看十字光标与 OHLCV 详情</span>
                     </div>
                     <div>
-                        <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> | 
-                        <span>支撑位 S1: <strong id="tv-sup-val" style="color:var(--green);">--</strong></span> | 
+                        <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> |
+                        <span>支撑位 S1: <strong id="tv-sup-val" style="color:var(--green);">--</strong></span> |
                         <span>技术形态: <strong id="tv-trend-val" style="color:var(--cyan);">放量金叉 (BULLISH)</strong></span>
                     </div>
                 </div>
@@ -1029,7 +1043,7 @@
                 </div>
             </div>
         </div>
-    
+
 
         <!-- 📊 横排七大因子多空矩阵 (绝对零表格，纯横排卡片流) -->
         <div class="section-header">
@@ -1037,7 +1051,7 @@
             <span class="section-tag">横排因子流 · 包含 48H 量价舆情动量 · 绝无表格</span>
         </div>
         <div class="factors-matrix-horiz">
-            
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1057,7 +1071,7 @@
         </div>
         <div class="factor-desc">云计算营收增长提速，公共云收入双位数增长，AI相关产品收入连续五季度三位数增长。</div>
     </div>
-    
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1077,7 +1091,7 @@
         </div>
         <div class="factor-desc">平台经济常态化监管体系明朗，数字经济与人工智能出海政策红利持续释放。</div>
     </div>
-    
+
     <div class="factor-card factor-down">
         <div class="factor-header">
             <span class="factor-title">
@@ -1097,7 +1111,7 @@
         </div>
         <div class="factor-desc">20日均线短期形成技术压制，MACD底部金叉酝酿中，关键支撑位在15.90附近。</div>
     </div>
-    
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1117,7 +1131,7 @@
         </div>
         <div class="factor-desc">主力资金连续3日维持净流入，北向与南向资金量价配合良好，机构仓位稳步提升。</div>
     </div>
-    
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1137,7 +1151,7 @@
         </div>
         <div class="factor-desc">财报与自研大模型开源引发科技社媒高度关注，全网情绪得分74，利好研报集中。</div>
     </div>
-    
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1157,7 +1171,7 @@
         </div>
         <div class="factor-desc">滚动市盈率位于近五年15%极低分位，现金流充沛且回购力度持续加大，安全边际深厚。</div>
     </div>
-    
+
     <div class="factor-card factor-up">
         <div class="factor-header">
             <span class="factor-title">
@@ -1177,7 +1191,7 @@
         </div>
         <div class="factor-desc">48小时窗口内量价与新闻样本本地预聚合，放量上攻形态确认，多头动量占优。</div>
     </div>
-    
+
         </div>
 
         <!-- 📝 核心文字解读与研判要点 -->
@@ -1196,42 +1210,42 @@
             <span class="section-tag">频次动态提取 · 子串伪影吸收</span>
         </div>
         <div class="sectors-stream">
-            
+
     <div class="sector-chip chip-up">
         <span class="sector-dot"></span>
         <span class="sector-name">电商板块</span>
         <span class="sector-count">命中 8 次</span>
         <span class="sector-trend trend-up">+1.8%</span>
     </div>
-    
+
     <div class="sector-chip chip-up">
         <span class="sector-dot"></span>
         <span class="sector-name">云计算基础设施</span>
         <span class="sector-count">命中 5 次</span>
         <span class="sector-trend trend-up">+3.2%</span>
     </div>
-    
+
     <div class="sector-chip chip-up">
         <span class="sector-dot"></span>
         <span class="sector-name">AI大模型应用</span>
         <span class="sector-count">命中 6 次</span>
         <span class="sector-trend trend-up">+4.5%</span>
     </div>
-    
+
     <div class="sector-chip chip-up">
         <span class="sector-dot"></span>
         <span class="sector-name">跨境出海业务</span>
         <span class="sector-count">命中 3 次</span>
         <span class="sector-trend trend-up">+2.1%</span>
     </div>
-    
+
     <div class="sector-chip chip-down">
         <span class="sector-dot"></span>
         <span class="sector-name">新零售物流体系</span>
         <span class="sector-count">命中 4 次</span>
         <span class="sector-trend trend-down">-0.4%</span>
     </div>
-    
+
         </div>
 
         <!-- 🚨 横排预警与监控项清单 -->
@@ -1240,22 +1254,22 @@
             <span class="section-tag">动态点位跟踪 · 突破与止损防线</span>
         </div>
         <div class="alerts-stream">
-            
+
     <div class="alert-chip alert-up">
         <span class="alert-tag">● 监控突破</span>
         <span class="alert-body">第一监控项：突破 20 日新高线 17.50 触发上攻警报</span>
     </div>
-    
+
     <div class="alert-chip alert-down">
         <span class="alert-tag">▼ 风控防线</span>
         <span class="alert-body">第二监控项：下档关键预警线 15.90 ▼（跌破需规避）</span>
     </div>
-    
+
     <div class="alert-chip alert-up">
         <span class="alert-tag">● 监控突破</span>
         <span class="alert-body">第三监控项：大单成交比超过 35% 且主力单笔流入超 5000 万</span>
     </div>
-    
+
         </div>
 
         <!-- 🌐 横排十四平台实时情报雷达流 (财经7源 + 社媒7源) -->
@@ -1264,7 +1278,7 @@
             <span class="section-tag">财经7源 + 社媒7源 · 156H 窗口过滤 · 横排卡片流</span>
         </div>
         <div class="feeds-matrix-horiz">
-            
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">Google 新闻</span>
@@ -1275,7 +1289,7 @@
         <div class="feed-title">阿里巴巴云栖大会发布最新一代开源大模型，企业客户采用率激增</div>
         <div class="feed-summary">算力基础设施投资回报显著，商业化进程提速。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">财联社电报</span>
@@ -1286,7 +1300,7 @@
         <div class="feed-title">南向资金连续第4日净买入阿里巴巴，合计增持逾12亿港元</div>
         <div class="feed-summary">机构资金在低估值区间积极加仓。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">华尔街见闻</span>
@@ -1297,7 +1311,7 @@
         <div class="feed-title">全球科技股震荡整固，中概互联网ETF出现规模资金申购</div>
         <div class="feed-summary">海外宏观利率预期出现调整，科技板块波动加剧。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">格隆汇</span>
@@ -1308,7 +1322,7 @@
         <div class="feed-title">高盛上调阿里巴巴目标价至 18.50 港元，重申强力买入评级</div>
         <div class="feed-summary">核心电商与云计算双轮驱动战略成效显现。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">金十数据</span>
@@ -1319,7 +1333,7 @@
         <div class="feed-title">离岸人民币汇率窄幅波动，港股核心资产流动性保持充裕</div>
         <div class="feed-summary">大市成交额维持在千亿以上水平。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">MKTNews</span>
@@ -1330,7 +1344,7 @@
         <div class="feed-title">菜鸟海外本地快递网络拓展至欧洲五国，跨境时效大幅提升</div>
         <div class="feed-summary">海外电商基础设施网络竞争力巩固。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">雪球热帖</span>
@@ -1341,7 +1355,7 @@
         <div class="feed-title">【深度剖析】阿里自由现金流与回购收益率测算，当前估值性价比极高</div>
         <div class="feed-summary">社区热度破万，多头观点占绝对主导。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">知乎热议</span>
@@ -1352,7 +1366,7 @@
         <div class="feed-title">如何看待阿里最新开源的模型测评超越多项基准？</div>
         <div class="feed-summary">技术社区开发者好评如潮，生态扩张迅猛。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">微博财经</span>
@@ -1363,7 +1377,7 @@
         <div class="feed-title">#阿里云计算提速# 登上同城财经热搜榜 Top 3</div>
         <div class="feed-summary">公众舆情正面词频占比达 82%。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">抖音热榜</span>
@@ -1374,7 +1388,7 @@
         <div class="feed-title">AI 赋能电商主播实测：阿里新工具降低中小商家运营成本</div>
         <div class="feed-summary">视频播放量破千万，展现技术落地应用。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">虎扑步行街</span>
@@ -1385,7 +1399,7 @@
         <div class="feed-title">聊聊港股科技股，这轮阿里回调是不是黄金坑？</div>
         <div class="feed-summary">投票统计中 71% 网友认为当前属于高胜率买点。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">AI hot 追踪</span>
@@ -1396,7 +1410,7 @@
         <div class="feed-title">Global AI Models Benchmark：Qwen 系列开源模型下载量破亿</div>
         <div class="feed-summary">全球开发者社区关注度与星标数跃居前列。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">联合早报</span>
@@ -1407,7 +1421,7 @@
         <div class="feed-title">亚太数字经济峰会聚焦中资科技企业出海新机遇</div>
         <div class="feed-summary">东南亚市场电商与云服务渗透率持续攀升。</div>
     </div>
-    
+
     <div class="feed-card">
         <div class="feed-top">
             <span class="feed-src">香港01</span>
@@ -1418,7 +1432,7 @@
         <div class="feed-title">恒指成份股检讨：科技巨头权重稳固，阿里交投活跃度居前</div>
         <div class="feed-summary">港股核心指数权重股支撑作用突出。</div>
     </div>
-    
+
         </div>
 
         <!-- 📟 终端实时日志流 -->
@@ -1596,6 +1610,15 @@
             currentTradeViewTF = tf;
             if (name) currentTradeViewName = name;
 
+            // 先画本地快照，再请求接口；这样网络慢/接口被拦截时 K 线不会空白。
+            // 原先必须等 /api/kline 返回后才首次绘制，离线或行情源超时会让用户看到空图。
+            const instantBars = generateDefaultKlineBars(symbol, tf);
+            currentTradeViewBars = instantBars;
+            currentTradeViewSupport = Math.min(...instantBars.slice(-20).map(b => b.low)).toFixed(2);
+            currentTradeViewResistance = Math.max(...instantBars.slice(-20).map(b => b.high)).toFixed(2);
+            drawTradeViewChart(instantBars);
+            updateTradeViewLegend(instantBars[instantBars.length - 1]);
+
             let data = null;
             try {
                 const resp = await fetch('/api/kline?code=' + encodeURIComponent(symbol) + '&tf=' + encodeURIComponent(tf));
@@ -1635,148 +1658,35 @@
         }
 
         function drawTradeViewChart(bars) {
+            // 纯文本点阵渲染：不依赖 Canvas、图片或第三方图表库。
             if (!bars || !bars.length) return;
-            const klineCanvas = document.getElementById('tradeview-kline-canvas');
-            const volCanvas = document.getElementById('tradeview-vol-canvas');
-            if (!klineCanvas || !volCanvas) return;
-
-            const ctx = klineCanvas.getContext('2d');
-            const vCtx = volCanvas.getContext('2d');
-            const width = klineCanvas.width;
-            const height = klineCanvas.height;
-            const vHeight = volCanvas.height;
-
-            ctx.clearRect(0, 0, width, height);
-            vCtx.clearRect(0, 0, width, vHeight);
-
-            ctx.fillStyle = '#05080c';
-            ctx.fillRect(0, 0, width, height);
-            vCtx.fillStyle = '#05080c';
-            vCtx.fillRect(0, 0, width, vHeight);
-
-            const padTop = 25;
-            const padBottom = 28;
-            const padLeft = 15;
-            const padRight = 65;
-            const drawW = width - padLeft - padRight;
-            const drawH = height - padTop - padBottom;
-            const vDrawH = vHeight - 15;
-
-            let minP = Math.min(...bars.map(b => b.low));
-            let maxP = Math.max(...bars.map(b => b.high));
-            const range = maxP - minP || 1.0;
-            minP -= range * 0.05;
-            maxP += range * 0.05;
-            const pRange = maxP - minP;
-
-            const maxVol = Math.max(...bars.map(b => b.vol)) || 1000;
-
-            ctx.strokeStyle = '#162030';
-            ctx.lineWidth = 1;
-            ctx.fillStyle = '#64748b';
-            ctx.font = '11px monospace';
-            const gridCount = 5;
-            for (let i = 0; i <= gridCount; i++) {
-                const y = padTop + (drawH / gridCount) * i;
-                const pVal = maxP - (pRange / gridCount) * i;
-                ctx.beginPath();
-                ctx.setLineDash([3, 3]);
-                ctx.moveTo(padLeft, y);
-                ctx.lineTo(width - padRight, y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillText(pVal.toFixed(2), width - padRight + 8, y + 4);
-            }
-
-            const numBars = bars.length;
-            const stepX = drawW / numBars;
-            const barW = Math.max(2, stepX * 0.68);
-
-            const supP = parseFloat(currentTradeViewSupport);
-            const resP = parseFloat(currentTradeViewResistance);
-            if (!isNaN(supP) && supP >= minP && supP <= maxP) {
-                const ySup = padTop + drawH * (1 - (supP - minP) / pRange);
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(0, 255, 157, 0.55)';
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(padLeft, ySup);
-                ctx.lineTo(width - padRight, ySup);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#00ff9d';
-                ctx.fillText('S1 ' + supP.toFixed(2), width - padRight + 6, ySup - 3);
-            }
-            if (!isNaN(resP) && resP >= minP && resP <= maxP) {
-                const yRes = padTop + drawH * (1 - (resP - minP) / pRange);
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(255, 51, 102, 0.55)';
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(padLeft, yRes);
-                ctx.lineTo(width - padRight, yRes);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#ff3366';
-                ctx.fillText('R1 ' + resP.toFixed(2), width - padRight + 6, yRes - 3);
-            }
-
-            for (let i = 0; i < numBars; i++) {
-                const b = bars[i];
-                const cx = padLeft + i * stepX + stepX / 2;
-                const yOpen = padTop + drawH * (1 - (b.open - minP) / pRange);
-                const yClose = padTop + drawH * (1 - (b.close - minP) / pRange);
-                const yHigh = padTop + drawH * (1 - (b.high - minP) / pRange);
-                const yLow = padTop + drawH * (1 - (b.low - minP) / pRange);
-
-                const isUp = b.close >= b.open;
-                const color = isUp ? '#00ff9d' : '#ff3366';
-
-                ctx.beginPath();
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.2;
-                ctx.moveTo(cx, yHigh);
-                ctx.lineTo(cx, yLow);
-                ctx.stroke();
-
-                ctx.fillStyle = color;
-                const bodyY = Math.min(yOpen, yClose);
-                const bodyH = Math.max(2, Math.abs(yClose - yOpen));
-                ctx.fillRect(cx - barW / 2, bodyY, barW, bodyH);
-
-                vCtx.fillStyle = color;
-                const vH = Math.max(2, (b.vol / maxVol) * vDrawH);
-                const vY = vDrawH - vH;
-                vCtx.fillRect(cx - barW / 2, vY, barW, vH);
-
-                if (i % 10 === 0 || i === numBars - 1) {
-                    ctx.fillStyle = '#64748b';
-                    ctx.font = '10px monospace';
-                    ctx.fillText(b.date.slice(5), cx - 14, height - 8);
-                }
-            }
-
-            const drawMA = (key, color) => {
-                ctx.beginPath();
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.6;
-                let started = false;
-                for (let i = 0; i < numBars; i++) {
-                    const val = bars[i][key];
-                    if (val === undefined || isNaN(val)) continue;
-                    const cx = padLeft + i * stepX + stepX / 2;
-                    const cy = padTop + drawH * (1 - (val - minP) / pRange);
-                    if (!started) {
-                        ctx.moveTo(cx, cy);
-                        started = true;
-                    } else {
-                        ctx.lineTo(cx, cy);
-                    }
-                }
-                ctx.stroke();
-            };
-
-            drawMA('ma20', '#ff00b8');
-            drawMA('ma10', '#00d8ff');
-            drawMA('ma5', '#ffcf00');
+            const chart = document.getElementById('tradeview-kline-canvas');
+            const volume = document.getElementById('tradeview-vol-canvas');
+            if (!chart || !volume) return;
+            const cols = Math.min(72, bars.length);
+            const view = bars.slice(-cols);
+            const rows = 20;
+            const lows = view.map(b => Number(b.low));
+            const highs = view.map(b => Number(b.high));
+            let lo = Math.min(...lows), hi = Math.max(...highs);
+            const span = hi - lo || 1;
+            lo -= span * .06; hi += span * .06;
+            const y = p => Math.max(0, Math.min(rows - 1, Math.round((hi - p) / (hi - lo) * (rows - 1))));
+            const grid = Array.from({length: rows}, () => Array(cols).fill(' '));
+            view.forEach((b, i) => {
+                const yo=y(b.open), yc=y(b.close), yh=y(b.high), yl=y(b.low);
+                for (let r=Math.min(yh,yl); r<=Math.max(yh,yl); r++) grid[r][i]='│';
+                const top=Math.min(yo,yc), bottom=Math.max(yo,yc);
+                for (let r=top; r<=bottom; r++) grid[r][i] = (b.close >= b.open ? '█' : '▓');
+            });
+            const labels = [hi, lo];
+            chart.textContent = grid.map((line, r) => (r===0 ? labels[0].toFixed(2).padStart(7)+' ' : r===rows-1 ? labels[1].toFixed(2).padStart(7)+' ' : '       ') + line.join('')).join('
+');
+            const maxVol = Math.max(...view.map(b => Number(b.vol) || 0), 1);
+            const vrows = 5, vg = Array.from({length:vrows}, () => Array(cols).fill(' '));
+            view.forEach((b,i) => { const n=Math.max(1,Math.round((Number(b.vol)||0)/maxVol*vrows)); for(let r=vrows-n;r<vrows;r++) vg[r][i]='▂'; });
+            volume.textContent = 'VOL  ' + vg.map(r => r.join('')).join('
+');
         }
 
         function updateTradeViewLegend(bar) {
@@ -1803,49 +1713,7 @@
         }
 
         function setupTradeViewCrosshair() {
-            const canvas = document.getElementById('tradeview-kline-canvas');
-            if (!canvas || !currentTradeViewBars.length) return;
-
-            canvas.onmousemove = function(e) {
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                const x = (e.clientX - rect.left) * scaleX;
-                const y = (e.clientY - rect.top) * scaleY;
-
-                const padLeft = 15;
-                const padRight = 65;
-                const drawW = canvas.width - padLeft - padRight;
-                const stepX = drawW / currentTradeViewBars.length;
-
-                let idx = Math.floor((x - padLeft) / stepX);
-                idx = Math.max(0, Math.min(currentTradeViewBars.length - 1, idx));
-                const hoverBar = currentTradeViewBars[idx];
-
-                drawTradeViewChart(currentTradeViewBars);
-
-                const ctx = canvas.getContext('2d');
-                const cx = padLeft + idx * stepX + stepX / 2;
-                ctx.beginPath();
-                ctx.strokeStyle = '#00f0ff';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(cx, 0);
-                ctx.lineTo(cx, canvas.height);
-                if (y > 25 && y < canvas.height - 28) {
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(canvas.width, y);
-                }
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                updateTradeViewLegend(hoverBar);
-            };
-
-            canvas.onmouseleave = function() {
-                drawTradeViewChart(currentTradeViewBars);
-                updateTradeViewLegend(currentTradeViewBars[currentTradeViewBars.length - 1]);
-            };
+            // 点阵模式保持轻量；鼠标悬停不再调用 Canvas API。
         }
 
         function switchTradeViewSymbol(symbol, name, el) {
@@ -1956,7 +1824,7 @@
             // CST
             const cstDate = new Date(now.getTime() + 8 * 3600 * 1000);
             const cst = cstDate.toISOString().replace('T', ' ').substring(0, 19) + ' CST (北京时间)';
-            
+
             const utcEl = document.getElementById('utc-clock');
             const cstEl = document.getElementById('cst-clock');
             if (utcEl) utcEl.textContent = utc;
