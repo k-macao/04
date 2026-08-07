@@ -348,6 +348,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     """生成完全不含 <table> 的纯文字 + 列表横排服务器大屏监视风格 HTML"""
     data = STOCKS.get(stock_code, STOCKS["09988"])
     cluster = get_cluster_status()
+    # 静态快照生成时间（页面时钟由 JS 实时走动，但行情/快讯为内置演示数据，不自动更新）
+    generated_at = cluster["cst_time"]
 
     # 1. 横排集群节点状态流
     nodes_html = "".join(f"""
@@ -641,6 +643,24 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             color: #000;
             box-shadow: var(--glow-cyan);
         }}
+
+        /* 数据状态横幅：明确标注当前为静态演示数据，避免误以为实时更新 */
+        .data-status-banner {{
+            background: rgba(255, 184, 0, 0.08);
+            border: 1px solid var(--amber);
+            box-shadow: 0 0 12px rgba(255, 184, 0, 0.18);
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+            color: var(--amber);
+            flex-wrap: wrap;
+        }}
+        .data-status-banner .dsb-icon {{ font-size: 14px; }}
+        .data-status-banner .dsb-strong {{ font-weight: bold; color: #ffd46b; }}
+        .data-status-banner .dsb-hint {{ color: var(--text-muted); }}
+        .data-status-banner .dsb-time {{ margin-left: auto; color: var(--text-dim); font-size: 10px; }}
 
         /* 标的切换栏 (横排) */
         .stock-selector-ribbon {{
@@ -1163,6 +1183,14 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <button class="btn-action" style="background:var(--cyan);color:#000;" onclick="manualRefresh()">⚡ 实时刷新</button>
             </div>
         </header>
+
+        <!-- 数据状态横幅：说明当前为静态演示数据 -->
+        <div class="data-status-banner">
+            <span class="dsb-icon">⚠️</span>
+            <span class="dsb-strong">演示数据 (STATIC DEMO)</span>
+            <span class="dsb-hint">本页行情、快讯与因子为内置示例数据，不会随市场自动更新；时钟为前端实时显示。需刷新数据请重新运行 <code>python server_dashboard.py --export-only</code> 或重启服务。</span>
+            <span class="dsb-time">快照生成: {generated_at}</span>
+        </div>
 
         <!-- 标的切换栏 (横排) -->
         <div class="stock-selector-ribbon">
