@@ -76,6 +76,12 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Restore push state (跨运行新鲜度对比)
+        uses: actions/cache/restore@v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
+          restore-keys: push-state-
       - name: Check required secrets
         run: >-
           python pushplus_deepseek.py --check-only
@@ -103,3 +109,9 @@ jobs:
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
           --hours "${{ inputs.hours }}"
+      - name: Save push state (供下次新鲜度对比)
+        if: ${{ success() && hashFiles('output/push_state.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
