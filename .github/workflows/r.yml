@@ -1,4 +1,7 @@
-name: Manual Run - DeepSeek
+# 手动复制版：此文件位于仓库根目录，不会被 GitHub Actions 执行。
+# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml。
+
+name: Manual Run - Alibaba PushPlus+DeepSeek
 on:
   workflow_dispatch:
     inputs:
@@ -27,13 +30,13 @@ on:
         type: choice
         options: [deepseek, rule, openai]
       topic:
-        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 金风科技；留空用默认）'
+        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 阿里巴巴；留空用默认）'
         required: false
         default: ''
       hk_code:
-        description: '港股代码（接入三源核验行情，如 02208=金风科技H；留空则不取数据）'
+        description: '港股代码（接入三源核验行情，如 09988=阿里巴巴H；留空则不取数据）'
         required: false
-        default: '02208'
+        default: '09988'
       risk:
         description: '风险偏好档位（仅 portfolio 模板使用）'
         required: true
@@ -41,15 +44,19 @@ on:
         type: choice
         options: [low, mid, high]
       theme:
-        description: '推送主题（仅 pushplus 通道生效）：klein=浅灰底+克莱因蓝+小两号'
+        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
         required: true
-        default: 'klein'
+        default: 'game'
         type: choice
-        options: [klein, default]
+        options: [game, klein, default, pixel]
       context:
         description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
         required: false
         default: ''
+      hours:
+        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描使用，支持 24/48/72/156）'
+        required: false
+        default: '48'
 jobs:
   manual-push:
     runs-on: ubuntu-latest
@@ -84,6 +91,7 @@ jobs:
           --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
@@ -94,3 +102,4 @@ jobs:
           --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
