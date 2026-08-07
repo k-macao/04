@@ -222,6 +222,24 @@ python stock_news_scan.py --selftest
 带可靠时间戳的条目严格按 156h 过滤；雪球/社媒热榜为实时快照、标记「实时」不参与过滤。
 任何单源失败只进「数据缺口」，不拉高命中数、不伪造数据。
 
+## 📈 免费港股实时行情（`hk_quote.py` + 大屏 view 接入）
+
+大屏监视界面 `server_dashboard.py` 已接入免费港股实时行情，无任何 API Key：
+
+- **数据源对比（2026-08-07 实测）**：① 腾讯财经 `qt.gtimg.cn`（字段最全：现价/开高低/昨收/量额/涨跌/PE/振幅/市值/52周高低/币种）✅ 稳定；② 东方财富 `push2.eastmoney.com`（JSON 最干净，HK 无 PE，偶发 502 自动换 host 重试）✅；③ Yahoo Finance chart API（无 PE/成交额，境内访问不稳）✅ 参考源；新浪 `hq.sinajs.cn`（需 Referer）与 Stooq CSV 实测 ❌。
+- **默认链路**：腾讯财经(主) → 东方财富(备) → 静态演示兜底。视图横幅实时显示「🟢 实时行情 (LIVE) · 数据源 · 行情时间」或「⚠️ 演示数据 (STATIC DEMO)」。
+- 前端每 30 秒自动轮询 `/api/quote` 更新价格卡片（不整页刷新），`/api/stock` 返回叠加实时行情的完整视图 JSON。
+
+```bash
+python hk_quote.py 00700            # 单只股票标准化行情（3 位小数 HKD）
+python hk_quote.py --selftest       # 三源真实网络对比测试（哪个好）
+python hk_quote.py --fixture-test   # 离线解析自检（内置真实抓包样本）
+python test_hk_quote.py             # 单元测试（8 项）
+python server_dashboard.py          # 启动大屏（8080，自动接入实时行情）
+```
+
+环境变量：`HK_QUOTE_CHAIN=tencent,eastmoney,yahoo`（链路）、`HK_QUOTE_TIMEOUT=3.5`（秒）、`HK_QUOTE_NO_LIVE=1`（强制静态演示）。
+
 ## 📝 Git 合并演示
 
 本分支 `arena/019fc917-04` 已实现完整的合并功能，可通过 PR 合并到 main:

@@ -708,11 +708,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-07 15:48:50 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-07 16:50:29 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-07 07:48:50 UTC</span>
+                    <span id="utc-clock">2026-08-07 08:50:29 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -727,12 +727,12 @@
             </div>
         </header>
 
-        <!-- 数据状态横幅：说明当前为静态演示数据 -->
-        <div class="data-status-banner">
-            <span class="dsb-icon">⚠️</span>
-            <span class="dsb-strong">演示数据 (STATIC DEMO)</span>
-            <span class="dsb-hint">本页行情、快讯与因子为内置示例数据，不会随市场自动更新；时钟为前端实时显示。需刷新数据请重新运行 <code>python server_dashboard.py --export-only</code> 或重启服务。</span>
-            <span class="dsb-time">快照生成: 2026-08-07 15:48:50 CST (北京时间)</span>
+        <!-- 数据状态横幅：实时行情 or 静态演示数据 -->
+        <div class="data-status-banner" id="q-banner">
+            <span class="dsb-icon" id="q-banner-icon">⚠️</span>
+            <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
+            <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 16:50:29 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -790,22 +790,22 @@
         <div class="kpi-card highlight-cyan">
             <div class="kpi-label">标的代码 / 名称</div>
             <div class="kpi-value cyan-glow">09988 阿里巴巴 (Alibaba)</div>
-            <div class="kpi-foot">港股行情实时核验</div>
+            <div class="kpi-foot" id="q-source-foot">行情数据源: 静态快照 (STATIC DEMO)</div>
         </div>
         <div class="kpi-card highlight-red">
             <div class="kpi-label">现价 / 涨跌幅</div>
             <div class="kpi-value" style="color:#ff3366;">
-                16.80 <span style="font-size:14px;">HKD</span>
-                <span class="pill-badge" style="background:rgba(255,51,102,0.15);color:#ff3366;border-color:#ff3366;">
+                <span id="q-price">16.80</span> <span style="font-size:14px;" id="q-currency">HKD</span>
+                <span class="pill-badge" id="q-change" style="background:rgba(255,51,102,0.15);color:#ff3366;border-color:#ff3366;">
                     ▼ -1.2% (-0.20)
                 </span>
             </div>
-            <div class="kpi-foot">24h 波动区间: 16.50 - 17.40</div>
+            <div class="kpi-foot" id="q-range">24h 波动区间: 16.50 - 17.40</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">24H 成交量 / 估值</div>
-            <div class="kpi-value amber-glow">8.42M <span style="font-size:13px;color:#94a3b8;">(PE 12.4x)</span></div>
-            <div class="kpi-foot">历史分位: 15% (深度价值区)</div>
+            <div class="kpi-value amber-glow"><span id="q-vol">8.42M</span> <span style="font-size:13px;color:#94a3b8;">(PE <span id="q-pe">12.4x</span>)</span></div>
+            <div class="kpi-foot" id="q-pe-foot">历史分位: 15% (深度价值区)</div>
         </div>
         <div class="kpi-card highlight-green">
             <div class="kpi-label">AI 预测目标价</div>
@@ -1281,6 +1281,50 @@
             }, 300);
         }
 
+        // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
+        const STOCK_CODE = '09988';
+        async function refreshQuote() {
+            try {
+                const resp = await fetch('/api/quote?code=' + encodeURIComponent(STOCK_CODE));
+                if (!resp.ok) return;
+                const q = await resp.json();
+                if (!q || !q.live) {
+                    appendLog('QUOTE.STATUS', 'WARN', 'Live quote unavailable - showing static snapshot' + (q && q.error ? ': ' + q.error : ''));
+                    return;
+                }
+                const up = (q.change_pct || '').indexOf('-') !== 0;
+                const color = up ? '#00ff9d' : '#ff3366';
+                const sign = up ? '▲' : '▼';
+                const el = (id) => document.getElementById(id);
+                if (el('q-price')) el('q-price').textContent = q.price;
+                if (el('q-currency')) el('q-currency').textContent = q.currency || 'HKD';
+                if (el('q-change')) {
+                    el('q-change').textContent = sign + ' ' + q.change_pct + ' (' + q.change + ')';
+                    el('q-change').style.color = color;
+                    el('q-change').style.borderColor = color;
+                    el('q-change').style.background = up ? 'rgba(0,255,157,0.15)' : 'rgba(255,51,102,0.15)';
+                    const wrap = el('q-price').parentElement;
+                    if (wrap) wrap.style.color = color;
+                }
+                if (el('q-range')) el('q-range').textContent = '24h 波动区间: ' + q.low + ' - ' + q.high;
+                if (el('q-vol')) el('q-vol').textContent = q.vol;
+                if (el('q-pe')) el('q-pe').textContent = q.pe;
+                if (el('q-pe-foot') && q.pe && q.pe.indexOf('—') === -1) {
+                    el('q-pe-foot').textContent = '市盈率来自实时行情（腾讯财经）';
+                }
+                if (el('q-source-foot')) el('q-source-foot').textContent = '行情数据源: ' + q.source_label + (q.time ? ' · 行情时间 ' + q.time : '');
+                if (el('q-banner-icon')) el('q-banner-icon').textContent = '🟢';
+                if (el('q-banner-strong')) el('q-banner-strong').textContent = '实时行情 (LIVE) · ' + q.source_label;
+                if (el('q-banner-hint')) el('q-banner-hint').textContent = '行情来自免费数据源「' + q.source_label + '」并自动更新；快讯与因子仍为内置演示内容，仅供参考。';
+                if (el('q-banner-time')) el('q-banner-time').textContent = '行情时间: ' + (q.time || '—') + ' · 抓取: ' + (q.fetched_at || '—');
+                appendLog('QUOTE.LIVE', 'OK', STOCK_CODE + ' ' + q.price + ' ' + q.change_pct + ' via ' + q.source_label + (q.time ? ' @ ' + q.time : ''));
+            } catch (e) {
+                appendLog('QUOTE.STATUS', 'WARN', 'Quote refresh failed: ' + e.message);
+            }
+        }
+        setTimeout(refreshQuote, 800);    // 页面加载后立即拉取一次实时行情
+        setInterval(refreshQuote, 30000); // 每 30 秒自动更新
+
         function appendLog(tag, status, msg) {
             const term = document.getElementById('terminal-log');
             if (!term) return;
@@ -1310,7 +1354,7 @@
         const logSamples = [
             ["HEARTBEAT", "TICK", "Node HK-Master-01 reported 0 packet loss (latency 2.1ms)"],
             ["AI.INFERENCE", "OK", "DeepSeek sentiment embedding batch completed in 18ms"],
-            ["MARKET.DATA", "FLOW", "Cross-checking price quotes across Yahoo, EastMoney, Tencent Finance... OK"],
+            ["MARKET.DATA", "FLOW", "Cross-checking price quotes across Tencent Finance, EastMoney, Yahoo... OK"],
             ["RADAR.SCAN", "PULSE", "14 platforms active. No anomalous divergence detected."]
         ];
         let sampleIdx = 0;

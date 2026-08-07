@@ -42,6 +42,73 @@ try:
 except Exception:
     scan_mod = None
 
+try:
+    import hk_quote
+except Exception:
+    hk_quote = None
+
+# ================================================================ 实时行情合并
+
+def get_stock_view(stock_code: str) -> dict:
+    """
+    取视图数据：优先内置演示档案（因子/快讯/预警），叠加免费数据源实时行情。
+    实时行情不可用时保留演示价格并明确标注数据缺口，绝不伪造。
+    """
+    code = hk_quote.normalize_code(stock_code) if hk_quote else str(stock_code).zfill(5)
+    data = STOCKS.get(code, STOCKS["09988"])
+    data = json.loads(json.dumps(data, ensure_ascii=False))  # 深拷贝，避免污染档案
+
+    data["quote_live"] = False
+    data["quote_source"] = "静态快照 (STATIC DEMO)"
+    data["quote_source_key"] = None
+    data["quote_time"] = None
+    data["quote_fetched_at"] = None
+    data["quote_error"] = "网络不可达或数据源失败"
+
+    if hk_quote is None:
+        data["quote_error"] = "hk_quote 模块加载失败"
+        return data
+
+    q = hk_quote.fetch_quote(code)
+    if not q:
+        return data
+
+    # —— 用实时行情覆盖价格类字段（HK 3 位小数）——
+    if q.get("price"):
+        data["price"] = f"{q['price']:.3f}"
+        data["currency"] = q.get("currency") or data.get("currency", "HKD")
+        chg = q.get("change")
+        pct = q.get("change_pct")
+        data["is_up"] = (chg or 0) >= 0
+        if pct is not None:
+            data["change"] = f"{pct:+.2f}%"
+        if chg is not None:
+            data["change_val"] = f"{chg:+.3f}"
+    if q.get("high"):
+        data["high"] = f"{q['high']:.3f}"
+    if q.get("low"):
+        data["low"] = f"{q['low']:.3f}"
+    vol = q.get("volume")
+    if vol:
+        data["vol"] = (f"{vol / 1e8:.2f}亿" if vol >= 1e8 else f"{vol / 1e4:.2f}万")
+    pe = q.get("pe")
+    if pe:
+        data["pe"] = f"{pe:.1f}x"           # 腾讯源自带 PE；东财兜底无 PE 则保留档案值→标注缺口
+        data["pe_live"] = True
+    else:
+        data["pe_live"] = False
+    if q.get("name"):
+        data["quote_name"] = q["name"]
+
+    data["quote_live"] = True
+    data["quote_source"] = q.get("source_label") or q.get("source")
+    data["quote_source_key"] = q.get("source")
+    data["quote_time"] = q.get("time")
+    data["quote_fetched_at"] = q.get("fetched_at")
+    data["quote_error"] = None
+    return data
+
+
 # ================================================================ 数据源与预置标的
 
 STOCKS = {
@@ -346,10 +413,24 @@ def get_cluster_status() -> dict:
 
 def render_server_monitor_html(stock_code: str = "09988") -> str:
     """生成完全不含 <table> 的纯文字 + 列表横排服务器大屏监视风格 HTML"""
-    data = STOCKS.get(stock_code, STOCKS["09988"])
+    data = get_stock_view(stock_code)
     cluster = get_cluster_status()
-    # 静态快照生成时间（页面时钟由 JS 实时走动，但行情/快讯为内置演示数据，不自动更新）
+    # 页面时钟由 JS 实时走动；行情若接入免费数据源则为实时，失败时回退静态快照
     generated_at = cluster["cst_time"]
+
+    # —— 数据状态横幅：实时行情 / 静态演示 ——
+    if data.get("quote_live"):
+        dsb_icon = "🟢"
+        dsb_strong = f"实时行情 (LIVE) · {data['quote_source']}"
+        dsb_hint = (f"行情来自免费数据源「{data['quote_source']}」并自动更新（缓存 {hk_quote.CACHE_TTL if hk_quote else 10}s）；"
+                    f"快讯与因子仍为内置演示内容，仅供参考。")
+        dsb_time = (f"行情时间: {data.get('quote_time') or '—'} · 抓取: {data.get('quote_fetched_at') or '—'} · 快照: {generated_at}")
+    else:
+        dsb_icon = "⚠️"
+        dsb_strong = "演示数据 (STATIC DEMO)"
+        dsb_hint = (f"实时行情暂不可用（{data.get('quote_error') or '网络受限或数据源失败'}），"
+                    f"当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。")
+        dsb_time = f"快照生成: {generated_at}"
 
     # 1. 横排集群节点状态流
     nodes_html = "".join(f"""
@@ -370,22 +451,22 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         <div class="kpi-card highlight-cyan">
             <div class="kpi-label">标的代码 / 名称</div>
             <div class="kpi-value cyan-glow">{data["code"]} {data["name"]}</div>
-            <div class="kpi-foot">港股行情实时核验</div>
+            <div class="kpi-foot" id="q-source-foot">行情数据源: {data["quote_source"]}{(' · 行情时间 ' + data['quote_time']) if data.get('quote_time') else ''}</div>
         </div>
         <div class="kpi-card highlight-{"green" if data["is_up"] else "red"}">
             <div class="kpi-label">现价 / 涨跌幅</div>
             <div class="kpi-value" style="color:{up_down_color};">
-                {data["price"]} <span style="font-size:14px;">{data["currency"]}</span>
-                <span class="pill-badge" style="background:{'rgba(0,255,157,0.15)' if data['is_up'] else 'rgba(255,51,102,0.15)'};color:{up_down_color};border-color:{up_down_color};">
+                <span id="q-price">{data["price"]}</span> <span style="font-size:14px;" id="q-currency">{data["currency"]}</span>
+                <span class="pill-badge" id="q-change" style="background:{'rgba(0,255,157,0.15)' if data['is_up'] else 'rgba(255,51,102,0.15)'};color:{up_down_color};border-color:{up_down_color};">
                     {up_down_sign} {data["change"]} ({data["change_val"]})
                 </span>
             </div>
-            <div class="kpi-foot">24h 波动区间: {data["low"]} - {data["high"]}</div>
+            <div class="kpi-foot" id="q-range">24h 波动区间: {data["low"]} - {data["high"]}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">24H 成交量 / 估值</div>
-            <div class="kpi-value amber-glow">{data["vol"]} <span style="font-size:13px;color:#94a3b8;">(PE {data["pe"]})</span></div>
-            <div class="kpi-foot">历史分位: {data["pe_percentile"]} (深度价值区)</div>
+            <div class="kpi-value amber-glow"><span id="q-vol">{data["vol"]}</span> <span style="font-size:13px;color:#94a3b8;">(PE <span id="q-pe">{data["pe"]}</span>)</span></div>
+            <div class="kpi-foot" id="q-pe-foot">历史分位: {data["pe_percentile"]} (深度价值区)</div>
         </div>
         <div class="kpi-card highlight-green">
             <div class="kpi-label">AI 预测目标价</div>
@@ -1184,12 +1265,12 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             </div>
         </header>
 
-        <!-- 数据状态横幅：说明当前为静态演示数据 -->
-        <div class="data-status-banner">
-            <span class="dsb-icon">⚠️</span>
-            <span class="dsb-strong">演示数据 (STATIC DEMO)</span>
-            <span class="dsb-hint">本页行情、快讯与因子为内置示例数据，不会随市场自动更新；时钟为前端实时显示。需刷新数据请重新运行 <code>python server_dashboard.py --export-only</code> 或重启服务。</span>
-            <span class="dsb-time">快照生成: {generated_at}</span>
+        <!-- 数据状态横幅：实时行情 or 静态演示数据 -->
+        <div class="data-status-banner" id="q-banner">
+            <span class="dsb-icon" id="q-banner-icon">{dsb_icon}</span>
+            <span class="dsb-strong" id="q-banner-strong">{dsb_strong}</span>
+            <span class="dsb-hint" id="q-banner-hint">{dsb_hint}</span>
+            <span class="dsb-time" id="q-banner-time">{dsb_time}</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -1326,6 +1407,50 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             }}, 300);
         }}
 
+        // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
+        const STOCK_CODE = '{stock_code}';
+        async function refreshQuote() {{
+            try {{
+                const resp = await fetch('/api/quote?code=' + encodeURIComponent(STOCK_CODE));
+                if (!resp.ok) return;
+                const q = await resp.json();
+                if (!q || !q.live) {{
+                    appendLog('QUOTE.STATUS', 'WARN', 'Live quote unavailable - showing static snapshot' + (q && q.error ? ': ' + q.error : ''));
+                    return;
+                }}
+                const up = (q.change_pct || '').indexOf('-') !== 0;
+                const color = up ? '#00ff9d' : '#ff3366';
+                const sign = up ? '▲' : '▼';
+                const el = (id) => document.getElementById(id);
+                if (el('q-price')) el('q-price').textContent = q.price;
+                if (el('q-currency')) el('q-currency').textContent = q.currency || 'HKD';
+                if (el('q-change')) {{
+                    el('q-change').textContent = sign + ' ' + q.change_pct + ' (' + q.change + ')';
+                    el('q-change').style.color = color;
+                    el('q-change').style.borderColor = color;
+                    el('q-change').style.background = up ? 'rgba(0,255,157,0.15)' : 'rgba(255,51,102,0.15)';
+                    const wrap = el('q-price').parentElement;
+                    if (wrap) wrap.style.color = color;
+                }}
+                if (el('q-range')) el('q-range').textContent = '24h 波动区间: ' + q.low + ' - ' + q.high;
+                if (el('q-vol')) el('q-vol').textContent = q.vol;
+                if (el('q-pe')) el('q-pe').textContent = q.pe;
+                if (el('q-pe-foot') && q.pe && q.pe.indexOf('—') === -1) {{
+                    el('q-pe-foot').textContent = '市盈率来自实时行情（{hk_quote.SOURCES["tencent"]["label"] if hk_quote else "行情源"}）';
+                }}
+                if (el('q-source-foot')) el('q-source-foot').textContent = '行情数据源: ' + q.source_label + (q.time ? ' · 行情时间 ' + q.time : '');
+                if (el('q-banner-icon')) el('q-banner-icon').textContent = '🟢';
+                if (el('q-banner-strong')) el('q-banner-strong').textContent = '实时行情 (LIVE) · ' + q.source_label;
+                if (el('q-banner-hint')) el('q-banner-hint').textContent = '行情来自免费数据源「' + q.source_label + '」并自动更新；快讯与因子仍为内置演示内容，仅供参考。';
+                if (el('q-banner-time')) el('q-banner-time').textContent = '行情时间: ' + (q.time || '—') + ' · 抓取: ' + (q.fetched_at || '—');
+                appendLog('QUOTE.LIVE', 'OK', STOCK_CODE + ' ' + q.price + ' ' + q.change_pct + ' via ' + q.source_label + (q.time ? ' @ ' + q.time : ''));
+            }} catch (e) {{
+                appendLog('QUOTE.STATUS', 'WARN', 'Quote refresh failed: ' + e.message);
+            }}
+        }}
+        setTimeout(refreshQuote, 800);    // 页面加载后立即拉取一次实时行情
+        setInterval(refreshQuote, 30000); // 每 30 秒自动更新
+
         function appendLog(tag, status, msg) {{
             const term = document.getElementById('terminal-log');
             if (!term) return;
@@ -1355,7 +1480,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         const logSamples = [
             ["HEARTBEAT", "TICK", "Node HK-Master-01 reported 0 packet loss (latency 2.1ms)"],
             ["AI.INFERENCE", "OK", "DeepSeek sentiment embedding batch completed in 18ms"],
-            ["MARKET.DATA", "FLOW", "Cross-checking price quotes across Yahoo, EastMoney, Tencent Finance... OK"],
+            ["MARKET.DATA", "FLOW", "Cross-checking price quotes across Tencent Finance, EastMoney, Yahoo... OK"],
             ["RADAR.SCAN", "PULSE", "14 platforms active. No anomalous divergence detected."]
         ];
         let sampleIdx = 0;
@@ -1405,10 +1530,37 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/api/stock":
             stock_code = qs.get("code", ["09988"])[0]
-            data = STOCKS.get(stock_code, STOCKS["09988"])
+            data = get_stock_view(stock_code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path == "/api/quote":
+            # 轻量实时行情接口（前端轮询用）
+            stock_code = qs.get("code", ["09988"])[0]
+            v = get_stock_view(stock_code)
+            payload = {
+                "code": v["code"],
+                "live": v["quote_live"],
+                "source_key": v["quote_source_key"],
+                "source_label": v["quote_source"],
+                "time": v["quote_time"],
+                "fetched_at": v["quote_fetched_at"],
+                "price": v["price"],
+                "currency": v["currency"],
+                "change": v.get("change_val", ""),   # 涨跌额显示串，如 -0.400
+                "change_pct": v.get("change", ""),   # 涨跌幅显示串，如 -0.08%
+                "high": v["high"],
+                "low": v["low"],
+                "vol": v["vol"],
+                "pe": v["pe"],
+                "pe_live": v.get("pe_live", False),
+                "error": v.get("quote_error"),
+            }
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
             return
 
         # 默认 404
