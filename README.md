@@ -160,15 +160,22 @@ result = deep_merge_dicts(base, incoming)
 2. **渲染**：纯标准库画 PNG（无第三方依赖）——深夜蓝底、**红涨绿跌** K 线、
    MA5（金）/MA10（青）/MA20（紫）均线、成交量副图、近 20 日 S1/R1 支撑压力位虚线
 3. **上传**：GitHub Actions 内自动把 `assets/kline_09988.png` 提交回仓库
-   （需 `permissions: contents: write`，已配置），获得公网 raw URL
-4. **嵌入**：PushPlus 的 HTML 主题用 `<img>` 内联（微信可直接显示）；
-   Server酱 markdown 同样支持；企业微信仅显示为链接
+   （需 `permissions: contents: write`，已配置）
+4. **CDN**：图片用 **jsDelivr 全球 CDN** 地址
+   `https://cdn.jsdelivr.net/gh/k-macao/04@{commit}/assets/kline_09988.png`
+   嵌入推送（版本取上传时的 commit SHA，URL 每次唯一、无缓存滞后；
+   微信对 `raw.githubusercontent.com` 常做拦截导致图片空白，jsDelivr 是国内
+   可稳定访问的 GitHub 图床方案）
+5. **嵌入**：PushPlus 的 HTML 主题用 `<img referrerpolicy="no-referrer">` 内联
+   （微信可直接显示，不发送 Referer 规避防盗链）；Server酱 markdown 同样支持；
+   企业微信仅显示为链接
 
 ![阿里巴巴 09988 日K线图示例](assets/kline_09988.png)
 
 - 任何一步失败（网络/渲染/上传）都会**自动降级**：本次推送不含图片，绝不影响发送
 - 本地 `--dry-run`：控制台输出图片本地路径，可直接打开预览
-- `--no-kline` 可关闭；同一代码的图片每次运行覆盖更新，raw URL 保持不变
+- `--no-kline` 可关闭；同一代码的图片每次运行覆盖更新（commit SHA 变化，
+  jsDelivr URL 自动更新）
 - **权限要求**：把图提交回仓库需要 GITHUB_TOKEN 有 `contents: write`。
   仓库根目录的手动复制版 `R_WORKFLOW_MANUAL_COPY.yml` 与 `WORKFLOW_HARDENED.yml`
   已内置该权限块；若沿用旧的 `.github/workflows/r.yml` 且仓库默认 token 为只读，

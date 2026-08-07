@@ -1628,9 +1628,12 @@ def _inline_md(s: str, theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
     s = (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
     # 图片优先于链接：![alt](url) → <img>（微信/PushPlus html 主题直接显示）
+    # referrerpolicy="no-referrer"：微信内置浏览器对第三方图床常做防盗链拦截，
+    # 不发送 Referer 可显著提高外链图片（jsDelivr 等 CDN）在微信内的加载成功率。
     s = re.sub(
         r"!\[([^\]]*)\]\(([^)\s]+)\)",
-        r'<img src="\2" alt="\1" style="max-width:100%;display:block;'
+        r'<img src="\2" alt="\1" referrerpolicy="no-referrer" '
+        r'style="max-width:100%;display:block;'
         r'margin:6px 0;border:1px solid rgba(128,128,160,0.45);'
         r'border-radius:2px;">',
         s)
@@ -3058,6 +3061,14 @@ def try_upload_kline_png(png_rel: str) -> str:
     if code != 0:
         log(f"  ⚠️ K线图上传失败（push）：{out[:160]}")
         return ""
+    # jsDelivr 全球 CDN（微信内置浏览器可稳定加载，raw.githubusercontent.com
+    # 常被微信拦截导致图片不显示）：https://cdn.jsdelivr.net/gh/{owner}/{repo}@{version}/{path}
+    # 版本用刚提交的 commit SHA，使每次更新的图片 URL 唯一，规避 CDN 缓存滞后。
+    code, sha = run("git", "rev-parse", "HEAD")
+    if code == 0 and sha.strip():
+        cdn_url = f"https://cdn.jsdelivr.net/gh/{repo}@{sha.strip()}/{png_rel}"
+        log(f"  📤 K线图 CDN 地址（微信可显示）：{cdn_url}")
+        return cdn_url
     return (f"https://raw.githubusercontent.com/{repo}/"
             f"{urllib.parse.quote(branch)}/{png_rel}")
 
