@@ -64,7 +64,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.13-newsnow-pixel-2026-08-06"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.14-newsnow-game-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -1443,6 +1443,8 @@ def print_secret_report(channel: str, provider: str) -> bool:
 #
 # PushPlus template=html 时走该渲染器。微信/PushPlus 详情页对 <style> 标签
 # 支持不稳定，全部使用内联样式。
+# game 主题：8-bit 像素游戏风（整体默认）- 深夜蓝游戏屏/金色粗框/硬黑像素阴影/
+#            HP血条/SCORE/LEVEL 游戏元素/金币高亮/涨跌突出
 # klein 主题：游戏复古像素风 - 米黄纸底/黑细框/像素图标/涨跌突出
 # pixel 主题：复古监控风 - 暗色服务器大屏/细线框/等宽细字/涨跌突出/REC摄像头元素
 
@@ -1497,7 +1499,40 @@ PIXEL = {
     "shadow": "rgba(0,0,0,0.55)",       # 硬偏移阴影
 }
 
+GAME = {
+    # ---- 8-bit 像素游戏风（整体默认）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 ----
+    #      标题栏=游戏菜单金条 / 状态栏=HP血条+LV等级 / 底部=SCORE+PRESS START
+    "bg": "#0B0E2A",            # 游戏背景（深夜蓝）
+    "card_bg": "#16193B",       # 游戏面板底（靛蓝）
+    "hbg": "#F8B800",           # 金色标题栏（菜单金条）
+    "hfg": "#111111",           # 标题黑字
+    "fg": "#E9EAF5",            # 正文米白
+    "muted": "#8A90BC",         # 辅助蓝灰
+    "border": "#F8B800",        # 金色粗框（2px 游戏描边）
+    "accent": "#FFD23F",        # 金币黄 重点凸显
+    "accent_fg": "#1A1200",
+    "up": "#5CFF5C",            # 磷光绿 涨
+    "down": "#FF5C5C",          # 警示红 跌
+    "up_bg": "#12301E",
+    "down_bg": "#35121A",
+    "size": "12px",
+    "size_title": "13px",
+    "size_h1": "14px",
+    "size_h2": "12px",
+    "size_h3": "12px",
+    "line": "1.5",
+    "font": "'Courier New','Nimbus Mono PS',Consolas,monospace",
+    "shadow": "rgba(0,0,0,0.90)",       # 硬黑像素阴影
+    "grid": "rgba(248,184,0,0.05)",     # 面板金色网格
+    "star1": "rgba(255,255,255,0.55)",  # 背景星点（白）
+    "star2": "rgba(255,210,63,0.45)",   # 背景星点（金）
+    "hp_full": "#5CFF5C",               # 血条填充色
+    "hp_empty": "rgba(233,234,245,0.20)",  # 血条空格色
+    "status_bg": "#0E1130",             # 状态栏深底
+}
+
 THEMES = {
+    "game": GAME,
     "klein": KLEIN,
     "pixel": PIXEL,
 }
@@ -1508,7 +1543,7 @@ def _get_theme(name_or_dict):
         return name_or_dict
     if isinstance(name_or_dict, str) and name_or_dict in THEMES:
         return THEMES[name_or_dict]
-    return KLEIN
+    return GAME
 
 
 def _contains_up(txt: str) -> bool:
@@ -1541,7 +1576,7 @@ def _contains_down(txt: str) -> bool:
     return False
 
 
-def _inline_md(s: str, theme_name: str = "klein") -> str:
+def _inline_md(s: str, theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
     s = (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
     s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
@@ -1550,7 +1585,7 @@ def _inline_md(s: str, theme_name: str = "klein") -> str:
     return s
 
 
-def _render_table(rows: list[str], theme_name: str = "klein") -> str:
+def _render_table(rows: list[str], theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
 
     def cells(r: str) -> list[str]:
@@ -1573,7 +1608,7 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
     th_cells = []
     for c in head:
         icon = ""
-        if theme_name in ("pixel", "klein"):
+        if theme_name in ("pixel", "klein", "game"):
             icon = f'<span style="display:inline-block;width:6px;height:6px;background:{theme["accent"]};margin-right:4px;vertical-align:middle;"></span>'
         th_cells.append(
             f'<th style="{th_style_base}">{icon}{_inline_md(c, theme_name)}</th>'
@@ -1600,7 +1635,7 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
             )
             prefix = ""
 
-            if theme_name in ("pixel", "klein"):
+            if theme_name in ("pixel", "klein", "game"):
                 if is_up:
                     # 涨：绿字 + 淡绿底 + ▲ 像素图标 最突出
                     td_base = (
@@ -1635,6 +1670,19 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
                             f'padding:0px 3px;font-weight:bold;">'
                             f'{inner}</span>'
                         )
+                    # game 主题：百分比数值附 8-bit 像素血条（HP BAR）
+                    if theme_name == "game":
+                        m = re.match(r"^(\d{1,3})\s*%$", orig)
+                        if m:
+                            filled = round(int(m.group(1)) / 10)
+                            filled = max(0, min(10, filled))
+                            bar = "█" * filled + "░" * (10 - filled)
+                            inner += (
+                                f' <span style="color:{theme["hp_full"]};'
+                                f'font-size:9px;letter-spacing:-1px;'
+                                f'background:{theme["card_bg"]};">'
+                                f'{bar}</span>'
+                            )
             else:
                 # 兜底：其他主题保留涨跌突出
                 if is_up:
@@ -1671,8 +1719,8 @@ def _render_table(rows: list[str], theme_name: str = "klein") -> str:
     )
 
 
-def md_to_html(md: str, theme_name: str = "klein") -> str:
-    """轻量 Markdown→HTML，支持 klein/pixel 双主题，全内联样式。"""
+def md_to_html(md: str, theme_name: str = "game") -> str:
+    """轻量 Markdown→HTML，支持 game/klein/pixel 三主题，全内联样式。"""
     theme = _get_theme(theme_name)
     html: list[str] = []
     lines = md.split("\n")
@@ -1693,8 +1741,14 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
                 html.append(_render_table(tbl, theme_name))
             continue
 
-        if re.match(r"^-{3,}$", s):  # 分隔线 - 复古风用虚线细线
-            if theme_name in ("pixel", "klein"):
+        if re.match(r"^-{3,}$", s):  # 分隔线
+            if theme_name == "game":
+                # 游戏风：金色 2px 实线（像素分割线）
+                html.append(
+                    f'<hr style="border:none;border-top:2px solid {theme["border"]};'
+                    f'margin:8px 0;">'
+                )
+            elif theme_name in ("pixel", "klein"):
                 html.append(
                     f'<hr style="border:none;border-top:1px dashed {theme["border"]};margin:8px 0;">'
                 )
@@ -1711,11 +1765,15 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
             fs = {"1": theme["size_h1"], "2": theme["size_h2"]}.get(
                 str(h), theme["size_h3"]
             )
-            if theme_name in ("pixel", "klein"):
-                icon_map = {1: "■", 2: "►", 3: "·"}
+            if theme_name in ("pixel", "klein", "game"):
+                if theme_name == "game":
+                    icon_map = {1: "◆", 2: "►", 3: "·"}
+                    lb = "3px"  # 游戏风粗左线
+                else:
+                    icon_map = {1: "■", 2: "►", 3: "·"}
+                    # klein 游戏复古用粗左线 3px；pixel 监控风保持细线 1px
+                    lb = "3px" if theme_name == "klein" else "1px"
                 icon = icon_map.get(h, "·")
-                # klein 游戏复古用粗左线 3px；pixel 监控风保持细线 1px
-                lb = "3px" if theme_name == "klein" else "1px"
                 html.append(
                     f'<div style="font-size:{fs};font-weight:bold;'
                     f'color:{theme["fg"]};margin:8px 0 3px;'
@@ -1741,12 +1799,14 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
             while i < len(lines) and lines[i].strip().startswith(">"):
                 qs.append(lines[i].strip().lstrip(">").strip())
                 i += 1
-            if theme_name in ("pixel", "klein"):
-                lb = "3px" if theme_name == "klein" else "1px"
+            if theme_name in ("pixel", "klein", "game"):
+                # game 游戏风：金色 3px 左线（任务/提示框）；pixel 细线 1px
+                lb = "3px" if theme_name in ("klein", "game") else "1px"
+                lb_color = theme["accent"] if theme_name == "game" else theme["border"]
                 html.append(
                     f'<div style="color:{theme["muted"]};font-size:{theme["size"]};'
                     f'border:1px solid {theme["border"]};'
-                    f'border-left:{lb} solid {theme["border"]};'
+                    f'border-left:{lb} solid {lb_color};'
                     f'padding:4px 6px;margin:4px 0;'
                     f'background:{theme["card_bg"]};'
                     f'font-family:{theme["font"]};line-height:{theme["line"]};'
@@ -1767,9 +1827,9 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
             while i < len(lines) and re.match(r"^[-*]\s+", lines[i].strip()):
                 items.append(re.sub(r"^[-*]\s+", "", lines[i].strip()))
                 i += 1
-            if theme_name in ("pixel", "klein"):
-                # pixel 监控风用琥珀方块；klein 游戏复古用黑方块
-                mk = theme["accent"] if theme_name == "pixel" else theme["border"]
+            if theme_name in ("pixel", "klein", "game"):
+                # game/pixel 用金币/琥珀方块；klein 游戏复古用黑方块
+                mk = theme["accent"] if theme_name in ("pixel", "game") else theme["border"]
                 lis = "".join(
                     f'<li style="margin:2px 0;list-style:none;position:relative;padding-left:12px;">'
                     f'<span style="position:absolute;left:0;top:2px;width:6px;height:6px;'
@@ -1833,9 +1893,74 @@ def md_to_html(md: str, theme_name: str = "klein") -> str:
     return "".join(html)
 
 
-def themed_html(title: str, content_md: str, theme_name: str = "klein") -> str:
+def themed_html(title: str, content_md: str, theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
     body = md_to_html(content_md, theme_name)
+    safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if theme_name == "game":
+        # 8-bit 像素游戏风（整体默认）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影
+        # 标题栏=游戏菜单金条 / 状态栏=♥HP血条+★LV等级 / 底部=SCORE+PRESS START
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # 由标题生成稳定的游戏数值（SCORE/HP/LV），同一标题每次渲染一致
+        seed = sum(ord(c) for c in title)
+        score = seed * 7 % 999999
+        hp = 60 + seed % 40                       # 60-99
+        hp_filled = round(hp / 10)
+        hp_bar = ("█" * hp_filled
+                  + "░" * (10 - hp_filled))
+        lv = 1 + seed % 9                         # LV.01-09
+        return (
+            # 外层：游戏机屏幕（深夜蓝 + 像素星点背景）
+            f'<div style="background:{theme["bg"]};padding:14px 8px;'
+            f'font-size:{theme["size"]};line-height:{theme["line"]};'
+            f'color:{theme["fg"]};font-family:{theme["font"]};'
+            f'background-image:'
+            f'radial-gradient(1.5px 1.5px at 26px 32px,{theme["star1"]},rgba(0,0,0,0) 70%),'
+            f'radial-gradient(1.5px 1.5px at 88px 74px,{theme["star1"]},rgba(0,0,0,0) 70%),'
+            f'radial-gradient(2px 2px at 152px 22px,{theme["star2"]},rgba(0,0,0,0) 70%),'
+            f'radial-gradient(1.5px 1.5px at 212px 96px,{theme["star1"]},rgba(0,0,0,0) 70%),'
+            f'radial-gradient(2px 2px at 310px 52px,{theme["star2"]},rgba(0,0,0,0) 70%);\">'
+            # 游戏面板：金色 2px 粗框 + 硬黑像素阴影 + 金色网格
+            f'<div style="background:{theme["card_bg"]};'
+            f'background-image:repeating-linear-gradient(0deg,{theme["grid"]} 0 1px,'
+            f'rgba(0,0,0,0) 1px 24px),'
+            f'repeating-linear-gradient(90deg,{theme["grid"]} 0 1px,'
+            f'rgba(0,0,0,0) 1px 24px);'
+            f'border:2px solid {theme["border"]};'
+            f'box-shadow:4px 4px 0 {theme["shadow"]};'
+            f'padding:0;">'
+            # 标题栏：菜单金条（黑字 + 游戏角标 + SCORE 计分）
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};'
+            f'font-size:{theme["size_title"]};font-weight:bold;'
+            f'padding:6px 8px;border-bottom:2px solid {theme["hfg"]};'
+            f'font-family:{theme["font"]};letter-spacing:1px;">'
+            f'<span>◤</span> {safe_title}'
+            f'<span style="float:right;font-size:9px;letter-spacing:1px;">'
+            f'SCORE {score:06d}</span>'
+            f'</div>'
+            # 状态栏：♥ HP 血条 + ★ LV 等级 + UTC 时间戳
+            f'<div style="background:{theme["status_bg"]};color:{theme["muted"]};'
+            f'font-size:9px;letter-spacing:1px;'
+            f'padding:3px 8px;border-bottom:2px solid {theme["border"]};'
+            f'font-family:{theme["font"]};">'
+            f'<span style="color:{theme["down"]};">♥</span> '
+            f'<span style="color:{theme["hp_full"]};">{hp_bar}</span>'
+            f' <span style="color:{theme["up"]};">{hp}</span>/100'
+            f'&nbsp;&nbsp;<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
+            f'<span style="float:right;">✦ {stamp} UTC</span>'
+            f'</div>'
+            # 正文
+            f'<div style="padding:8px;">{body}</div>'
+            # 底部状态行：GAME.LOG + PRESS START + 光标块
+            f'<div style="border-top:2px solid {theme["border"]};'
+            f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
+            f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;">'
+            f'<span style="color:{theme["accent"]};">▞▚</span> GAME.LOG · '
+            f'<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
+            f'<span style="float:right;">PRESS START <span style="color:{theme["accent"]};">▮</span></span>'
+            f'</div>'
+            f'</div></div>'
+        )
     if theme_name == "pixel":
         # 复古监控风：暗色服务器大屏 + 细线框 + 等宽细字 + 摄像头 REC 元素
         safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -1878,7 +2003,6 @@ def themed_html(title: str, content_md: str, theme_name: str = "klein") -> str:
             f'</div></div>'
         )
     # klein 游戏复古像素风：米黄纸底 + 白卡片 + 1px黑细框 + 像素阴影 + 黑底标题栏
-    safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return (
         f'<div style="background:{theme["bg"]};padding:10px;'
         f'font-size:{theme["size"]};line-height:{theme["line"]};'
@@ -1980,7 +2104,7 @@ def push_pushplus(title: str, content: str, timeout: int,
     title = title[:200]  # PushPlus 标题上限（会员支持 200 字）
     content, note = fit_for_channel("pushplus", content, brand_footer_md())
     fields = {"token": token, "title": title}
-    # 主题：klein / pixel 均为 html 模板，其余走 markdown
+    # 主题：game / klein / pixel 均为 html 模板，其余走 markdown
     if theme in THEMES:
         fields.update({"content": themed_html(title, content, theme_name=theme),
                        "template": "html"})
@@ -2204,18 +2328,40 @@ def selftest() -> int:
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
     check("pushplus 5000字不限", len(unlim_c) == 5000)
 
-    log("③f klein 主题渲染（游戏复古像素风）")
+    log("③f game 主题渲染（8-bit 像素游戏风·整体默认）")
+    gh = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
+                    "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
+    check("game 表格+金色粗框", "<table" in gh and GAME["border"] in gh
+          and "<th" in gh and "<td" in gh)
+    check("game 百分比附像素血条", "█" in gh and "░" in gh and GAME["hp_full"] in gh)
+    check("game 加粗保留", "<strong>要点</strong>" in gh)
+    check("game 列表/引用/分隔线/有序表", "<ul" in gh and GAME["muted"] in gh
+          and "border-left" in gh and "<hr" in gh and "<ol" in gh)
+    check("HTML 转义", "&lt;" in md_to_html("a<b>c"))
+    check("game 像素图标(◆►)与金色方块", ("◆" in gh or "►" in gh)
+          and GAME["accent"] in gh)
+    gfull = themed_html("测试标题", "正文**加粗**")
+    check("game 三要素(深夜蓝屏+金色粗框+等宽)", GAME["bg"] in gfull
+          and GAME["border"] in gfull and "Courier" in gfull and "12px" in gfull)
+    check("game 硬黑像素阴影+金色标题栏", "box-shadow" in gfull and GAME["hbg"] in gfull)
+    check("game 游戏元素(♥HP血条+SCORE+LV+PRESS START)",
+          "♥" in gfull and "SCORE" in gfull and "LV." in gfull
+          and "PRESS START" in gfull and "▮" in gfull)
+    check("game 像素星点背景", "radial-gradient" in gfull and GAME["star1"] in gfull)
+    check("game 状态栏含 UTC 戳", "UTC" in gfull)
+
+    log("③f-1 klein 主题渲染（游戏复古像素风）")
     h = md_to_html("## 标题\n\n| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n\n"
-                   "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
-    check("表格→table+表头底色", "<table" in h and KLEIN["hbg"] in h
+                   "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项", "klein")
+    check("klein 表格→table+表头底色", "<table" in h and KLEIN["hbg"] in h
           and "<th" in h and "<td" in h)
-    check("加粗保留", "<strong>要点</strong>" in h)
-    check("列表/引用/分隔线/有序表", "<ul" in h and KLEIN["muted"] in h
+    check("klein 加粗保留", "<strong>要点</strong>" in h)
+    check("klein 列表/引用/分隔线/有序表", "<ul" in h and KLEIN["muted"] in h
           and "border-left" in h and "<hr" in h and "<ol" in h)
     check("HTML 转义", "&lt;" in md_to_html("a<b>c"))
     check("klein 像素图标(■►)与黑方块", ("■" in h or "►" in h)
           and KLEIN["border"] in h)
-    full = themed_html("测试标题", "正文**加粗**")
+    full = themed_html("测试标题", "正文**加粗**", "klein")
     check("klein 三要素(纸底+黑细框+等宽)", KLEIN["bg"] in full
           and KLEIN["border"] in full and "Courier" in full and "12px" in full)
     check("klein 像素阴影+黑底标题栏", "box-shadow" in full and KLEIN["hbg"] in full)
@@ -2237,11 +2383,11 @@ def selftest() -> int:
     check("pixel CRT扫描线+面板网格", PIXEL["scan"] in pfull and PIXEL["grid"] in pfull)
 
     log("③g 主题集中化（一行改动全局生效）")
-    bak = dict(KLEIN)
+    bak = dict(GAME)
     try:
-        KLEIN.update({"bg": "#111111", "fg": "#222222", "border": "#333333",
-                      "hbg": "#444444", "size": "15px", "size_title": "17px",
-                      "size_h1": "18px"})
+        GAME.update({"bg": "#111111", "fg": "#222222", "border": "#333333",
+                     "hbg": "#444444", "size": "15px", "size_title": "17px",
+                     "size_h1": "18px"})
         v = themed_html("T", "# H1\n\n| a | b |\n|---|---|\n| 1 | 2 |")
         check("改 bg 全局生效", "#111111" in v)
         check("改 fg 全局生效", "#222222" in v)
@@ -2251,15 +2397,15 @@ def selftest() -> int:
         src = open(__file__, encoding="utf-8").read()
         theme_zone = src.split("模块④b")[1].split("模块⑤")[0]
         # 移除所有主题常量定义（避免颜色被误判为硬编码）
-        theme_zone = re.sub(r"(KLEIN|PIXEL|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
+        theme_zone = re.sub(r"(GAME|KLEIN|PIXEL|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
         # 注释行不参与扫描（文档里允许出现色值说明）
         theme_zone = "\n".join(l for l in theme_zone.splitlines()
                                if not l.lstrip().startswith("#"))
         hexes = set(re.findall(r"#[0-9A-Fa-f]{6}", theme_zone))
         check("主题区无绕过常量的硬编码色", hexes == set())
     finally:
-        KLEIN.clear()
-        KLEIN.update(bak)
+        GAME.clear()
+        GAME.update(bak)
 
     log("③h 新增量价舆情动量因子")
     analysis_prompt = build_messages("analysis", "阿里巴巴", "示例背景", "mid")[1]["content"]
@@ -2310,6 +2456,10 @@ def selftest() -> int:
             # pixel 主题渲染涨跌突出
             html_demo = themed_html("测试NewsNow", md_demo, "pixel")
             check("NewsNow+pixel 涨跌突出", "▲" in html_demo or "热" in html_demo or "11px" in html_demo)
+            # game 默认主题渲染（整体像素游戏风）
+            html_game = themed_html("测试NewsNow", md_demo)
+            check("NewsNow+game 游戏元素", "SCORE" in html_game and "♥" in html_game
+                  and GAME["bg"] in html_game)
         except Exception as e:
             check(f"NewsNow 集成异常: {e}", False)
     else:
@@ -2389,9 +2539,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="港股代码（如 09988），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
-    p.add_argument("--theme", default="", choices=["", "default", "klein", "pixel"],
-                   help="pushplus 通道主题：klein=游戏复古像素风(米黄纸底+黑细框+像素图标)；"
-                        "pixel=复古监控风暗色大屏+细线框+REC摄像头元素（或环境变量 THEME）")
+    p.add_argument("--theme", default="", choices=["", "default", "game", "klein", "pixel"],
+                   help="pushplus 通道主题（整体默认 game=8-bit像素游戏风：深夜蓝屏+金色粗框+"
+                        "HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏"
+                        "（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
                    help="analysis/sentiment/feedscan/十四平台扫描的数据窗口小时数"
                         "（默认 48，支持 24/48/72/156）")
@@ -2411,7 +2562,7 @@ def main(argv: list[str]) -> int:
     user_context = args.context or env("CONTEXT")
     hk_code_raw = args.hk_code or env("HK_CODE")
     risk = args.risk or env("RISK") or "mid"
-    theme = args.theme or env("THEME") or "default"
+    theme = args.theme or env("THEME") or "game"
     targets = ALL_CHANNELS if channel == "all" else [channel]
 
     log("=" * 60)

@@ -146,7 +146,11 @@ result = deep_merge_dicts(base, incoming)
 - `channel`：pushplus / wecom / serverchan / console / all
 - `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
 - `topic`：内容主题，留空默认"阿里巴巴(Alibaba) 每日简报"
+- `theme`：pushplus 推送的 HTML 主题（整体默认 **game** = 8-bit 像素游戏风：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE 游戏元素）；可选 `klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`default`（普通 Markdown）
 - `hours`：量价舆情动量/十四平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
+
+主题预览：`examples/theme_preview.html`（game/klein/pixel 三主题对比）与
+`examples/game_theme_preview.html`（game 单独大图），可用 `examples/gen_theme_previews.py` 重新生成。
 
 ### 分析框架与新增因子
 
