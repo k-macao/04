@@ -21,11 +21,15 @@ pushplus_deepseek.py — 港股数据 + DeepSeek 分析 → 多通道推送
 
 Secrets（keyless 数据源无需配置）：
     PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY / DEEPSEEK_API_KEY / OPENAI_API_KEY
-环境变量（可选）：TOPIC / CONTEXT / HK_CODE / RISK(low|mid|high)
+环境变量（可选）：TOPIC / CONTEXT / HK_CODE / RISK(low|mid|high) / PUSH_STATE_PATH
+新鲜度看板：每次推送正文顶部打印「数据新鲜度·本次运行指纹」，跨运行对比
+    内容指纹与样本增量（状态文件默认 output/push_state.json，Actions 用
+    actions/cache 持久化；--no-state 可关闭）。
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -64,7 +68,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.14-newsnow-game-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.15-freshness-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -891,14 +895,16 @@ def render_feed_rule(topic: str, pack: FeedPack) -> str:
     return "\n".join(lines)
 
 
-def render_feed_appendix(pack: FeedPack) -> str:
+def render_feed_appendix(pack: FeedPack, new_keys: set | None = None) -> str:
+    nk = new_keys or set()
     lines = ["---", f"📰 **快讯原始明细（{pack.agg['n']} 条，每源≤10）**"]
     for spec in FEED_SPECS:
         items = pack.items.get(spec.name)
         if not items:
             continue
         lines.append(f"\n**{spec.name}（{len(items)}/10）**")
-        lines += [_item_line(i, k + 1) for k, i in enumerate(items[:10])]
+        lines += [_item_line(i, k + 1, _item_key(i.title) in nk)
+                  for k, i in enumerate(items[:10])]
     if pack.errors:
         lines.append("\n**数据缺口**")
         lines += [f"- ⚠️ {e}" for e in pack.errors]
@@ -1025,13 +1031,15 @@ def collect_sentiment(topic: str, code: str | None, hours: int,
     return pack
 
 
-def _item_line(i: SentItem, idx: int) -> str:
+def _item_line(i: SentItem, idx: int, is_new: bool = False) -> str:
     age = f"{i.age_h:.0f}h前" if i.age_h is not None else "时间未知"
     t = i.title if len(i.title) <= 60 else i.title[:57] + "…"
-    return f"{idx}. [{i.label} {i.score:+.2f}] {t} — {i.source} · {age}"
+    mark = "🆕 " if is_new else ""   # 上次推送之后新进入窗口的样本
+    return f"{idx}. {mark}[{i.label} {i.score:+.2f}] {t} — {i.source} · {age}"
 
 
-def render_sentiment_appendix(pack: SentPack) -> str:
+def render_sentiment_appendix(pack: SentPack, new_keys: set | None = None) -> str:
+    nk = new_keys or set()
     n = sum(len(v) for v in pack.items.values())
     lines = ["---", f"📡 **{SENTIMENT_FACTOR}证据（{pack.hours}h，共 {n} 条，本地打标）**"]
     for name in ("Google新闻", "YouTube·investtalk"):
@@ -1039,7 +1047,8 @@ def render_sentiment_appendix(pack: SentPack) -> str:
         if not items:
             continue
         lines.append(f"\n**{name}（{len(items)}/10）**")
-        lines += [_item_line(i, k + 1) for k, i in enumerate(items)]
+        lines += [_item_line(i, k + 1, _item_key(i.title) in nk)
+                  for k, i in enumerate(items)]
     m = pack.momentum
     if m:
         lines.append("\n**量价情绪动量**")
@@ -1389,9 +1398,10 @@ def gen_by_rule(topic: str, template: str,
 
 
 def chat_completion(url: str, api_key: str, model: str, messages: list[dict],
-                    max_tokens: int, timeout: int) -> str:
+                    max_tokens: int, timeout: int,
+                    temperature: float = 0.7) -> str:
     payload = {"model": model, "messages": messages,
-               "temperature": 0.7, "max_tokens": max_tokens}
+               "temperature": temperature, "max_tokens": max_tokens}
     status, body = http_post_json(url, payload,
                                   {"Authorization": f"Bearer {api_key}"}, timeout)
     if status != 200:
@@ -2304,6 +2314,208 @@ CHANNEL_LIMITS = {"pushplus": 0, "serverchan": 20000,
                   "wecom": 4096, "console": 0}  # 0 = 不限
 
 
+# ================================================================ 运行状态与内容指纹
+#
+# 每次真实推送把「内容指纹 + 样本标题指纹 + 行情快照」写入本地状态文件
+# （默认 output/push_state.json，可用环境变量 PUSH_STATE_PATH 覆盖，可用
+# --no-state 关闭；GitHub Actions 用 actions/cache 跨运行恢复）。
+# 与上次对比后即可回答两个问题——
+#   ① 本次推送正文与上次是否几乎一致（“内容没变”）；
+#   ② 数据窗口内新增了几条样本（🆕 增量）。
+# 结论会直接印在推送正文顶部的「数据新鲜度看板」里，
+# 不用翻 Actions 日志就能看出本次运行到底有没有新内容。
+
+STATE_VERSION = 2
+STATE_ENV_VAR = "PUSH_STATE_PATH"
+STATE_MAX_KEYS_PER_SRC = 60          # 每源最多留存的样本指纹数
+STATE_MAX_RUN_KEYS = 8               # 状态文件内最多保留的 模板|主题|代码 组合数
+
+# AI 差异化重试前缀：指纹与上次完全一致时，自动换表述重试一次
+ANTI_DUP_PREFIX = (
+    "【差异化要求】上次推送的正文与本次即将生成的内容几乎完全一致。"
+    "请换用不同的表述结构与段落组织重新生成（概率结论可保持一致），"
+    "并在结尾新增一句「本期与上期观点差异」，显式说明本期新增证据；"
+    "若确实没有任何变化，该句明确写作「无变化」。\n\n")
+
+
+def _state_default_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "output", "push_state.json")
+
+
+def state_path() -> str:
+    return env(STATE_ENV_VAR) or _state_default_path()
+
+
+def load_state(path: str) -> dict:
+    """读取跨运行状态；文件缺失或损坏时返回空基线，绝不中断主流程。"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            st = json.load(f)
+        if isinstance(st, dict) and isinstance(st.get("runs"), dict):
+            return st
+    except Exception:  # noqa: BLE001 —— 状态损坏视为全新基线
+        pass
+    return {"version": STATE_VERSION, "runs": {}}
+
+
+def save_state(path: str, st: dict) -> None:
+    """原子写入状态文件；失败仅告警，不影响推送本身。"""
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
+    except Exception as e:  # noqa: BLE001
+        log(f"  ⚠️ 状态文件写入失败（不影响推送）：{str(e)[:100]}")
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"\s+", "", str(s or "")).lower()
+
+
+def _item_key(title: str) -> str:
+    """样本标题指纹：忽略空白与大小写，跨运行可比。"""
+    t = _norm_text(title)
+    return hashlib.sha1(t.encode("utf-8")).hexdigest()[:16] if t else ""
+
+
+def gather_item_keys(*packs) -> dict[str, list[str]]:
+    """汇总各数据源本次样本标题指纹（按源分组、去重）。"""
+    out: dict[str, list[str]] = {}
+
+    def add(src: str, title: str) -> None:
+        key = _item_key(title)
+        if not key:
+            return
+        bucket = out.setdefault(src, [])
+        if key not in bucket:
+            bucket.append(key)
+
+    for pack in packs:
+        if pack is None:
+            continue
+        items = getattr(pack, "items", None)
+        if isinstance(items, dict):
+            for src, lst in items.items():
+                for it in lst or []:
+                    add(str(src), getattr(it, "title", "") or "")
+        scan = getattr(pack, "scan", None)
+        if scan is not None:
+            for groups in (getattr(scan, "direct", None),
+                           getattr(scan, "sector_hits", None)):
+                if isinstance(groups, dict):
+                    for src, lst in groups.items():
+                        for it in lst or []:
+                            add(f"扫·{src}", getattr(it, "title", "") or "")
+    return {src: sorted(keys) for src, keys in out.items()}
+
+
+def _quote_brief(quotes: list[Quote]) -> dict:
+    """提取行情共识用于指纹与看板（多源取中位数）。"""
+    prices = [q.price for q in quotes if q.ok and q.price]
+    pcts = [q.change_pct for q in quotes
+            if q.ok and q.change_pct is not None]
+    brief: dict = {"n_ok": len(prices), "n_total": len(quotes)}
+    if prices:
+        brief["price"] = round(median(prices), 3)
+        if pcts:
+            brief["change_pct"] = round(median(pcts), 2)
+        name = next((q.name for q in quotes if q.ok and q.name), "")
+        if name:
+            brief["name"] = name
+        ts = next((q.time_str for q in quotes if q.ok and q.time_str), "")
+        if ts:
+            brief["time_str"] = ts
+    return brief
+
+
+def run_state_key(template: str, topic: str, hk_code_raw: str) -> str:
+    code = normalize_hk_code(hk_code_raw) if hk_code_raw else "-"
+    return f"{template}|{topic[:24]}|{code}"
+
+
+def content_fingerprint(template: str, topic: str, ai_md: str,
+                        quote_brief: dict, extra_points: dict,
+                        item_keys: dict[str, list[str]]) -> str:
+    """内容指纹：正文+行情共识+本地锚点+样本集合。
+    时间戳/样本年龄不参与，保证「内容真变了」指纹才变。"""
+    payload = {"t": template, "topic": _norm_text(topic),
+               "md": _norm_text(ai_md),
+               "q": quote_brief, "x": extra_points, "items": item_keys}
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def diff_item_keys(cur: dict[str, list[str]],
+                   prev: dict[str, list[str]]) -> dict[str, list[str]]:
+    """本次有、上次没有的样本指纹，按源分组；无基线时返回空。"""
+    if not prev:
+        return {}
+    out: dict[str, list[str]] = {}
+    for src, keys in cur.items():
+        prev_set = set(prev.get(src, []))
+        new = [k for k in keys if k not in prev_set]
+        if new:
+            out[src] = new
+    return out
+
+
+def _quote_freshness_line(qb: dict, prev_price) -> str:
+    """行情一句话：共识价 + 在线源数 + 与上次推送的价格差异。"""
+    if not qb.get("n_ok"):
+        return "三源行情未接入或全部失败（详见正文核验区块与数据缺口）"
+    pct = (f"（{qb['change_pct']:+.2f}%）"
+           if qb.get("change_pct") is not None else "")
+    base = f"{qb['price']:.3f}{pct} · {qb['n_ok']}/{qb['n_total']} 源在线"
+    if qb.get("time_str"):
+        base += f" · 行情时间 {qb['time_str']}"
+    if prev_price is None:
+        return base + "｜首次记录基线"
+    diff = qb["price"] - prev_price
+    if abs(diff) < 1e-9:
+        return base + "｜较上次推送价格持平"
+    dpct = diff / prev_price * 100 if prev_price else 0.0
+    return f"{base}｜较上次推送 {diff:+.3f}（{dpct:+.2f}%）"
+
+
+def render_freshness_md(*, now_cst: str, template: str, hours: int,
+                        fingerprint: str, dup: bool | None,
+                        quote_line: str, new_items: dict[str, list[str]],
+                        first_run: bool, anchor_line: str,
+                        state_enabled: bool) -> str:
+    """推送正文顶部的数据新鲜度看板：一眼看出本次运行有没有更新。"""
+    if not state_enabled:
+        fp_note = "状态对比已关闭（--no-state）"
+    elif first_run:
+        fp_note = "🆕 首次建立基线，下次运行起对比增量"
+    elif dup:
+        fp_note = "⚠️ 与上次推送内容一致（窗口内无新增信号）"
+    else:
+        fp_note = "✅ 与上次推送相比已更新"
+    if not state_enabled or first_run:
+        new_line = "🆕 新增样本：—（无上次基线可对比）"
+    elif new_items:
+        per_src = " · ".join(
+            f"{s} {len(v)}" for s, v in
+            sorted(new_items.items(), key=lambda kv: -len(kv[1]))[:5])
+        total_new = sum(len(v) for v in new_items.values())
+        new_line = f"🆕 新增样本：{total_new} 条（{per_src}）"
+    else:
+        new_line = "🆕 新增样本：0 条（窗口内条目与上次相同）"
+    return "\n".join([
+        "### 🧭 数据新鲜度 · 本次运行指纹",
+        f"- ⏱ 运行时间：{now_cst}（北京时间）"
+        f" · 模板「{TEMPLATE_TITLES.get(template, template)}」"
+        f" · 数据窗口 {hours}h",
+        f"- 📈 行情：{quote_line}",
+        f"- {new_line}",
+        f"- 🎯 本地计算：{anchor_line}",
+        f"- 🔢 内容指纹 `{fingerprint}`：{fp_note}",
+    ])
+
+
 def _utf8_len(text: str) -> int:
     """推送服务的长度限制按 UTF-8 字节计算，不能用 Python 字符数代替。"""
     return len(text.encode("utf-8"))
@@ -2814,6 +3026,82 @@ def selftest() -> int:
     check("品牌头尾可渲染为 HTML", BRAND_TITLE in md_to_html(brand)
           and BRAND_AUTHOR in md_to_html(brand))
 
+    log("⑤ 内容指纹与跨运行状态")
+    from types import SimpleNamespace as NS
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        sp = os.path.join(td, "st.json")
+        st0 = load_state(sp)
+        check("无状态文件→空基线", st0.get("runs") == {})
+        st0["runs"]["analysis|阿里巴巴|09988"] = {
+            "fingerprint": "abc123", "ts": "x", "price": 16.8}
+        save_state(sp, st0)
+        st1 = load_state(sp)
+        check("状态写入后可读回",
+              st1["runs"]["analysis|阿里巴巴|09988"]["fingerprint"] == "abc123")
+        with open(sp, "w", encoding="utf-8") as f:
+            f.write("{broken")
+        check("状态损坏→回退空基线", load_state(sp).get("runs") == {})
+    fp_a = content_fingerprint("analysis", "阿里巴巴", "正文：看涨",
+                               {"n_ok": 3, "price": 16.8}, {"anchor": 60},
+                               {"Google新闻": ["k1"]})
+    fp_b = content_fingerprint("analysis", "阿里巴巴", "正文：看涨",
+                               {"n_ok": 3, "price": 16.8}, {"anchor": 60},
+                               {"Google新闻": ["k1"]})
+    fp_c = content_fingerprint("analysis", "阿里巴巴", "正文：看跌",
+                               {"n_ok": 3, "price": 16.8}, {"anchor": 60},
+                               {"Google新闻": ["k1"]})
+    fp_d = content_fingerprint("analysis", "阿里巴巴", "正文：看涨",
+                               {"n_ok": 3, "price": 17.1}, {"anchor": 60},
+                               {"Google新闻": ["k1"]})
+    check("同内容→指纹稳定", fp_a == fp_b)
+    check("正文变化→指纹变化", fp_a != fp_c)
+    check("行情变化→指纹变化", fp_a != fp_d)
+    pk = NS(items={"Google新闻": [NS(title="阿里巴巴 签 大单")]},
+            scan=NS(direct={"雪球": [NS(title="阿里热帖")]}, sector_hits={}))
+    ks = gather_item_keys(pk)
+    check("样本指纹含两源", set(ks) == {"Google新闻", "扫·雪球"})
+    ks2 = gather_item_keys(pk, pk)
+    check("重复采集自动去重", len(ks2["Google新闻"]) == 1)
+    new = diff_item_keys(ks, {"Google新闻": ks["Google新闻"]})
+    check("增量=仅新源条目", set(new) == {"扫·雪球"})
+    check("无基线→不报增量", diff_item_keys(ks, {}) == {})
+    qb_live = _quote_brief([qa, qb, qc])
+    check("行情共识=三源中位价",
+          abs(qb_live["price"] - 16.8) < 1e-9 and qb_live["n_ok"] == 3)
+    qline = _quote_freshness_line(qb_live, None)
+    check("行情看板:首次基线", "首次记录基线" in qline)
+    qline2 = _quote_freshness_line(qb_live, 16.5)
+    check("行情看板:较上次涨跌", "+0.300" in qline2 and "+1.82%" in qline2)
+    check("行情看板:持平识别", "持平" in _quote_freshness_line(qb_live, 16.8))
+    fmd = render_freshness_md(now_cst="08-07 18:00", template="analysis",
+                              hours=48, fingerprint=fp_a, dup=True,
+                              quote_line=qline, new_items={}, first_run=False,
+                              anchor_line="锚点 ≈ 60%", state_enabled=True)
+    check("看板:重复内容告警", "与上次推送内容一致" in fmd and fp_a in fmd)
+    fmd2 = render_freshness_md(now_cst="08-07 18:00", template="analysis",
+                               hours=48, fingerprint=fp_a, dup=False,
+                               quote_line=qline,
+                               new_items={"Google新闻": ["x", "y"]},
+                               first_run=False, anchor_line="锚点 ≈ 60%",
+                               state_enabled=True)
+    check("看板:增量计数", "新增样本：2 条" in fmd2)
+    fmd3 = render_freshness_md(now_cst="08-07 18:00", template="analysis",
+                               hours=48, fingerprint=fp_a, dup=None,
+                               quote_line=qline, new_items={}, first_run=True,
+                               anchor_line="", state_enabled=True)
+    check("看板:首次运行", "首次建立基线" in fmd3)
+    fmd4 = render_freshness_md(now_cst="08-07 18:00", template="analysis",
+                               hours=48, fingerprint=fp_a, dup=None,
+                               quote_line=qline, new_items={},
+                               first_run=False, anchor_line="",
+                               state_enabled=False)
+    check("看板:可关闭状态对比", "已关闭" in fmd4)
+    item_ns = NS(title="阿里云计算提速", source="Google", label="利好",
+                 score=0.5, age_h=2.0)
+    check("新增样本标🆕", "🆕" in _item_line(item_ns, 1, True)
+          and "🆕" not in _item_line(item_ns, 1, False))
+
     log(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
 
@@ -2850,6 +3138,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--yt-channel", default="", dest="yt_channel",
                    help="YouTube 频道 handle（默认 @investtalk，或环境变量 YT_CHANNEL）")
     p.add_argument("--timeout", type=int, default=30)
+    p.add_argument("--no-state", action="store_true", dest="no_state",
+                   help="关闭跨运行状态对比（不读/不写 output/push_state.json，"
+                        "可用环境变量 PUSH_STATE_PATH 指定其他路径）")
     return p.parse_args(argv)
 
 
@@ -3025,6 +3316,99 @@ def main(argv: list[str]) -> int:
             log(f"❌ 内容生成失败：{e}")
             return 1
 
+    # ---------- 模块③b：内容指纹 + 与上次推送的新鲜度对比 ----------
+    state_enabled = not args.no_state
+    st = (load_state(state_path()) if state_enabled
+          else {"version": STATE_VERSION, "runs": {}})
+    skey = run_state_key(template, topic, hk_code_raw)
+    prev = st["runs"].get(skey) or {}
+
+    item_keys = gather_item_keys(sent_pack, feed_pack, newsnow_pack)
+    new_items = diff_item_keys(item_keys, prev.get("item_keys", {})) \
+        if prev else {}
+    new_key_set = {k for keys in new_items.values() for k in keys}
+
+    qb = _quote_brief(quotes)
+    extra_points: dict = {}
+    anchor_parts: list[str] = []
+    if sent_pack is not None:
+        anchor = sent_pack.agg.get("综合多头概率锚点")
+        extra_points["anchor"] = anchor
+        extra_points["mom"] = sent_pack.momentum.get("score")
+        anchor_parts.append(
+            f"综合多头概率锚点 ≈ {anchor if anchor is not None else '—'}%")
+        if sent_pack.momentum.get("ok"):
+            anchor_parts.append(
+                f"量价动量 {sent_pack.momentum['score']:+.2f}")
+        scan = getattr(sent_pack, "scan", None)
+        if scan is not None:
+            sa = scan.agg
+            extra_points["scan_hit"] = sa.get("platforms_hit")
+            anchor_parts.append(
+                f"十四平台命中 {sa.get('platforms_hit', 0)}"
+                f"/{sa.get('platforms_total', 14)}")
+    if feed_pack is not None:
+        anchor = feed_pack.agg.get("综合多头概率锚点")
+        extra_points["feed_anchor"] = anchor
+        anchor_parts.append(
+            f"全市场快讯锚点 ≈ {anchor}%（{feed_pack.agg.get('n', 0)} 条）")
+    if newsnow_pack is not None:
+        extra_points["newsnow_total"] = newsnow_pack.agg.get("total")
+        anchor_parts.append(
+            f"热榜样本 {newsnow_pack.agg.get('total', 0)} 条"
+            f"/{newsnow_pack.agg.get('sources_ok', 0)}/7 源")
+    anchor_line = (" · ".join(anchor_parts)
+                   or "无本地预聚合数据（本模板不含数据采集模块）")
+
+    fp = content_fingerprint(template, topic, content, qb,
+                             extra_points, item_keys)
+    dup = bool(prev) and prev.get("fingerprint") == fp
+    log(f"\n🔢 内容指纹: {fp}"
+        + ("（状态对比已关闭）" if not state_enabled
+           else "（首次建立基线）" if not prev
+           else ("（⚠️ 与上次推送一致）" if dup else "（与上次不同）")))
+
+    # AI 内容与上次完全一致：自动换表述重试一次，避免推文逐字复读
+    if dup and provider != "rule":
+        log("♻️  已要求 AI 换表述差异化重试一次…")
+        try:
+            messages[-1]["content"] = (ANTI_DUP_PREFIX
+                                       + messages[-1]["content"])
+            if provider == "deepseek":
+                content = chat_completion(
+                    DEEPSEEK_URL, key, "deepseek-chat", messages,
+                    TEMPLATE_MAX_TOKENS[template], args.timeout,
+                    temperature=0.9)
+            else:
+                base = env("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+                content = chat_completion(
+                    f"{base.rstrip('/')}/chat/completions", key,
+                    "gpt-4o-mini", messages, TEMPLATE_MAX_TOKENS[template],
+                    args.timeout, temperature=0.9)
+            fp = content_fingerprint(template, topic, content, qb,
+                                     extra_points, item_keys)
+            dup = prev.get("fingerprint") == fp
+            log(f"  → 重试后指纹: {fp}"
+                + ("（仍与上次一致，正文将明确标注）" if dup
+                   else "（已与上次区分）"))
+        except PushError as e:
+            log(f"  ⚠️ 差异化重试失败，沿用原内容：{e}")
+
+    # 附录：把「上次推送后新增」的样本标注 🆕
+    if template in ("sentiment", "analysis") and sent_pack is not None:
+        appendix_md = render_sentiment_appendix(sent_pack,
+                                                new_keys=new_key_set)
+    elif template == "feedscan" and feed_pack is not None:
+        appendix_md = render_feed_appendix(feed_pack, new_keys=new_key_set)
+
+    freshness_md = render_freshness_md(
+        now_cst=datetime.now(CST).strftime("%m-%d %H:%M"),
+        template=template, hours=args.hours, fingerprint=fp,
+        dup=(dup if state_enabled else None),
+        quote_line=_quote_freshness_line(qb, prev.get("price")),
+        new_items=new_items, first_run=not prev,
+        anchor_line=anchor_line, state_enabled=state_enabled)
+
     if template == "analysis" and provider != "rule" \
             and not validate_analysis(content):
         content += "\n\n> ⚠️ 本次模型输出未通过框架格式校验，以上为原始返回，仅供参考。"
@@ -3033,8 +3417,9 @@ def main(argv: list[str]) -> int:
     if appendix_md:
         content += "\n\n" + appendix_md
 
+    # 新鲜度看板固定在品牌头之后、AI 正文之前；
     # 所有模板/通道/dry-run 走同一个组装函数：作者固定在推送正文最后一行。
-    content = add_branding(content)
+    content = add_branding(freshness_md + "\n\n---\n\n" + content.rstrip())
 
     now = datetime.now(CST).strftime("%m-%d %H:%M")
     # 标题：给了股票代码时用「HK代码 中文名」（中文名从三源行情读取，失败回退 TOPIC）
@@ -3055,7 +3440,8 @@ def main(argv: list[str]) -> int:
             missing = [n for n in required_secrets(ch, "rule") if not env(n)]
             log(f"  {'⚠️ ' if missing else '✅'} {ch}: "
                 + (f"缺少 {', '.join(missing)}" if missing else "就绪"))
-        log("\n✅ dry-run 完成。去掉 --dry-run 即为真实推送。")
+        log("\n✅ dry-run 完成。去掉 --dry-run 即为真实推送。"
+            "（dry-run 只对比状态，不写入状态文件）")
         return 0
 
     # ---------- 模块⑤：真实推送 ----------
@@ -3083,6 +3469,27 @@ def main(argv: list[str]) -> int:
     if failures:
         log(f"\n❌ 共 {failures}/{len(targets)} 个通道失败（详见上方日志）")
         return 1
+
+    # ---------- 模块⑥：写入跨运行状态（供下次新鲜度对比）----------
+    if state_enabled:
+        st["version"] = STATE_VERSION
+        st["runs"][skey] = {
+            "fingerprint": fp,
+            "ts": datetime.now(CST).isoformat(timespec="seconds"),
+            "price": qb.get("price"),
+            "anchor": extra_points.get("anchor"),
+            "item_keys": {s: ks[:STATE_MAX_KEYS_PER_SRC]
+                          for s, ks in item_keys.items()},
+        }
+        # 只保留最近若干组合，避免状态文件无限增长
+        if len(st["runs"]) > STATE_MAX_RUN_KEYS:
+            ordered = sorted(st["runs"],
+                             key=lambda k: st["runs"][k].get("ts", ""))
+            for old_key in ordered[:-STATE_MAX_RUN_KEYS]:
+                del st["runs"][old_key]
+        save_state(state_path(), st)
+        log(f"\n💾 运行状态已写入 {state_path()}（指纹 {fp}，"
+            f"样本 {sum(len(v) for v in item_keys.values())} 条）")
     log("\n✅ 全部通道推送成功，请到微信查收。")
     return 0
 
