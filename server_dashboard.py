@@ -596,10 +596,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     <div class="tv-legend-item tv-legend-ma20">MA20: <span id="tv-hover-ma20" class="tv-legend-val">--</span></div>
                 </div>
                 <div class="tv-canvas-wrap">
-                    <canvas id="tradeview-kline-canvas" class="tv-canvas" width="1200" height="380"></canvas>
+                    <pre id="tradeview-kline-canvas" class="tv-dotmatrix" aria-label="点阵 K 线图"></pre>
                 </div>
                 <div class="tv-vol-wrap">
-                    <canvas id="tradeview-vol-canvas" class="tv-canvas" width="1200" height="120"></canvas>
+                    <pre id="tradeview-vol-canvas" class="tv-dotmatrix tv-volume" aria-label="点阵成交量"></pre>
                 </div>
                 <div class="tv-footer-bar">
                     <div>
@@ -607,8 +607,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                         <span id="tv-engine-status">TradeView 内置高帧率 Canvas 渲染引擎 · 60 周期历史与均线多空共振 · 鼠标悬停可查看十字光标与 OHLCV 详情</span>
                     </div>
                     <div>
-                        <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> | 
-                        <span>支撑位 S1: <strong id="tv-sup-val" style="color:var(--green);">--</strong></span> | 
+                        <span>压力位 R1: <strong id="tv-res-val" style="color:var(--red);">--</strong></span> |
+                        <span>支撑位 S1: <strong id="tv-sup-val" style="color:var(--green);">--</strong></span> |
                         <span>技术形态: <strong id="tv-trend-val" style="color:var(--cyan);">放量金叉 (BULLISH)</strong></span>
                     </div>
                 </div>
@@ -732,7 +732,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             padding: 12px;
             position: relative;
             overflow-x: hidden;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
                 repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px),
                 repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px);
@@ -1141,6 +1141,20 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             width: 100%;
             cursor: crosshair;
         }}
+        .tv-dotmatrix {{
+            display: block;
+            width: 100%;
+            min-height: 22em;
+            margin: 0;
+            padding: 12px 10px;
+            overflow: hidden;
+            white-space: pre;
+            color: #00ff9d;
+            background: #05080c;
+            font: 12px/1.15 monospace;
+            letter-spacing: 1px;
+        }}
+        .tv-dotmatrix.tv-volume {{ min-height: 6em; color: #ffcf00; }}
         .tv-vol-wrap {{
             position: relative;
             background: #05080c;
@@ -1793,6 +1807,15 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             currentTradeViewTF = tf;
             if (name) currentTradeViewName = name;
 
+            // 先画本地快照，再请求接口；这样网络慢/接口被拦截时 K 线不会空白。
+            // 原先必须等 /api/kline 返回后才首次绘制，离线或行情源超时会让用户看到空图。
+            const instantBars = generateDefaultKlineBars(symbol, tf);
+            currentTradeViewBars = instantBars;
+            currentTradeViewSupport = Math.min(...instantBars.slice(-20).map(b => b.low)).toFixed(2);
+            currentTradeViewResistance = Math.max(...instantBars.slice(-20).map(b => b.high)).toFixed(2);
+            drawTradeViewChart(instantBars);
+            updateTradeViewLegend(instantBars[instantBars.length - 1]);
+
             let data = null;
             try {{
                 const resp = await fetch('/api/kline?code=' + encodeURIComponent(symbol) + '&tf=' + encodeURIComponent(tf));
@@ -1832,148 +1855,33 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         function drawTradeViewChart(bars) {{
+            // 纯文本点阵渲染：不依赖 Canvas、图片或第三方图表库。
             if (!bars || !bars.length) return;
-            const klineCanvas = document.getElementById('tradeview-kline-canvas');
-            const volCanvas = document.getElementById('tradeview-vol-canvas');
-            if (!klineCanvas || !volCanvas) return;
-
-            const ctx = klineCanvas.getContext('2d');
-            const vCtx = volCanvas.getContext('2d');
-            const width = klineCanvas.width;
-            const height = klineCanvas.height;
-            const vHeight = volCanvas.height;
-
-            ctx.clearRect(0, 0, width, height);
-            vCtx.clearRect(0, 0, width, vHeight);
-
-            ctx.fillStyle = '#05080c';
-            ctx.fillRect(0, 0, width, height);
-            vCtx.fillStyle = '#05080c';
-            vCtx.fillRect(0, 0, width, vHeight);
-
-            const padTop = 25;
-            const padBottom = 28;
-            const padLeft = 15;
-            const padRight = 65;
-            const drawW = width - padLeft - padRight;
-            const drawH = height - padTop - padBottom;
-            const vDrawH = vHeight - 15;
-
-            let minP = Math.min(...bars.map(b => b.low));
-            let maxP = Math.max(...bars.map(b => b.high));
-            const range = maxP - minP || 1.0;
-            minP -= range * 0.05;
-            maxP += range * 0.05;
-            const pRange = maxP - minP;
-
-            const maxVol = Math.max(...bars.map(b => b.vol)) || 1000;
-
-            ctx.strokeStyle = '#162030';
-            ctx.lineWidth = 1;
-            ctx.fillStyle = '#64748b';
-            ctx.font = '11px monospace';
-            const gridCount = 5;
-            for (let i = 0; i <= gridCount; i++) {{
-                const y = padTop + (drawH / gridCount) * i;
-                const pVal = maxP - (pRange / gridCount) * i;
-                ctx.beginPath();
-                ctx.setLineDash([3, 3]);
-                ctx.moveTo(padLeft, y);
-                ctx.lineTo(width - padRight, y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillText(pVal.toFixed(2), width - padRight + 8, y + 4);
-            }}
-
-            const numBars = bars.length;
-            const stepX = drawW / numBars;
-            const barW = Math.max(2, stepX * 0.68);
-
-            const supP = parseFloat(currentTradeViewSupport);
-            const resP = parseFloat(currentTradeViewResistance);
-            if (!isNaN(supP) && supP >= minP && supP <= maxP) {{
-                const ySup = padTop + drawH * (1 - (supP - minP) / pRange);
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(0, 255, 157, 0.55)';
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(padLeft, ySup);
-                ctx.lineTo(width - padRight, ySup);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#00ff9d';
-                ctx.fillText('S1 ' + supP.toFixed(2), width - padRight + 6, ySup - 3);
-            }}
-            if (!isNaN(resP) && resP >= minP && resP <= maxP) {{
-                const yRes = padTop + drawH * (1 - (resP - minP) / pRange);
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(255, 51, 102, 0.55)';
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(padLeft, yRes);
-                ctx.lineTo(width - padRight, yRes);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#ff3366';
-                ctx.fillText('R1 ' + resP.toFixed(2), width - padRight + 6, yRes - 3);
-            }}
-
-            for (let i = 0; i < numBars; i++) {{
-                const b = bars[i];
-                const cx = padLeft + i * stepX + stepX / 2;
-                const yOpen = padTop + drawH * (1 - (b.open - minP) / pRange);
-                const yClose = padTop + drawH * (1 - (b.close - minP) / pRange);
-                const yHigh = padTop + drawH * (1 - (b.high - minP) / pRange);
-                const yLow = padTop + drawH * (1 - (b.low - minP) / pRange);
-
-                const isUp = b.close >= b.open;
-                const color = isUp ? '#00ff9d' : '#ff3366';
-
-                ctx.beginPath();
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.2;
-                ctx.moveTo(cx, yHigh);
-                ctx.lineTo(cx, yLow);
-                ctx.stroke();
-
-                ctx.fillStyle = color;
-                const bodyY = Math.min(yOpen, yClose);
-                const bodyH = Math.max(2, Math.abs(yClose - yOpen));
-                ctx.fillRect(cx - barW / 2, bodyY, barW, bodyH);
-
-                vCtx.fillStyle = color;
-                const vH = Math.max(2, (b.vol / maxVol) * vDrawH);
-                const vY = vDrawH - vH;
-                vCtx.fillRect(cx - barW / 2, vY, barW, vH);
-
-                if (i % 10 === 0 || i === numBars - 1) {{
-                    ctx.fillStyle = '#64748b';
-                    ctx.font = '10px monospace';
-                    ctx.fillText(b.date.slice(5), cx - 14, height - 8);
-                }}
-            }}
-
-            const drawMA = (key, color) => {{
-                ctx.beginPath();
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.6;
-                let started = false;
-                for (let i = 0; i < numBars; i++) {{
-                    const val = bars[i][key];
-                    if (val === undefined || isNaN(val)) continue;
-                    const cx = padLeft + i * stepX + stepX / 2;
-                    const cy = padTop + drawH * (1 - (val - minP) / pRange);
-                    if (!started) {{
-                        ctx.moveTo(cx, cy);
-                        started = true;
-                    }} else {{
-                        ctx.lineTo(cx, cy);
-                    }}
-                }}
-                ctx.stroke();
-            }};
-
-            drawMA('ma20', '#ff00b8');
-            drawMA('ma10', '#00d8ff');
-            drawMA('ma5', '#ffcf00');
+            const chart = document.getElementById('tradeview-kline-canvas');
+            const volume = document.getElementById('tradeview-vol-canvas');
+            if (!chart || !volume) return;
+            const cols = Math.min(72, bars.length);
+            const view = bars.slice(-cols);
+            const rows = 20;
+            const lows = view.map(b => Number(b.low));
+            const highs = view.map(b => Number(b.high));
+            let lo = Math.min(...lows), hi = Math.max(...highs);
+            const span = hi - lo || 1;
+            lo -= span * .06; hi += span * .06;
+            const y = p => Math.max(0, Math.min(rows - 1, Math.round((hi - p) / (hi - lo) * (rows - 1))));
+            const grid = Array.from({{length: rows}}, () => Array(cols).fill(' '));
+            view.forEach((b, i) => {{
+                const yo=y(b.open), yc=y(b.close), yh=y(b.high), yl=y(b.low);
+                for (let r=Math.min(yh,yl); r<=Math.max(yh,yl); r++) grid[r][i]='│';
+                const top=Math.min(yo,yc), bottom=Math.max(yo,yc);
+                for (let r=top; r<=bottom; r++) grid[r][i] = (b.close >= b.open ? '█' : '▓');
+            }});
+            const labels = [hi, lo];
+            chart.textContent = grid.map((line, r) => (r===0 ? labels[0].toFixed(2).padStart(7)+' ' : r===rows-1 ? labels[1].toFixed(2).padStart(7)+' ' : '       ') + line.join('')).join('\n');
+            const maxVol = Math.max(...view.map(b => Number(b.vol) || 0), 1);
+            const vrows = 5, vg = Array.from({{length:vrows}}, () => Array(cols).fill(' '));
+            view.forEach((b,i) => {{ const n=Math.max(1,Math.round((Number(b.vol)||0)/maxVol*vrows)); for(let r=vrows-n;r<vrows;r++) vg[r][i]='▂'; }});
+            volume.textContent = 'VOL  ' + vg.map(r => r.join('')).join('\n');
         }}
 
         function updateTradeViewLegend(bar) {{
@@ -2000,49 +1908,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         function setupTradeViewCrosshair() {{
-            const canvas = document.getElementById('tradeview-kline-canvas');
-            if (!canvas || !currentTradeViewBars.length) return;
-
-            canvas.onmousemove = function(e) {{
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                const x = (e.clientX - rect.left) * scaleX;
-                const y = (e.clientY - rect.top) * scaleY;
-
-                const padLeft = 15;
-                const padRight = 65;
-                const drawW = canvas.width - padLeft - padRight;
-                const stepX = drawW / currentTradeViewBars.length;
-
-                let idx = Math.floor((x - padLeft) / stepX);
-                idx = Math.max(0, Math.min(currentTradeViewBars.length - 1, idx));
-                const hoverBar = currentTradeViewBars[idx];
-
-                drawTradeViewChart(currentTradeViewBars);
-
-                const ctx = canvas.getContext('2d');
-                const cx = padLeft + idx * stepX + stepX / 2;
-                ctx.beginPath();
-                ctx.strokeStyle = '#00f0ff';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 4]);
-                ctx.moveTo(cx, 0);
-                ctx.lineTo(cx, canvas.height);
-                if (y > 25 && y < canvas.height - 28) {{
-                    ctx.moveTo(0, y);
-                    ctx.lineTo(canvas.width, y);
-                }}
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                updateTradeViewLegend(hoverBar);
-            }};
-
-            canvas.onmouseleave = function() {{
-                drawTradeViewChart(currentTradeViewBars);
-                updateTradeViewLegend(currentTradeViewBars[currentTradeViewBars.length - 1]);
-            }};
+            // 点阵模式保持轻量；鼠标悬停不再调用 Canvas API。
         }}
 
         function switchTradeViewSymbol(symbol, name, el) {{
@@ -2153,7 +2019,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             // CST
             const cstDate = new Date(now.getTime() + 8 * 3600 * 1000);
             const cst = cstDate.toISOString().replace('T', ' ').substring(0, 19) + ' CST (北京时间)';
-            
+
             const utcEl = document.getElementById('utc-clock');
             const cstEl = document.getElementById('cst-clock');
             if (utcEl) utcEl.textContent = utc;
@@ -2281,15 +2147,15 @@ def export_static_files():
     out_dir = os.path.join(os.path.dirname(__file__), "examples")
     os.makedirs(out_dir, exist_ok=True)
     html = render_server_monitor_html("09988")
-    
+
     file_path1 = os.path.join(out_dir, "server_monitor_preview.html")
     with open(file_path1, "w", encoding="utf-8") as f:
         f.write(html)
-    
+
     file_path2 = os.path.join(os.path.dirname(__file__), "server_monitor.html")
     with open(file_path2, "w", encoding="utf-8") as f:
         f.write(html)
-    
+
     print(f"✅ 已生成服务器大屏文件: {file_path1} & {file_path2}")
 
 
