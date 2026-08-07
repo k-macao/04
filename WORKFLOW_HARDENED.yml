@@ -41,11 +41,11 @@ on:
         type: choice
         options: [low, mid, high]
       theme:
-        description: '推送主题（仅 pushplus 通道生效）：klein=游戏复古像素风(米黄纸底+黑细框+像素图标)；pixel=复古监控风·暗色服务器大屏·细线框·REC摄像头元素'
+        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风：深夜蓝游戏屏+金色粗框+HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
         required: true
-        default: 'klein'
+        default: 'game'
         type: choice
-        options: [klein, default, pixel]
+        options: [game, klein, default, pixel]
       context:
         description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
         required: false
