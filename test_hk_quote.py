@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+test_hk_quote.py — 免费港股行情模块测试
+  - 离线解析自检：用内置真实抓包样本验证 腾讯/东财/Yahoo 解析
+  - normalize_code 各种输入写法
+  - fetch_quote 降级逻辑（断网时返回 None 不抛异常）
+运行：python test_hk_quote.py   （或 pytest test_hk_quote.py）
+"""
+import json
+import unittest
+
+import hk_quote
+
+
+class TestNormalize(unittest.TestCase):
+    def test_variants(self):
+        cases = {
+            "00700": "00700", "0700": "00700", "700": "00700",
+            "0700.HK": "00700", "hk00700": "00700", "HK:0700": "00700",
+            "9988": "09988", "03690": "03690", "3690": "03690",
+        }
+        for raw, want in cases.items():
+            self.assertEqual(hk_quote.normalize_code(raw), want, raw)
+
+
+class TestParsersOffline(unittest.TestCase):
+    def test_tencent_00700(self):
+        q = hk_quote.parse_tencent(hk_quote.FIXTURES["tencent_00700"], "00700")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["price"], 478.8)
+        self.assertEqual(q["high"], 483.2)
+        self.assertEqual(q["low"], 475.4)
+        self.assertEqual(q["change"], -0.4)
+        self.assertEqual(q["change_pct"], -0.08)
+        self.assertEqual(q["pe"], 17.47)
+        self.assertEqual(q["pb"], 3.46)
+        self.assertEqual(q["turnover_rate"], 0.18)
+        self.assertEqual(q["amplitude"], 1.63)
+        self.assertEqual(q["currency"], "HKD")
+        self.assertEqual(q["name"], "腾讯控股")
+        self.assertEqual(q["time"], "2026/08/07 16:08:23")
+        self.assertEqual(q["high_52w"], 677.7)
+        self.assertEqual(q["low_52w"], 411.0)
+        self.assertEqual(q["market_cap"], 4348807140000.0)
+
+    def test_tencent_09988(self):
+        q = hk_quote.parse_tencent(hk_quote.FIXTURES["tencent_09988"], "09988")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["price"], 123.8)
+        self.assertEqual(q["pe"], 20.23)
+        self.assertEqual(q["change_pct"], -0.48)
+        self.assertEqual(q["name"], "阿里巴巴-W")
+
+    def test_eastmoney_00700(self):
+        q = hk_quote.parse_eastmoney(json.loads(hk_quote.FIXTURES["eastmoney_00700"]), "00700")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["price"], 478.8)
+        self.assertEqual(q["high"], 483.2)
+        self.assertEqual(q["pb"], 3.42)
+        self.assertEqual(q["turnover_rate"], 0.18)
+        self.assertEqual(q["amplitude"], 1.63)
+        self.assertIsNone(q["pe"])   # 东财 HK 接口无 PE
+
+    def test_yahoo_00700(self):
+        q = hk_quote.parse_yahoo(json.loads(hk_quote.FIXTURES["yahoo_00700"]), "00700")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["price"], 478.8)
+        self.assertEqual(q["currency"], "HKD")
+        self.assertEqual(q["volume"], 16320039)
+        self.assertEqual(q["high_52w"], 683.0)
+
+    def test_cross_source_consistency(self):
+        """三源解析结果应互相一致（同一抓包日期的收盘行情）"""
+        t = hk_quote.parse_tencent(hk_quote.FIXTURES["tencent_00700"], "00700")
+        e = hk_quote.parse_eastmoney(json.loads(hk_quote.FIXTURES["eastmoney_00700"]), "00700")
+        y = hk_quote.parse_yahoo(json.loads(hk_quote.FIXTURES["yahoo_00700"]), "00700")
+        for src in (e, y):
+            self.assertAlmostEqual(t["price"], src["price"], places=1)
+            self.assertAlmostEqual(t["high"], src["high"], places=1)
+            self.assertAlmostEqual(t["low"], src["low"], places=1)
+
+
+class TestFetchDegradation(unittest.TestCase):
+    def test_fetch_quote_no_crash(self):
+        """断网/被限制环境下 fetch_quote 返回 None 而非抛异常（视图降级静态）"""
+        try:
+            q = hk_quote.fetch_quote("00700")
+            self.assertTrue(q is None or q.get("price"))
+        except Exception:  # noqa: BLE001
+            self.fail("fetch_quote 不应在数据源失败时抛异常")
+
+    def test_fetch_quote_invalid_code(self):
+        self.assertIsNone(hk_quote.fetch_quote("!!!"))
+        self.assertIsNone(hk_quote.fetch_quote(""))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
