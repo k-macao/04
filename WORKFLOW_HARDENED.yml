@@ -62,8 +62,10 @@ on:
 #  - 固定为最广泛缓存的 actions/checkout@v4 + setup-python@v5
 #  - 同时 pin 到 commit SHA（防 tag 解析抖动）+ 保留 tag 便于可读性
 #  - 最小 permissions、超时与并发控制
+# 注：contents 需为 write——推送 K 线图要提交 assets/kline_*.png 回仓库，
+#     生成公网 raw URL 供微信加载图片；其余 Secret 仍保持最小暴露。
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: manual-push-${{ github.ref }}

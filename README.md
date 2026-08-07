@@ -152,6 +152,33 @@ result = deep_merge_dicts(base, incoming)
 主题预览：`examples/theme_preview.html`（game/klein/pixel 三主题对比）与
 `examples/game_theme_preview.html`（game 单独大图），可用 `examples/gen_theme_previews.py` 重新生成。
 
+### 📊 推送自带 K 线图（真实图片，微信直接可见）
+
+只要给了 `hk_code`（默认 `09988`），每次推送自动在正文顶部附一张**真实日 K 线图**：
+
+1. **取数**：Yahoo Finance 日 K 为主源，东方财富日 K 兜底（均免 Key，取最近 60 个交易日）
+2. **渲染**：纯标准库画 PNG（无第三方依赖）——深夜蓝底、**红涨绿跌** K 线、
+   MA5（金）/MA10（青）/MA20（紫）均线、成交量副图、近 20 日 S1/R1 支撑压力位虚线
+3. **上传**：GitHub Actions 内自动把 `assets/kline_09988.png` 提交回仓库
+   （需 `permissions: contents: write`，已配置），获得公网 raw URL
+4. **嵌入**：PushPlus 的 HTML 主题用 `<img>` 内联（微信可直接显示）；
+   Server酱 markdown 同样支持；企业微信仅显示为链接
+
+![阿里巴巴 09988 日K线图示例](assets/kline_09988.png)
+
+- 任何一步失败（网络/渲染/上传）都会**自动降级**：本次推送不含图片，绝不影响发送
+- 本地 `--dry-run`：控制台输出图片本地路径，可直接打开预览
+- `--no-kline` 可关闭；同一代码的图片每次运行覆盖更新，raw URL 保持不变
+- **权限要求**：把图提交回仓库需要 GITHUB_TOKEN 有 `contents: write`。
+  仓库根目录的手动复制版 `R_WORKFLOW_MANUAL_COPY.yml` 与 `WORKFLOW_HARDENED.yml`
+  已内置该权限块；若沿用旧的 `.github/workflows/r.yml` 且仓库默认 token 为只读，
+  请在 `manual-push` job 下补上：
+  ```yaml
+  permissions:
+    contents: write
+  ```
+  （缺权限时图片上传自动跳过，其余功能不受影响）
+
 ### 分析框架与新增因子
 
 当前工作流提供 12 套模板。选择 `analysis` 时会逐行输出以下 7 个因子，新增的
