@@ -83,7 +83,7 @@ RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
 
 TEMPLATES = ["brief", "analysis", "scan", "picker", "fusion",
              "plan", "earnings", "portfolio", "review", "regime",
-             "sentiment", "feedscan", "newsnow"]
+             "sentiment", "feedscan", "newsnow", "equity"]
 TEMPLATE_TITLES = {
     "brief": "简报", "analysis": "多空因子分析", "scan": "市场情报扫描",
     "picker": "选股器·未来30日", "fusion": "技术面×基本面融合",
@@ -91,12 +91,13 @@ TEMPLATE_TITLES = {
     "portfolio": "组合配置优化", "review": "交易复盘改进", "regime": "市场形态识别",
     "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
     "newsnow": "NewsNow热榜聚合·7源",
+    "equity": "机构级个股投研",
 }
 TEMPLATE_MAX_TOKENS = {
     "brief": 2000, "analysis": 3000, "scan": 4000, "picker": 4000,
     "fusion": 3000, "plan": 4000, "earnings": 3000, "portfolio": 4000,
     "review": 3000, "regime": 3000, "sentiment": 4000, "feedscan": 4000,
-    "newsnow": 4000,
+    "newsnow": 4000, "equity": 8000,
 }
 
 # analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
@@ -1315,6 +1316,17 @@ def build_messages(template: str, topic: str, context: str,
             "- **综合判断**：方向+综合多头概率（如「震荡偏多，约 58%」）\n"
             "- **关键风险**：1~2 条\n- **数据局限**：一句话\n\n"
             "" + RULES_TAIL)
+    elif template == "equity":
+        # 机构级个股投研：正式路径走 equity_research_column.generate_column；
+        # 此处 prompt 作为 pushplus_deepseek 主流程的降级/兼容入口。
+        user = (
+            f"请按 equity-research skill 九章结构，为「{topic}」撰写机构级个股投资研究报告。\n\n"
+            + ctx +
+            "必须包含：结论框（决策三分法：内在价值/1–3个月交易方向/投资动作）、"
+            "Tearsheet、预期差 Gap 表、护城河、财报质量等级 A–D、"
+            "至少三种估值方法交叉验证、反方论证（一年后失败的3个原因）、"
+            "监控清单与免责声明。关键数据标注来源+时间戳；缺失写「未获取到」。\n"
+            "输出简体中文 Markdown。" + RULES_TAIL)
     else:  # brief
         user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
                 "每个要点一句话；结尾一句小结。\n\n" + ctx)
@@ -1393,6 +1405,19 @@ def gen_by_rule(topic: str, template: str,
             "", "- **综合判断**：示例——ai_provider 选 deepseek 后由 AI 填充真实概率",
             "- **关键风险**：示例", "- **数据局限**：rule 模式不含真实分析", "",
             f"> 运行时间：{now}（北京时间）。⚠️ 非投资建议，仅供参考。"])
+    if template == "equity":
+        # 优先走独立栏目模块（含 dcf.py）；失败则给简短骨架
+        try:
+            import equity_research_column as erc
+            return erc.gen_rule_report(topic, context="", mode="full",
+                                       industry=erc.guess_industry(topic))
+        except Exception as e:  # noqa: BLE001
+            return "\n".join([
+                f"**{topic} · 机构级个股投研**（rule 降级）", "",
+                f"- equity_research_column 不可用：{e}",
+                f"- 运行时间：{now}（北京时间）",
+                "- 请确认 equity_research/ 已安装 skill 资源", "",
+                "> ⚠️ 非投资建议，仅供参考。"])
     return "\n".join([
         f"**{topic} · {TEMPLATE_TITLES.get(template, '简报')}**（rule 演示模板）", "",
         f"- 模板：{template}（正式内容需 ai_provider=deepseek）",
