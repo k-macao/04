@@ -456,9 +456,17 @@ def selftest() -> int:
 
     r2 = run_report("sz000001", channel="console", ai_provider="rule", dry_run=True,
                     collect_news=False, no_chart=True)
+    # 注意：不要断言 name == "" / quote_error is not None ——
+    # 那只在「拉不到行情」的离线沙箱成立；CI（如 GitHub Actions）有公网时
+    # sz000001 会取到真实行情（name="平安银行"、quote_error=None），断言会误报失败。
+    # 这里只校验与网络无关的稳定不变量：市场识别、代码归一化、标题前缀、正文组装。
     check("深A 识别与研报", r2["market"] == "sz" and r2["code"] == "000001"
-          and r2["name"] == ""           # 离线无行情时名称为空
-          and "SZ000001" in r2["title"] and r2["quote_error"] is not None)
+          and "SZ000001" in r2["title"]
+          and bool(r2.get("report_md"))
+          # 有行情则 name 非空且出现在标题里；无行情则 name 为空且给出降级说明
+          and ((r2["quote_error"] is None and r2["name"]
+                and r2["name"] in r2["title"])
+               or (r2["quote_error"] is not None and r2["name"] == "")))
 
     print("④ 空代码与非法输入")
     try:
