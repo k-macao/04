@@ -1,25 +1,29 @@
-# 手动复制版（含 K 线图代码的最新 yml）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
-# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml。
-# 匹配 pushplus_deepseek.py v2.16-kline-2026-08-07（内置日K PNG 渲染 + 三源行情核验 + 图片提交回仓库）。
-# 要点：permissions.contents 需为 write —— K 线图模块会 git add/commit/push assets/kline_*.png
-#       生成公网 raw URL 供微信加载；其余 Secret 保持最小暴露。
+# 手动复制版（股票研报 · 港股/A股）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
+# 请将本文件完整内容复制到 .github/workflows/ 下（可另存为任意文件名，如 stock_report.yml），
+# 再到 Actions 页面手动 Run workflow。
+# 匹配 stock_report.py v1.0-report-2026-08-13：输入港股/A股代码 → 实时行情（免 Key）→ AI 研报 → 多通道推送。
+#
+# 要点：
+#   - 行情数据源（腾讯财经/东方财富）免 Key，无需配置任何行情 Secret；
+#   - ai_provider=auto 时：配了 DEEPSEEK_API_KEY 走 DeepSeek，否则自动降级 rule 规则模板（不耗 API）；
+#   - 需真实推送时按所选通道配置对应 Secret（PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY）；
+#   - 本工作流不写图片回仓库，permissions.contents 仅需 read。
 
-name: Manual Run - Alibaba PushPlus+DeepSeek
+name: Manual Run - Stock Report (HK/A-share)
+
 on:
   workflow_dispatch:
     inputs:
+      code:
+        description: '股票代码（港股 5 位 / A股 6 位，如 09988、600519、000001.SZ、sh600519）'
+        required: true
+        default: '09988'
       template:
-        description: '分析框架（8套框架+简报+多空因子）'
+        description: '研报分析框架'
         required: true
         default: 'analysis'
         type: choice
-        options: [analysis, brief, scan, picker, fusion, plan, earnings, portfolio, review, regime, sentiment, feedscan]
-      dry_run:
-        description: 'true=只生成不推送（联调用）；false=真实推送到微信'
-        required: true
-        default: 'false'
-        type: choice
-        options: ['false', 'true']
+        options: [analysis, brief, fusion, plan, picker, scan, earnings, portfolio, review, regime, sentiment, feedscan, newsnow]
       channel:
         description: '推送通道'
         required: true
@@ -27,58 +31,39 @@ on:
         type: choice
         options: [pushplus, wecom, serverchan, console, all]
       ai_provider:
-        description: 'AI 提供商（rule=固定模板，不调用 AI）'
+        description: 'AI 提供商（auto=自动：有 DeepSeek Key 用 deepseek，否则 rule；rule=不耗 API 的固定模板）'
         required: true
-        default: 'deepseek'
+        default: 'auto'
         type: choice
-        options: [deepseek, rule, openai]
-      topic:
-        description: '分析标的/主题（fusion/plan/earnings 必填个股，如 阿里巴巴；留空用默认）'
-        required: false
-        default: ''
-      hk_code:
-        description: '港股代码（接入三源核验行情 + 日K线图，如 09988=阿里巴巴H；留空则不取数据、不生成 K 线图）'
-        required: false
-        default: '09988'
+        options: [auto, deepseek, openai, rule]
+      dry_run:
+        description: 'true=只生成打印到日志不推送（联调用）；false=真实推送到微信'
+        required: true
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      theme:
+        description: '推送主题（仅 pushplus 通道生效；game=8-bit像素游戏风，monitor=服务器大屏风，default=普通 Markdown）'
+        required: true
+        default: 'game'
+        type: choice
+        options: [game, klein, pixel, monitor, noc, default]
       risk:
         description: '风险偏好档位（仅 portfolio 模板使用）'
         required: true
         default: 'mid'
         type: choice
         options: [low, mid, high]
-      theme:
-        description: '推送主题（仅 pushplus 通道生效，整体默认 game=8-bit像素游戏风：深夜蓝游戏屏+金色粗框+HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏'
-        required: true
-        default: 'game'
-        type: choice
-        options: [game, klein, default, pixel]
-      context:
-        description: '背景信息（review 模板=粘贴交易细节；其他模板=补充行情/公告）'
-        required: false
-        default: ''
-      hours:
-        description: '数据窗口小时数（analysis/sentiment/feedscan/十四平台扫描 用，默认 48，支持 24/48/72/156）'
-        required: false
-        default: '48'
 
-# 故障排查：若出现 Service Unavailable / Failed to resolve action download info.
-# 这是 GitHub Actions Marketplace CDN 瞬时 503，非本仓库代码问题。
-# 社区案例 https://github.com/orgs/community/discussions/65974 显示 runner 会自动
-# 退避重试 29s + 11s，仍失败则需手动 Re-run。已通过以下加固降低命中率：
-#  - 固定为最广泛缓存的 actions/checkout@v4 + setup-python@v5
-#  - 同时 pin 到 commit SHA（防 tag 解析抖动）+ 保留 tag 便于可读性
-#  - 最小 permissions、超时与并发控制
-# 注：contents 需为 write——推送 K 线图要提交 assets/kline_*.png 回仓库，
-#     生成公网 raw URL 供微信加载图片；其余 Secret 仍保持最小暴露。
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: manual-push-${{ github.ref }}
+  group: stock-report-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  manual-push:
+  stock-report:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -88,62 +73,41 @@ jobs:
       SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
-      TOPIC: ${{ inputs.topic }}
-      CONTEXT: ${{ inputs.context }}
     steps:
-      # 使用广泛缓存的 v4/v5 + SHA pin，降低 marketplace 503 命中率
       # checkout v4 = 11bd71901bbe5b1630ceea73d27597364c9af683 (tag v4.2.2)
       - name: Checkout code
         uses: actions/checkout@v4  # pin: 11bd71901bbe5b1630ceea73d27597364c9af683
 
       # setup-python v5 = a26af69be951a213d495a4c3e4e4022e16d87065 (tag v5.6.0)
-      # 注意：不要加 cache: 'pip' —— 本仓库无 requirements.txt/pyproject.toml，
-      # setup-python 会因找不到依赖文件直接报错（Setup Python 步骤失败，整个 job 中断）。
+      # 注意：不要加 cache: 'pip' —— 本仓库无 requirements.txt/pyproject.toml，会导致步骤失败。
       - name: Setup Python 3.11
         uses: actions/setup-python@v5  # pin: a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
 
-      - name: Restore push state (跨运行新鲜度对比)
-        uses: actions/cache/restore@v4
-        with:
-          path: output/push_state.json
-          key: push-state-${{ github.run_id }}
-          restore-keys: push-state-
-
       - name: Check required secrets
         run: >-
-          python pushplus_deepseek.py --check-only
+          python stock_report.py --check-only
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
 
-      - name: Dry run (只生成内容，不真实推送)
+      - name: Dry run (只生成研报，不真实推送)
         if: ${{ inputs.dry_run == 'true' }}
         run: >-
-          python pushplus_deepseek.py --dry-run
+          python stock_report.py "${{ inputs.code }}"
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
           --template "${{ inputs.template }}"
-          --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
-          --hours "${{ inputs.hours }}"
 
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
         run: >-
-          python pushplus_deepseek.py
+          python stock_report.py "${{ inputs.code }}"
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
           --template "${{ inputs.template }}"
-          --hk-code "${{ inputs.hk_code }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
-          --hours "${{ inputs.hours }}"
-
-      - name: Save push state (供下次新鲜度对比)
-        if: ${{ success() && hashFiles('output/push_state.json') != '' }}
-        uses: actions/cache/save@v4
-        with:
-          path: output/push_state.json
-          key: push-state-${{ github.run_id }}
+          --push
