@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>章鱼 AI · 服务器大屏监视中心 (8-BIT RETRO ARCADE WALLBOARD)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <style>
         :root {
             /* —— 8-bit 复古游戏风（与 pushplus game 主题统一）——
@@ -24,7 +26,8 @@
             --text-main: #e9eaf5;          /* 正文米白 */
             --text-muted: #8a90bc;         /* 辅助蓝灰 */
             --text-dim: #5b6090;
-            --font-mono: 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
+            --font-pixel: 'Press Start 2P', 'Courier New', monospace;
+            --font-mono: 'VT323', 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
             /* 硬黑像素阴影：所有发光改用 4px 偏移纯黑块 */
             --glow-cyan: 4px 4px 0 rgba(0, 0, 0, 0.9);
             --glow-green: 4px 4px 0 rgba(0, 0, 0, 0.9);
@@ -41,8 +44,9 @@
             background-color: var(--bg-deep);
             color: var(--text-main);
             font-family: var(--font-mono);
-            font-size: 13px;
-            line-height: 1.5;
+            font-size: 18px;
+            line-height: 1.45;
+            image-rendering: pixelated;
             min-height: 100vh;
             padding: 12px;
             position: relative;
@@ -1133,6 +1137,8 @@
             color: var(--text-dim);
             font-size: 10px;
         }
+        @keyframes blink-insert { 50% { opacity: 0; } }
+        .press-start { animation: blink-insert 1.1s steps(1) infinite; font-family: var(--font-pixel); font-size: 9px; }
     </style>
 </head>
 <body>
@@ -1152,11 +1158,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-14 02:44:55 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-14 03:24:11 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-13 18:44:55 UTC</span>
+                    <span id="utc-clock">2026-08-13 19:24:11 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -1186,7 +1192,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 02:44:55 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 03:24:11 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -1224,6 +1230,13 @@
                 <option value="brief">简报</option>
                 <option value="fusion">技术×基本面</option>
                 <option value="earnings">财报前瞻</option>
+            </select>
+            <select id="report-theme" class="report-select" title="推送风格（PushPlus HTML 主题，微信详情页可见）">
+                <option value="monitor" selected>🖥 风格 MONITOR 服务器大屏</option>
+                <option value="game">🎮 风格 GAME 8-bit 像素游戏</option>
+                <option value="noc">🛰 风格 NOC 零表格监视</option>
+                <option value="klein">📰 风格 KLEIN 复古纸面</option>
+                <option value="pixel">📹 风格 PIXEL 像素监控</option>
             </select>
             <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
         </div>
@@ -1915,7 +1928,7 @@
                 <span style="color:var(--cyan);">▞▚</span> GAME.LOG · 8-BIT RETRO WALLBOARD ·
                 <span style="color:var(--green);">♥ 94</span>/100 ·
                 <span style="color:var(--cyan);">★</span> LV.05
-                <span style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
+                <span class="press-start" style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
             </div>
             <div class="footer-brand">章鱼 AI 全景调研平台 · OCTOPUS AI LABS</div>
             <div class="footer-author">作者：章鱼 ai 调研团队</div>
@@ -2010,6 +2023,7 @@
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {}).value || 'console';
             const template = (document.getElementById('report-template') || {}).value || 'analysis';
+            const theme = (document.getElementById('report-theme') || {}).value || 'monitor';
             if (!code) {
                 if (input) { input.style.borderColor = 'var(--red)'; input.focus(); }
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -2030,7 +2044,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: code, channel: channel, template: template,
-                        dry_run: channel === 'console', theme: 'game',
+                        dry_run: channel === 'console', theme: theme,
                         mode: template === 'equity' ? 'full' : undefined
                     })
                 });

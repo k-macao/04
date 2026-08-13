@@ -101,16 +101,16 @@ on:
           - openai
           - rule
       theme:
-        description: '视觉主题（默认 game = 8-bit 复古游戏风，全站统一）'
+        description: '视觉主题'
         required: true
-        default: 'game'
+        default: 'monitor'
         type: choice
         options:
+          - monitor
+          - noc
           - game
           - klein
           - pixel
-          - monitor
-          - noc
           - default
       hours:
         description: '量价舆情 / 十四平台扫描窗口（小时）'

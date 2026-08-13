@@ -1993,6 +1993,13 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <option value="fusion">技术×基本面</option>
                 <option value="earnings">财报前瞻</option>
             </select>
+            <select id="report-theme" class="report-select" title="推送风格（PushPlus HTML 主题，微信详情页可见）">
+                <option value="monitor" selected>🖥 风格 MONITOR 服务器大屏</option>
+                <option value="game">🎮 风格 GAME 8-bit 像素游戏</option>
+                <option value="noc">🛰 风格 NOC 零表格监视</option>
+                <option value="klein">📰 风格 KLEIN 复古纸面</option>
+                <option value="pixel">📹 风格 PIXEL 像素监控</option>
+            </select>
             <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
         </div>
 
@@ -2286,6 +2293,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {{}}).value || 'console';
             const template = (document.getElementById('report-template') || {{}}).value || 'analysis';
+            const theme = (document.getElementById('report-theme') || {{}}).value || 'monitor';
             if (!code) {{
                 if (input) {{ input.style.borderColor = 'var(--red)'; input.focus(); }}
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -2306,7 +2314,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         code: code, channel: channel, template: template,
-                        dry_run: channel === 'console', theme: 'game',
+                        dry_run: channel === 'console', theme: theme,
                         mode: template === 'equity' ? 'full' : undefined
                     }})
                 }});
@@ -3150,4 +3158,3 @@ if __name__ == "__main__":
     if "--export-only" in sys.argv:
         sys.exit(0)
     run_server(port)
-t)

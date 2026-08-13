@@ -473,7 +473,7 @@
             display: block;
             font-size: 18px;
             font-weight: 900;
-            color: var(--amberber);
+            color: var(--amber);
         }
         .equity-stat-l {
             font-size: 10px;
@@ -1158,11 +1158,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-14 02:44:55 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-14 03:24:11 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-13 18:44:55 UTC</span>
+                    <span id="utc-clock">2026-08-13 19:24:11 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -1192,7 +1192,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 02:44:55 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 03:24:11 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -1230,6 +1230,13 @@
                 <option value="brief">简报</option>
                 <option value="fusion">技术×基本面</option>
                 <option value="earnings">财报前瞻</option>
+            </select>
+            <select id="report-theme" class="report-select" title="推送风格（PushPlus HTML 主题，微信详情页可见）">
+                <option value="monitor" selected>🖥 风格 MONITOR 服务器大屏</option>
+                <option value="game">🎮 风格 GAME 8-bit 像素游戏</option>
+                <option value="noc">🛰 风格 NOC 零表格监视</option>
+                <option value="klein">📰 风格 KLEIN 复古纸面</option>
+                <option value="pixel">📹 风格 PIXEL 像素监控</option>
             </select>
             <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
         </div>
@@ -2016,6 +2023,7 @@
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {}).value || 'console';
             const template = (document.getElementById('report-template') || {}).value || 'analysis';
+            const theme = (document.getElementById('report-theme') || {}).value || 'monitor';
             if (!code) {
                 if (input) { input.style.borderColor = 'var(--red)'; input.focus(); }
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -2036,7 +2044,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: code, channel: channel, template: template,
-                        dry_run: channel === 'console', theme: 'game',
+                        dry_run: channel === 'console', theme: theme,
                         mode: template === 'equity' ? 'full' : undefined
                     })
                 });

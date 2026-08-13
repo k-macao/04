@@ -39,6 +39,7 @@ import math
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -2689,6 +2690,104 @@ def fit_for_channel(channel: str, content: str,
 # PushPlus 接口 code=200，但微信端不投递或进不了会话。
 WECHAT_HTML_SOFT_LIMIT = 48_000
 
+# 单篇 HTML 超软上限时的最大分篇数；超过该篇数才退回 markdown。
+# （研报越长 style 内联膨胀越厉害，九章级报告常见 2-3 篇；上限防止刷屏）
+WECHAT_HTML_MAX_PARTS = 4
+
+
+def _md_blocks(md: str) -> list[str]:
+    """按空行切 markdown 块；围栏代码块（内部可能含空行）保持整体不被切断。"""
+    blocks: list[str] = []
+    cur: list[str] = []
+    in_fence = False
+    for ln in md.split("\n"):
+        if ln.strip().startswith("```"):
+            in_fence = not in_fence
+            cur.append(ln)
+            continue
+        if not in_fence and not ln.strip():
+            if cur:
+                blocks.append("\n".join(cur))
+                cur = []
+            continue
+        cur.append(ln)
+    if cur:
+        blocks.append("\n".join(cur))
+    return blocks
+
+
+def _html_fits(title: str, md: str, theme_name: str, limit: int) -> bool:
+    return _utf8_len(themed_html(title, md, theme_name=theme_name)) <= limit
+
+
+def _split_block_lines(title: str, block: str, theme_name: str,
+                       limit: int) -> list[str] | None:
+    """单个块（如长表格/长列表）超限时的兜底：按行贪心装填。
+
+    表格块（``|`` 开头且第二行为分隔行）续篇自动补表头+分隔行，
+    保证每篇仍是可渲染的完整表格。单行即超限（极端长行）返回 None。
+    """
+    lines = block.split("\n")
+    header: list[str] = []
+    if (len(lines) >= 3 and lines[0].lstrip().startswith("|")
+            and re.match(r"^\|?[\s:\-|]+\|?$", lines[1])):
+        header, lines = lines[:2], lines[2:]
+    parts: list[str] = []
+    cur: list[str] = list(header)
+    for ln in lines:
+        if _html_fits(title, "\n".join(cur + [ln]), theme_name, limit):
+            cur.append(ln)
+            continue
+        if len(cur) > len(header):
+            parts.append("\n".join(cur))
+        cur = header + [ln]
+        if not _html_fits(title, "\n".join(cur), theme_name, limit):
+            return None
+    if len(cur) > len(header):
+        parts.append("\n".join(cur))
+    return parts or None
+
+
+def split_md_for_html(title: str, md: str, theme_name: str,
+                      limit: int = WECHAT_HTML_SOFT_LIMIT,
+                      max_parts: int = WECHAT_HTML_MAX_PARTS) -> list[str] | None:
+    """把 md 切成若干片，使每片 themed_html ≤ limit；无法满足返回 None。
+
+    超微信软上限时不再整篇退回纯 markdown（推送页会完全丢掉主题风格），
+    而是按块（必要时按行）切成多篇带样式的 HTML 依次推送。
+    围栏代码块不可切分、所需篇数超过 max_parts 时返回 None，由调用方退回
+    markdown 投递（与旧行为一致）。
+    """
+    if _html_fits(title, md, theme_name, limit):
+        return [md]
+    parts: list[str] = []
+    cur = ""
+    for block in _md_blocks(md):
+        trial = f"{cur}\n\n{block}" if cur else block
+        if _html_fits(title, trial, theme_name, limit):
+            cur = trial
+            continue
+        if cur:
+            parts.append(cur)
+            cur = ""
+        if _html_fits(title, block, theme_name, limit):
+            cur = block
+            continue
+        if block.lstrip().startswith("```"):
+            return None  # 围栏代码块不可切分
+        sub = _split_block_lines(title, block, theme_name, limit)
+        if not sub:
+            return None
+        parts.extend(sub[:-1])
+        cur = sub[-1]
+        if len(parts) >= max_parts:
+            return None
+    if cur:
+        parts.append(cur)
+    if not 1 < len(parts) <= max_parts:
+        return None
+    return parts
+
 
 def push_pushplus(title: str, content: str, timeout: int,
                   theme: str = "default") -> str:
@@ -2697,38 +2796,67 @@ def push_pushplus(title: str, content: str, timeout: int,
         raise PushError("缺少 Secret：PUSHPLUS_TOKEN")
     title = title[:200]  # PushPlus 标题上限（会员支持 200 字）
     content, note = fit_for_channel("pushplus", content, brand_footer_md())
-    fields = {"token": token, "title": title}
     notes: list[str] = [note] if note else []
-    # 主题：game / klein / pixel 均为 html 模板，其余走 markdown
+    # 待发送队列：(标题, 内容, template)
+    sends: list[tuple[str, str, str]] = []
+    # 主题：game / klein / pixel / monitor / noc 均为 html 模板，其余走 markdown
     if theme in THEMES:
         html = themed_html(title, content, theme_name=theme)
         html_bytes = _utf8_len(html)
         log(f"  📦 PushPlus HTML {html_bytes} 字节（主题 {theme}）")
-        if html_bytes > WECHAT_HTML_SOFT_LIMIT:
-            # 超限改走 markdown，避免「接口成功、微信没收」
-            fields.update({"content": content, "template": "markdown"})
-            notes.append(f"HTML {html_bytes}B 超微信软上限，已改 markdown")
-            log(f"  ⚠️ HTML {html_bytes} 字节超过微信软上限 "
-                f"{WECHAT_HTML_SOFT_LIMIT}，改用 markdown 投递")
+        if html_bytes <= WECHAT_HTML_SOFT_LIMIT:
+            sends.append((title, html, "html"))
         else:
-            fields.update({"content": html, "template": "html"})
+            parts = split_md_for_html(title, content, theme)
+            if parts:
+                # 分篇推送：每篇都是完整主题 HTML，推送页风格保持一致
+                notes.append(f"HTML {html_bytes}B 超软上限，"
+                             f"已分 {len(parts)} 篇带样式推送")
+                log(f"  ✂️ HTML 超过微信软上限 {WECHAT_HTML_SOFT_LIMIT}，"
+                    f"切分为 {len(parts)} 篇依次推送（每篇均为主题 HTML）")
+                for idx, part in enumerate(parts, 1):
+                    ptitle = f"{title}（{idx}/{len(parts)}）"[:200]
+                    sends.append((ptitle,
+                                  themed_html(ptitle, part, theme_name=theme),
+                                  "html"))
+            else:
+                # 无法干净切分（如单个围栏块超限）才退回 markdown，
+                # 避免「接口成功、微信没收」
+                sends.append((title, content, "markdown"))
+                notes.append(f"HTML {html_bytes}B 超微信软上限，已改 markdown")
+                log(f"  ⚠️ HTML {html_bytes} 字节超过微信软上限 "
+                    f"{WECHAT_HTML_SOFT_LIMIT} 且无法干净切分，改用 markdown 投递")
     else:
-        fields.update({"content": content, "template": "markdown"})
+        sends.append((title, content, "markdown"))
         log(f"  📦 PushPlus markdown {_utf8_len(content)} 字节")
-    status, body = http_post_form(PUSHPLUS_URL, fields, timeout)
-    code = None
-    msg = ""
-    try:
-        parsed = json.loads(body)
-        code = parsed.get("code")
-        msg = str(parsed.get("msg") or parsed.get("message") or "")
-    except json.JSONDecodeError:
-        pass
-    log(f"  📡 PushPlus HTTP {status} code={code} msg={msg[:120]}")
-    if status == 200 and code == 200:
-        extra = "；".join(n for n in notes if n)
-        return "发送成功" + (f"（{extra}）" if extra else "")
-    raise PushError(f"PushPlus 返回异常（HTTP {status}）：{body[:400]}")
+
+    sent = 0
+    for i, (ptitle, pcontent, ptemplate) in enumerate(sends):
+        if i:
+            time.sleep(1)  # 多篇串行 + 间隔 1s，避开 PushPlus 频率限制
+        fields = {"token": token, "title": ptitle,
+                  "content": pcontent, "template": ptemplate}
+        status, body = http_post_form(PUSHPLUS_URL, fields, timeout)
+        code = None
+        msg = ""
+        try:
+            parsed = json.loads(body)
+            code = parsed.get("code")
+            msg = str(parsed.get("msg") or parsed.get("message") or "")
+        except json.JSONDecodeError:
+            pass
+        page = f"（第 {i + 1}/{len(sends)} 篇）" if len(sends) > 1 else ""
+        log(f"  📡 PushPlus HTTP {status} code={code} msg={msg[:120]}{page}")
+        if status == 200 and code == 200:
+            sent += 1
+            continue
+        which = f"第 {i + 1}/{len(sends)} 篇" if len(sends) > 1 else ""
+        done = f"（已送达 {sent} 篇）" if sent else ""
+        raise PushError(
+            f"PushPlus 返回异常{which}（HTTP {status}）{done}：{body[:400]}")
+    extra = "；".join(n for n in notes if n)
+    ok = "发送成功" if len(sends) == 1 else f"发送成功（共 {len(sends)} 篇）"
+    return ok + (f"（{extra}）" if extra else "")
 
 
 def push_wecom(title: str, content: str, timeout: int) -> str:
@@ -3246,6 +3374,41 @@ def selftest() -> int:
     fat = themed_html("超长标题", "# 章\n\n" + ("明细行 价格 16.80 多头概率 65%\n" * 4000), "game")
     check("九章级 HTML 会触发微信软上限",
           _utf8_len(fat) > WECHAT_HTML_SOFT_LIMIT)
+
+    log("③e2 超软上限自动分篇（推送页不再退回纯文本、保留主题风格）")
+    short_ok = split_md_for_html("t", "正文**加粗**", "game")
+    check("短内容不分篇", short_ok == ["正文**加粗**"])
+    sec_md = lambda i: (f"## 第{i}节\n\n| 因子 | 方向 | 概率 |\n|---|---|---|\n"
+                        + "\n".join(f"| 因子{j} | 多 | {50 + j % 40}% |"
+                                    for j in range(30)))
+    multi_md = "\n\n".join(sec_md(i) for i in range(4))
+    assert _utf8_len(themed_html("超长标题", multi_md,
+                                 theme_name="game")) > WECHAT_HTML_SOFT_LIMIT
+    parts = split_md_for_html("超长标题", multi_md, "game")
+    check("超长内容自动分篇", parts is not None and 2 <= len(parts)
+          <= WECHAT_HTML_MAX_PARTS)
+    check("每篇 HTML 均低于软上限",
+          parts is not None and all(
+              _utf8_len(themed_html("超长标题", p, theme_name="game"))
+              <= WECHAT_HTML_SOFT_LIMIT for p in (parts or [])))
+    check("分篇覆盖全部正文",
+          parts is not None and "第3节" in "\n".join(parts or [])
+          and "第0节" in "\n".join(parts or []))
+    tbl_rows = "\n".join(f"| 因子{i} | {40 + i % 55}% |" for i in range(2000))
+    tbl_parts = _split_block_lines("t", f"| 因子 | 概率 |\n|---|---|\n{tbl_rows}",
+                                   "monitor", 12_000)
+    check("长表格按行分篇", tbl_parts is not None and len(tbl_parts) > 1)
+    check("表格续篇自动补表头",
+          tbl_parts is not None and all(
+              p.startswith("| 因子 | 概率 |\n|---|---|")
+              for p in (tbl_parts or [])[1:]))
+    check("表格续篇均低于分篇上限",
+          tbl_parts is not None and all(
+              _utf8_len(themed_html("t", p, theme_name="monitor")) <= 12_000
+              for p in (tbl_parts or [])))
+    fence_md = "```\n" + ("print(1)\n" * 9000) + "```"
+    check("围栏代码块超限不可切，交回上层退回 markdown",
+          split_md_for_html("t", fence_md, "game") is None)
 
     log("③f game 主题渲染（8-bit 像素游戏风·整体默认）")
     gh = md_to_html("## 标题\n\n| 板块 | 概率 |\n|---|---|\n| 云计算 | 65% |\n\n"
