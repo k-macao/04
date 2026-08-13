@@ -21,7 +21,6 @@
 #   - --ai-provider 直接传 inputs.ai_provider（含 auto）。
 #   - 加固：actions 固定 v4/v5 并 pin 到 commit SHA；若遇 Service Unavailable，
 #     见 README「故障排查」章节（Marketplace CDN 瞬时 503，Re-run 即可）。
-
 name: Manual Run - Stock Report (HK/A-share)
 
         required: true
