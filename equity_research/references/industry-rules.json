@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "industries": {
+    "saas": {
+      "name_zh": "SaaS",
+      "name_en": "SaaS",
+      "appendix": "industries/saas.md",
+      "aliases": ["saas", "software as a service", "订阅软件", "云软件"],
+      "required_groups": [
+        {"label": "retention or contracted revenue", "terms": ["nrr", "net revenue retention", "净收入留存", "rpo", "crpo", "剩余履约义务"]},
+        {"label": "growth efficiency", "terms": ["rule of 40", "magic number", "cac payback", "获客回收期", "sbc/收入", "sbc / revenue"]}
+      ]
+    },
+    "semiconductors": {
+      "name_zh": "半导体", "name_en": "Semiconductors", "appendix": "industries/semiconductors.md",
+      "aliases": ["semiconductor", "semiconductors", "半导体", "芯片"],
+      "required_groups": [
+        {"label": "cycle position", "terms": ["库存周期", "inventory cycle", "产能利用率", "capacity utilization", "bit growth"]},
+        {"label": "unit economics", "terms": ["asp", "yield", "良率", "wafer", "晶圆", "单位成本"]}
+      ]
+    },
+    "banks": {
+      "name_zh": "银行", "name_en": "Banks", "appendix": "industries/banks.md",
+      "aliases": ["bank", "banks", "银行"],
+      "required_groups": [
+        {"label": "spread and funding", "terms": ["nim", "净息差", "deposit beta", "存款成本"]},
+        {"label": "asset quality and capital", "terms": ["信用成本", "credit cost", "stage 2", "cet1", "coverage ratio", "拨备覆盖率"]}
+      ]
+    },
+    "insurance": {
+      "name_zh": "保险", "name_en": "Insurance", "appendix": "industries/insurance.md",
+      "aliases": ["insurance", "insurer", "保险"],
+      "required_groups": [
+        {"label": "underwriting or new business", "terms": ["combined ratio", "综合成本率", "vnb", "新业务价值", "mlr"]},
+        {"label": "reserves and solvency", "terms": ["准备金", "reserves", "偿付能力", "solvency", "csm"]}
+      ]
+    },
+    "pharma": {
+      "name_zh": "医药", "name_en": "Pharma and biotech", "appendix": "industries/pharma.md",
+      "aliases": ["pharma", "biotech", "医药", "创新药", "生物科技"],
+      "required_groups": [
+        {"label": "pipeline probability", "terms": ["成功概率", "probability of success", "pos", "管线", "pipeline"]},
+        {"label": "asset life and valuation", "terms": ["rnpv", "专利悬崖", "patent cliff", "loe", "现金 runway", "cash runway"]}
+      ]
+    },
+    "healthcare-services": {
+      "name_zh": "医疗服务/器械/CRO-CDMO", "name_en": "Healthcare services, medtech, and CRO/CDMO", "appendix": "industries/healthcare-services.md",
+      "aliases": ["healthcare services", "medtech", "medical device", "cro", "cdmo", "医疗服务", "医疗器械", "医院"],
+      "required_groups": [
+        {"label": "volume and utilization", "terms": ["利用率", "utilization", "手术量", "procedure volume", "患者量", "patient volume", "在手订单", "backlog"]},
+        {"label": "reimbursement or unit economics", "terms": ["报销", "reimbursement", "单床", "per bed", "单次手术", "per procedure", "book-to-bill", "产能利用率"]}
+      ]
+    },
+    "consumer": {
+      "name_zh": "消费", "name_en": "Consumer", "appendix": "industries/consumer.md",
+      "aliases": ["consumer", "retail", "消费", "零售", "品牌"],
+      "required_groups": [
+        {"label": "volume price mix", "terms": ["量价", "volume", "price/mix", "price mix", "销量"]},
+        {"label": "channel health", "terms": ["sell-through", "终端销售", "渠道库存", "channel inventory", "同店销售", "same-store sales"]}
+      ]
+    },
+    "energy": {
+      "name_zh": "能源", "name_en": "Energy", "appendix": "industries/energy.md",
+      "aliases": ["energy", "oil and gas", "能源", "油气"],
+      "required_groups": [
+        {"label": "reserves and decline", "terms": ["储量替代率", "reserve replacement", "递减率", "decline rate", "井位库存"]},
+        {"label": "full-cycle cost", "terms": ["维持性 capex", "sustaining capex", "单位完全成本", "full-cycle cost", "盈亏平衡价", "breakeven price"]}
+      ]
+    },
+    "utilities": {
+      "name_zh": "公用事业", "name_en": "Utilities", "appendix": "industries/utilities.md",
+      "aliases": ["utilities", "utility", "公用事业", "电力", "水务", "燃气"],
+      "required_groups": [
+        {"label": "regulated return", "terms": ["rate base", "监管资产", "allowed roe", "earned roe", "核准回报率"]},
+        {"label": "funding and customer bill", "terms": ["客户账单", "customer bill", "融资缺口", "funding gap", "股息覆盖", "dividend coverage"]}
+      ]
+    },
+    "internet-platform": {
+      "name_zh": "互联网/平台", "name_en": "Internet and platforms", "appendix": "industries/internet-platform.md",
+      "aliases": ["internet platform", "platform", "互联网平台", "平台公司"],
+      "required_groups": [
+        {"label": "activity and monetization", "terms": ["mau", "dau", "用户时长", "engagement", "ecpm", "arpu", "advertising", "广告", "monetization", "变现"]},
+        {"label": "segment or transaction economics", "terms": ["gmv", "take rate", "履约成本", "fulfillment cost", "单位经济", "unit economics", "tac", "traffic acquisition cost", "分部经营利润率", "segment operating margin", "sbc"]}
+      ]
+    },
+    "payments-fintech": {
+      "name_zh": "支付/金融科技", "name_en": "Payments and fintech", "appendix": "industries/payments-fintech.md",
+      "aliases": ["payments", "fintech", "支付", "金融科技", "bnpl"],
+      "required_groups": [
+        {"label": "payment volume and take rate", "terms": ["tpv", "payment volume", "支付量", "take rate", "净费率"]},
+        {"label": "credit or revenue quality", "terms": ["vintage", "损失率", "loss rate", "client incentives", "客户激励", "gross vs net"]}
+      ]
+    },
+    "capital-markets": {
+      "name_zh": "资本市场基础设施", "name_en": "Capital markets infrastructure", "appendix": "industries/capital-markets.md",
+      "aliases": ["asset manager", "exchange", "broker", "rating agency", "资管", "交易所", "券商", "评级机构"],
+      "required_groups": [
+        {"label": "activity and assets", "terms": ["aum", "净流入", "net flows", "交易量", "trading volume", "日均成交", "adv"]},
+        {"label": "revenue quality and capital", "terms": ["fee rate", "费率", "market data", "市场数据", "净资本", "net capital", "利息敏感性"]}
+      ]
+    },
+    "reits": {
+      "name_zh": "地产/REIT", "name_en": "Real estate and REITs", "appendix": "industries/reits.md",
+      "aliases": ["reit", "reits", "real estate", "地产", "房地产"],
+      "required_groups": [
+        {"label": "property cash earnings", "terms": ["ffo", "affo", "noi", "同店 noi", "same-store noi"]},
+        {"label": "asset value and debt", "terms": ["cap rate", "资本化率", "nav", "债务到期", "debt maturity"]}
+      ]
+    },
+    "industrials": {
+      "name_zh": "工业/机械", "name_en": "Industrials and machinery", "appendix": "industries/industrials.md",
+      "aliases": ["industrials", "machinery", "工业", "机械"],
+      "required_groups": [
+        {"label": "orders and backlog", "terms": ["book-to-bill", "订单", "orders", "backlog", "在手订单"]},
+        {"label": "cycle and aftermarket", "terms": ["中周期", "mid-cycle", "产能利用率", "capacity utilization", "服务收入", "aftermarket"]}
+      ]
+    },
+    "telecom": {
+      "name_zh": "电信", "name_en": "Telecom", "appendix": "industries/telecom.md",
+      "aliases": ["telecom", "telecommunications", "电信", "运营商"],
+      "required_groups": [
+        {"label": "subscriber economics", "terms": ["arpu", "churn", "流失率", "净增用户", "net adds"]},
+        {"label": "capital and distribution", "terms": ["capex/收入", "capex/revenue", "频谱", "spectrum", "股息覆盖", "dividend coverage"]}
+      ]
+    },
+    "autos-ev": {
+      "name_zh": "汽车/EV", "name_en": "Autos and EV", "appendix": "industries/autos-ev.md",
+      "aliases": ["autos", "automotive", "ev", "汽车", "电动车", "新能源汽车"],
+      "required_groups": [
+        {"label": "per-vehicle economics", "terms": ["单车毛利", "gross profit per vehicle", "asp", "单车成本", "cost per vehicle"]},
+        {"label": "breakeven and demand quality", "terms": ["盈亏平衡销量", "breakeven volume", "渠道库存", "channel inventory", "现金 runway", "cash runway"]}
+      ]
+    },
+    "metals-mining": {
+      "name_zh": "金属/矿业", "name_en": "Metals and mining", "appendix": "industries/metals-mining.md",
+      "aliases": ["metals", "mining", "矿业", "矿山", "金属"],
+      "required_groups": [
+        {"label": "cost curve", "terms": ["aisc", "成本曲线", "cost curve", "c1 现金成本", "c1 cash cost"]},
+        {"label": "finite-life asset value", "terms": ["矿山寿命", "mine life", "分矿山 nav", "per-mine nav", "储量替代率", "reserve replacement"]}
+      ]
+    },
+    "transport": {
+      "name_zh": "航空/运输", "name_en": "Airlines and transport", "appendix": "industries/transport.md",
+      "aliases": ["airline", "transport", "shipping", "logistics", "航空", "运输", "航运", "物流"],
+      "required_groups": [
+        {"label": "unit revenue and cost", "terms": ["rask", "cask", "单位收益", "单位成本", "tce", "单票收入"]},
+        {"label": "capacity and supply", "terms": ["客座率", "load factor", "运力", "capacity", "订单簿", "orderbook", "利用率"]}
+      ]
+    },
+    "media-gaming": {
+      "name_zh": "游戏/媒体/内容 IP", "name_en": "Gaming, media, and content IP", "appendix": "industries/media-gaming.md",
+      "aliases": ["gaming", "media", "content ip", "游戏", "媒体", "影视", "内容"],
+      "required_groups": [
+        {"label": "audience and monetization", "terms": ["mau", "dau", "付费率", "payer conversion", "arppu", "收视", "audience"]},
+        {"label": "content economics", "terms": ["内容摊销", "content amortization", "开发资本化", "development capitalization", "票房分账", "revenue share", "生命周期收入"]}
+      ]
+    },
+    "hardware": {
+      "name_zh": "硬件/消费电子/AI 服务器", "name_en": "Hardware, consumer electronics, and AI servers", "appendix": "industries/hardware.md",
+      "aliases": ["hardware", "consumer electronics", "server", "硬件", "消费电子", "服务器"],
+      "required_groups": [
+        {"label": "units and bill of materials", "terms": ["出货量", "shipments", "asp", "bom", "物料成本", "unit cost"]},
+        {"label": "inventory and concentration", "terms": ["库存周转", "inventory days", "渠道库存", "channel inventory", "客户集中", "customer concentration", "供应商集中"]}
+      ]
+    }
+  }
+}

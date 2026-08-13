@@ -1,6 +1,46 @@
-# 04 - 文件合并工具
+# 04 - 文件合并工具 · 章鱼 AI 全景分析
 
-一个强大的 Python 文件合并工具集，支持多种格式和场景的合并操作。
+一个强大的 Python 文件合并工具集，并集成港股/A 股实时行情、多通道推送与**机构级个股投研独立栏目**。
+
+## 🏛 机构级个股投研独立栏目（新增）
+
+基于 [equity-research-skill](https://github.com/k-macao/equity-research-skill)（上游 [rollingSirius/equity-research-skill](https://github.com/rollingSirius/equity-research-skill)）落地的独立研究栏目：
+
+| 能力 | 说明 |
+|---|---|
+| 九章完整深度研究 | 一页速览 / 业务 / 竞争护城河 / 治理 / 财务与质量 / 估值 / 分析师 / 催化剂 / 结论与反方论证 |
+| 九章财报模式 | 预期差质量、分部 KPI、GAAP/Non-GAAP、现金流、电话会、估值变动桥 |
+| 预期差主线 | 反向 DCF + PVGO、Gap 表、独立观点检验 |
+| 可复算估值 | 本地 `equity_research/scripts/dcf.py`：三情景 DCF / EPV / EVA / 蒙特卡洛 / 仓位 |
+| 质量检查 | `check_research_output.py` 一致性核查 |
+| 20 类行业附录 | `equity_research/industries/*.md` |
+
+### 快速使用
+
+```bash
+# 离线自检（skill + dcf + 九章骨架）
+python equity_research_column.py --selftest
+
+# rule 模式生成九章栏目（不耗 API，估值由 dcf.py 计算）
+python equity_research_column.py 09988 --mode full --ai-provider rule
+
+# 财报深度模式
+python equity_research_column.py 600519 --mode earnings --ai-provider rule
+
+# 经 stock_report 统一入口（template=equity）
+python stock_report.py 09988 --template equity --mode full --ai-provider rule
+
+# 大屏独立栏：启动后打开 / ，使用「🏛 机构级个股投研」区块
+python server_dashboard.py 8080
+# GET  /api/equity/teaser?code=09988
+# POST /api/equity   {"code":"09988","mode":"full","channel":"console"}
+```
+
+Skill 资源目录：`equity_research/`（含 `SKILL.md`、`references/`、`industries/`、`scripts/`、`Example/`）。
+
+---
+
+## 📦 功能特性（文件合并）
 
 ## 📦 功能特性
 

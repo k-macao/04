@@ -135,11 +135,33 @@ def run_report(raw_code: str, *, channel: str = "console",
                ai_provider: str | None = None, template: str = "analysis",
                dry_run: bool = True, theme: str = "game",
                push_timeout: int = 30, no_chart: bool = False,
-               risk: str = "mid") -> dict:
-    """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。"""
+               risk: str = "mid", mode: str = "full",
+               industry: str | None = None) -> dict:
+    """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。
+
+    template=equity 时走独立栏目 equity_research_column（equity-research-skill
+    九章深度 + dcf.py 可复算估值）。
+    """
     raw_code = (raw_code or "").strip()
     if not raw_code:
         raise ValueError("股票代码不能为空")
+
+    # —— 机构级个股投研独立栏目（equity-research-skill）——
+    if template in ("equity", "equity_research", "deep_research"):
+        try:
+            import equity_research_column as erc
+        except ImportError as e:
+            raise RuntimeError(
+                f"equity 栏目模块不可用：{e}（需 equity_research_column.py "
+                f"+ equity_research/ skill 资源）") from e
+        eq_mode = mode if mode in ("full", "earnings") else "full"
+        # earnings 模板名也可映射到财报模式
+        if template == "equity" and mode == "earnings":
+            eq_mode = "earnings"
+        return erc.generate_column(
+            raw_code, mode=eq_mode, ai_provider=ai_provider, channel=channel,
+            dry_run=dry_run, theme=theme, industry=industry,
+            timeout=max(push_timeout, 60), run_check=True)
 
     market, code, _em_secid = hk_quote.detect_market(raw_code)
     label = MARKET_LABELS.get(market, market)
@@ -296,6 +318,26 @@ def selftest() -> int:
     msgs = pp.build_messages("analysis", "SH600519 贵州茅台", "示例背景", "mid")
     check("analysis 消息可构造", bool(msgs[1]["content"]) and "因子" in msgs[1]["content"])
 
+    print("⑤b 机构级个股投研栏目（equity template）")
+    check("equity 在 TEMPLATES", "equity" in pp.TEMPLATES)
+    check("equity 标题", pp.TEMPLATE_TITLES.get("equity") == "机构级个股投研")
+    try:
+        import equity_research_column as erc
+        check("equity_research_column 可导入", True)
+        check("skill 可用", erc.skill_available())
+        r_eq = run_report("09988", channel="console", ai_provider="rule",
+                          template="equity", dry_run=True, theme="monitor")
+        check("equity 返回 ok/结构", r_eq.get("template") == "equity"
+              or r_eq.get("column", {}).get("column_id") == "equity_research")
+        check("equity 九章正文", "个股投资研究报告" in (r_eq.get("report_md") or "")
+              and ("一页速览" in (r_eq.get("report_md") or "")
+                   or "决策三分法" in (r_eq.get("report_md") or "")))
+        check("equity 含估值/免责",
+              "估值" in (r_eq.get("report_md") or "")
+              and "投资建议" in (r_eq.get("report_md") or ""))
+    except Exception as e:  # noqa: BLE001
+        check(f"equity 栏目异常: {e}", False)
+
     print("⑥ --ai-provider auto 合法且等价于空串")
     args_auto = parse_args(["600519", "--ai-provider", "auto"])
     check("argparse 接受 auto", args_auto.ai_provider == "auto")
@@ -337,7 +379,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    dest="ai_provider",
                    help="AI 提供方（auto=自动：有 DEEPSEEK_API_KEY 用 deepseek，否则 rule）")
     p.add_argument("--template", default="analysis", choices=pp.TEMPLATES,
-                   help="分析框架：" + "/".join(pp.TEMPLATES))
+                   help="分析框架：" + "/".join(pp.TEMPLATES)
+                        + "（equity=机构级个股投研独立栏目）")
+    p.add_argument("--mode", default="full", choices=["full", "earnings"],
+                   help="equity 栏目模式：full=九章深度 / earnings=财报深度")
+    p.add_argument("--industry", default="",
+                   help="equity 栏目行业附录 slug（默认自动猜测）")
     p.add_argument("--risk", default="mid", choices=pp.RISKS, help="风险偏好（portfolio 模板）")
     p.add_argument("--theme", default="game", choices=["game", "klein", "pixel", "monitor", "noc", "default"])
     p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
@@ -365,7 +412,9 @@ def main(argv: list[str] | None = None) -> int:
         result = run_report(
             args.code, channel=args.channel, ai_provider=provider,
             template=args.template, dry_run=not args.push, theme=args.theme,
-            push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk)
+            push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk,
+            mode=getattr(args, "mode", "full"),
+            industry=(getattr(args, "industry", None) or None) or None)
     except ValueError as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1

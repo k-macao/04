@@ -53,6 +53,11 @@ try:
 except Exception:
     stock_report = None
 
+try:
+    import equity_research_column as equity_col
+except Exception:
+    equity_col = None
+
 # ================================================================ 实时行情合并
 
 def _generic_profile(market: str, code: str) -> dict:
@@ -1109,6 +1114,105 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             margin: 6px 0;
         }}
 
+        /* 🏛 机构级个股投研独立栏目 */
+        .equity-column-panel {{
+            background: var(--bg-panel);
+            border: 1px solid rgba(255, 184, 0, 0.35);
+            box-shadow: 0 0 18px rgba(255, 184, 0, 0.12);
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }}
+        .equity-hero {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: space-between;
+            align-items: stretch;
+        }}
+        .equity-hero-main {{ flex: 1 1 320px; }}
+        .equity-kicker {{
+            font-size: 10px;
+            letter-spacing: 1.5px;
+            color: var(--amber);
+            margin-bottom: 4px;
+        }}
+        .equity-title {{
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--text-main);
+            letter-spacing: 1px;
+        }}
+        .equity-sub {{
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }}
+        .equity-links {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }}
+        .equity-link {{
+            color: var(--cyan);
+            font-size: 11px;
+            text-decoration: none;
+            border: 1px solid var(--border-subtle);
+            padding: 3px 8px;
+        }}
+        .equity-link:hover {{ border-color: var(--cyan); box-shadow: var(--glow-cyan); }}
+        .equity-hero-side {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-content: flex-start;
+            min-width: 240px;
+        }}
+        .equity-stat {{
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 8px 12px;
+            min-width: 100px;
+            flex: 1 1 100px;
+        }}
+        .equity-stat-n {{
+            display: block;
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--amber);
+        }}
+        .equity-stat-l {{
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+        }}
+        .equity-features {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+        .equity-chip {{
+            font-size: 10px;
+            padding: 3px 8px;
+            border: 1px solid rgba(255, 184, 0, 0.35);
+            color: var(--amber);
+            background: rgba(255, 184, 0, 0.06);
+        }}
+        .equity-chapters {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+        .equity-chapter-pill {{
+            font-size: 10px;
+            padding: 4px 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-muted);
+        }}
+
         /* 横排集群节点状态流 */
         .node-stream {{
             display: flex;
@@ -1763,6 +1867,13 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <option value="serverchan">🔔 Server酱</option>
                 <option value="all">🌐 全部通道</option>
             </select>
+            <select id="report-template" class="report-select" title="分析框架">
+                <option value="analysis">多空因子分析</option>
+                <option value="equity" selected>🏛 机构级个股投研</option>
+                <option value="brief">简报</option>
+                <option value="fusion">技术×基本面</option>
+                <option value="earnings">财报前瞻</option>
+            </select>
             <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
         </div>
 
@@ -1774,6 +1885,65 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <span class="report-meta" id="report-meta"></span>
             </div>
             <div class="report-body" id="report-body"></div>
+        </div>
+
+        <!-- 🏛 独立栏目：机构级个股投研（equity-research-skill） -->
+        <div class="section-header" id="equity-section">
+            <span>🏛 机构级个股投研独立栏目 (EQUITY RESEARCH DESK)</span>
+            <span class="section-tag">equity-research-skill · 九章深度 · 预期差主线 · dcf.py 可复算估值 · 财报质量 A–D</span>
+        </div>
+        <div class="equity-column-panel" id="equity-column-panel">
+            <div class="equity-hero">
+                <div class="equity-hero-main">
+                    <div class="equity-kicker">INDEPENDENT COLUMN · POWERED BY EQUITY-RESEARCH-SKILL</div>
+                    <div class="equity-title">机构级个股投资研究报告</div>
+                    <div class="equity-sub">事实可追溯 · 估值可复算 · 结论可审计 · 覆盖美股/港股/A股</div>
+                    <div class="equity-links">
+                        <a class="equity-link" href="https://github.com/k-macao/equity-research-skill" target="_blank" rel="noopener">📦 k-macao/equity-research-skill</a>
+                        <a class="equity-link" href="https://github.com/rollingSirius/equity-research-skill" target="_blank" rel="noopener">⬆ upstream rollingSirius</a>
+                    </div>
+                </div>
+                <div class="equity-hero-side">
+                    <div class="equity-stat"><span class="equity-stat-n" id="eq-industries">20</span><span class="equity-stat-l">行业附录</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n">9</span><span class="equity-stat-l">章结构</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n">5+</span><span class="equity-stat-l">估值方法</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n" id="eq-skill-status">—</span><span class="equity-stat-l">Skill 状态</span></div>
+                </div>
+            </div>
+            <div class="equity-features" id="equity-features">
+                <div class="equity-chip">预期差 Gap 表</div>
+                <div class="equity-chip">反向 DCF + PVGO</div>
+                <div class="equity-chip">三情景概率加权</div>
+                <div class="equity-chip">EPV / EVA</div>
+                <div class="equity-chip">蒙特卡洛</div>
+                <div class="equity-chip">财报质量核查</div>
+                <div class="equity-chip">反方论证 Pre-mortem</div>
+                <div class="equity-chip">一致性检查器</div>
+            </div>
+            <div class="equity-chapters" id="equity-chapters-full"></div>
+            <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
+                <span class="selector-label">🏛 深度投研:</span>
+                <input id="equity-code-input" class="report-input" placeholder="代码：09988 / 600519 / NVDA" autocomplete="off" value="{stock_code}" />
+                <select id="equity-mode" class="report-select">
+                    <option value="full">完整深度研究（九章）</option>
+                    <option value="earnings">财报深度分析（九章）</option>
+                </select>
+                <select id="equity-channel" class="report-select">
+                    <option value="console">📺 预览</option>
+                    <option value="pushplus">📲 PushPlus</option>
+                    <option value="wecom">💬 企微</option>
+                    <option value="serverchan">🔔 Server酱</option>
+                </select>
+                <button class="report-btn" id="equity-btn" onclick="genEquityColumn()" style="border-color:var(--amber);color:var(--amber);background:rgba(255,184,0,0.12);">🏛 生成机构级研报</button>
+            </div>
+            <div id="equity-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--amber);">
+                <div class="report-head">
+                    <span class="report-title" id="equity-title" style="color:var(--amber);">🏛 机构级个股投研</span>
+                    <span class="report-status" id="equity-status" style="color:var(--amber);border-color:var(--amber);">待命</span>
+                    <span class="report-meta" id="equity-meta"></span>
+                </div>
+                <div class="report-body" id="equity-body"></div>
+            </div>
         </div>
 
         <!-- 🖥️ 横排服务器集群节点状态流 -->
@@ -1915,6 +2085,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             const status = document.getElementById('report-status');
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {{}}).value || 'console';
+            const template = (document.getElementById('report-template') || {{}}).value || 'analysis';
             if (!code) {{
                 if (input) {{ input.style.borderColor = 'var(--red)'; input.focus(); }}
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -1922,18 +2093,22 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             }}
             if (input) input.style.borderColor = 'var(--border-dim)';
             if (panel) panel.style.display = 'block';
-            if (title) title.textContent = '🧠 AI 研报 · ' + code;
-            if (meta) meta.textContent = '实时行情 → AI 分析 → ' + channel;
+            if (title) title.textContent = (template === 'equity' ? '🏛 机构级投研 · ' : '🧠 AI 研报 · ') + code;
+            if (meta) meta.textContent = '模板 ' + template + ' → ' + channel;
             if (status) {{ status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }}
-            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在获取实时行情并调用 AI 生成研报…（约数秒到数十秒）</div>';
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在获取实时行情并生成研报…（机构级栏目可能需要更长时间）</div>';
             if (btn) btn.disabled = true;
             playBeep(1040, 'triangle', 0.08);
-            appendLog('REPORT.GEN', 'QUERY', code + ' → 实时行情 + AI 研报 + ' + channel);
+            appendLog('REPORT.GEN', 'QUERY', code + ' · ' + template + ' → ' + channel);
             try {{
                 const resp = await fetch('/api/report', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ code: code, channel: channel, dry_run: channel === 'console', theme: 'monitor' }})
+                    body: JSON.stringify({{
+                        code: code, channel: channel, template: template,
+                        dry_run: channel === 'console', theme: 'monitor',
+                        mode: template === 'equity' ? 'full' : undefined
+                    }})
                 }});
                 const r = await resp.json();
                 if (!r || !r.ok) {{
@@ -1961,12 +2136,106 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             }}
         }}
 
+        // —— 🏛 独立栏目：机构级个股投研 ——
+        async function loadEquityTeaser() {{
+            try {{
+                const resp = await fetch('/api/equity/teaser?code=' + encodeURIComponent(STOCK_CODE));
+                const t = await resp.json();
+                if (!t || !t.ok) {{
+                    const st = document.getElementById('eq-skill-status');
+                    if (st) st.textContent = '缺失';
+                    return;
+                }}
+                const st = document.getElementById('eq-skill-status');
+                if (st) st.textContent = t.skill_available ? '就绪' : '缺失';
+                const ind = document.getElementById('eq-industries');
+                if (ind && t.industries_count) ind.textContent = t.industries_count;
+                const feat = document.getElementById('equity-features');
+                if (feat && t.features && t.features.length) {{
+                    feat.innerHTML = t.features.map(f => '<div class="equity-chip">' + f + '</div>').join('');
+                }}
+                const ch = document.getElementById('equity-chapters-full');
+                if (ch && t.chapters_full) {{
+                    ch.innerHTML = t.chapters_full.map((c, i) =>
+                        '<div class="equity-chapter-pill">' + (i + 1) + '. ' + c.replace(/^[^、]*、/, '') + '</div>'
+                    ).join('');
+                }}
+                appendLog('EQUITY.DESK', 'OK', 'skill ' + (t.skill_available ? 'ready' : 'missing')
+                    + ' · industries ' + (t.industries_count || 0));
+            }} catch (e) {{
+                appendLog('EQUITY.DESK', 'WARN', 'teaser failed: ' + e.message);
+            }}
+        }}
+
+        async function genEquityColumn() {{
+            const input = document.getElementById('equity-code-input');
+            const code = (input ? input.value : '').trim() || STOCK_CODE;
+            const panel = document.getElementById('equity-panel');
+            const body = document.getElementById('equity-body');
+            const title = document.getElementById('equity-title');
+            const meta = document.getElementById('equity-meta');
+            const status = document.getElementById('equity-status');
+            const btn = document.getElementById('equity-btn');
+            const channel = (document.getElementById('equity-channel') || {{}}).value || 'console';
+            const mode = (document.getElementById('equity-mode') || {{}}).value || 'full';
+            if (panel) panel.style.display = 'block';
+            if (title) title.textContent = '🏛 机构级个股投研 · ' + code;
+            if (meta) meta.textContent = mode + ' · equity-research-skill · ' + channel;
+            if (status) {{ status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }}
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 行情 → dcf.py 估值 → 九章研报 → 检查器…</div>';
+            if (btn) btn.disabled = true;
+            playBeep(880, 'triangle', 0.1);
+            appendLog('EQUITY.GEN', 'QUERY', code + ' · ' + mode);
+            try {{
+                const resp = await fetch('/api/equity', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        code: code, mode: mode, channel: channel,
+                        dry_run: channel === 'console', theme: 'monitor'
+                    }})
+                }});
+                const r = await resp.json();
+                if (!r || !r.ok) {{
+                    if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                    if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + ((r && r.error) || '未知错误') + '</div>';
+                    appendLog('EQUITY.GEN', 'ERR', (r && r.error) || '未知错误');
+                    return;
+                }}
+                const col = r.column || {{}};
+                if (meta) meta.textContent = (r.market_label || '') + ' ' + r.code
+                    + (r.name ? ' ' + r.name : '')
+                    + ' · ' + (col.industry || r.industry || '')
+                    + ' · ' + (col.valuation_label || '')
+                    + ' · ' + (r.gen_note || '');
+                if (status) {{
+                    status.textContent = r.dry_run ? '预览完成' : '已推送';
+                    status.style.color = 'var(--green)';
+                    status.style.borderColor = 'var(--green)';
+                }}
+                if (body) body.innerHTML = r.report_html || ('<pre style="white-space:pre-wrap;">' + (r.report_md || '') + '</pre>');
+                appendLog('EQUITY.GEN', 'OK', r.code + ' · label=' + (col.valuation_label || '—')
+                    + ' · check=' + (r.check_code === 0 ? 'pass' : r.check_code));
+            }} catch (e) {{
+                if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + e.message + '</div>';
+                appendLog('EQUITY.GEN', 'ERR', e.message);
+            }} finally {{
+                if (btn) btn.disabled = false;
+            }}
+        }}
+
         // 回车触发研报生成
         (function() {{
             const input = document.getElementById('report-code-input');
             if (input) input.addEventListener('keydown', function(e) {{
                 if (e.key === 'Enter') genReport();
             }});
+            const eq = document.getElementById('equity-code-input');
+            if (eq) eq.addEventListener('keydown', function(e) {{
+                if (e.key === 'Enter') genEquityColumn();
+            }});
+            setTimeout(loadEquityTeaser, 600);
         }})();
 
         // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
@@ -2331,13 +2600,44 @@ def _api_report(params: dict) -> dict:
     ai_provider = str(params.get("ai_provider") or "") or None
     dry_run = bool(params.get("dry_run", True))
     theme = str(params.get("theme") or "monitor")
+    mode = str(params.get("mode") or "full")
+    industry = str(params.get("industry") or "").strip() or None
     try:
         r = stock_report.run_report(
             code, channel=channel, ai_provider=ai_provider, template=template,
-            dry_run=dry_run, theme=theme)
+            dry_run=dry_run, theme=theme, mode=mode, industry=industry)
         r["ok"] = True
         return r
     except Exception as e:            # noqa: BLE001
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+
+
+def _api_equity_column(params: dict) -> dict:
+    """独立栏目：机构级个股投研（equity-research-skill）。"""
+    code = str(params.get("code") or "").strip()
+    if not code:
+        return {"ok": False, "error": "缺少股票代码"}
+    if equity_col is None:
+        return {"ok": False, "error": "equity_research_column 模块加载失败"}
+    channel = str(params.get("channel") or "console")
+    if channel not in ("console", "pushplus", "wecom", "serverchan", "all"):
+        channel = "console"
+    mode = str(params.get("mode") or "full")
+    if mode not in ("full", "earnings"):
+        mode = "full"
+    ai_provider = str(params.get("ai_provider") or "") or None
+    dry_run = bool(params.get("dry_run", True))
+    theme = str(params.get("theme") or "monitor")
+    industry = str(params.get("industry") or "").strip() or None
+    try:
+        r = equity_col.generate_column(
+            code, mode=mode, ai_provider=ai_provider, channel=channel,
+            dry_run=dry_run, theme=theme, industry=industry,
+            timeout=int(params.get("timeout") or 90),
+            run_check=bool(params.get("run_check", True)))
+        r["ok"] = True
+        return r
+    except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
 
 
@@ -2417,6 +2717,19 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
             return
 
+        if path in ("/api/equity", "/api/equity/teaser"):
+            stock_code = qs.get("code", ["09988"])[0]
+            if equity_col is None:
+                payload = {"ok": False, "error": "equity_research_column 未加载",
+                           "skill_available": False}
+            else:
+                payload = equity_col.column_teaser(stock_code)
+                payload["ok"] = True
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            return
+
         # 默认 404
         self.send_response(404)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -2432,12 +2745,6 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Content-Type", "application/json; charset=utf-8")
 
-        if path != "/api/report":
-            self.end_headers()
-            self.wfile.write(json.dumps(
-                {"ok": False, "error": "Not Found"}, ensure_ascii=False).encode("utf-8"))
-            return
-
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -2447,9 +2754,15 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             params = {}
 
-        payload = _api_report(params)
+        if path == "/api/report":
+            payload = _api_report(params)
+        elif path in ("/api/equity", "/api/equity/report"):
+            payload = _api_equity_column(params)
+        else:
+            payload = {"ok": False, "error": "Not Found"}
+
         self.end_headers()
-        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        self.wfile.write(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
 
 
 def run_server(port: int = 8080):
