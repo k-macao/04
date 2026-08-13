@@ -29,7 +29,7 @@ on:
         required: true
         default: 'equity'
         type: choice
-        options: [equity, analysis, brief, fusion, plan, picker, scan, earnings, portfolio, review, regime, sentiment, feedscan, newsnow]
+        options: [equity, analysis, initiate, morning_note, earnings_preview, earnings_update, model_update, thesis, catalysts, sector, ideas, brief, fusion, plan, picker, scan, earnings, portfolio, review, regime, sentiment, feedscan, newsnow]
       mode:
         description: 'equity 栏目模式（仅 template=equity 生效：full=完整九章 / earnings=财报九章）'
         required: true

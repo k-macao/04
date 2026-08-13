@@ -83,7 +83,10 @@ RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
 
 TEMPLATES = ["brief", "analysis", "scan", "picker", "fusion",
              "plan", "earnings", "portfolio", "review", "regime",
-             "sentiment", "feedscan", "newsnow", "equity"]
+             "sentiment", "feedscan", "newsnow", "equity",
+             "initiate", "earnings_preview", "earnings_update",
+             "model_update", "morning_note", "catalysts",
+             "thesis", "sector", "ideas"]
 TEMPLATE_TITLES = {
     "brief": "简报", "analysis": "多空因子分析", "scan": "市场情报扫描",
     "picker": "选股器·未来30日", "fusion": "技术面×基本面融合",
@@ -92,12 +95,24 @@ TEMPLATE_TITLES = {
     "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
     "newsnow": "NewsNow热榜聚合·7源",
     "equity": "机构级个股投研",
+    "initiate": "首次覆盖·公司研究",
+    "earnings_preview": "财报前瞻·Skill",
+    "earnings_update": "季报更新",
+    "model_update": "模型修订",
+    "morning_note": "晨会纪要",
+    "catalysts": "催化剂日历",
+    "thesis": "论点记分卡",
+    "sector": "行业格局",
+    "ideas": "选股/主题扫描",
 }
 TEMPLATE_MAX_TOKENS = {
     "brief": 2000, "analysis": 3000, "scan": 4000, "picker": 4000,
     "fusion": 3000, "plan": 4000, "earnings": 3000, "portfolio": 4000,
     "review": 3000, "regime": 3000, "sentiment": 4000, "feedscan": 4000,
     "newsnow": 4000, "equity": 8000,
+    "initiate": 6000, "earnings_preview": 3500, "earnings_update": 5000,
+    "model_update": 3500, "morning_note": 2500, "catalysts": 3000,
+    "thesis": 3000, "sector": 4500, "ideas": 4000,
 }
 
 # analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
@@ -1327,9 +1342,21 @@ def build_messages(template: str, topic: str, context: str,
             "至少三种估值方法交叉验证、反方论证（一年后失败的3个原因）、"
             "监控清单与免责声明。关键数据标注来源+时间戳；缺失写「未获取到」。\n"
             "输出简体中文 Markdown。" + RULES_TAIL)
-    else:  # brief
-        user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
-                "每个要点一句话；结尾一句小结。\n\n" + ctx)
+    else:
+        # Anthropic 官方 skill 模板：委托 skills_hub 构造完整 prompt
+        try:
+            import skills_hub as sh
+            if sh.is_skill_template(template):
+                return sh.build_messages(template, topic, context)
+        except Exception:
+            pass
+        if template == "brief":
+            user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
+                    "每个要点一句话；结尾一句小结。\n\n" + ctx)
+        else:
+            user = (
+                f"请围绕「{topic}」按模板「{template}」生成一份研究备忘录。\n\n"
+                + ctx + RULES_TAIL)
     system = ("你是一位严谨的跨市场分析师，深耕港股/A股市场，熟悉宏观与行业政策。"
               "输出必须是简体中文 Markdown，不要寒暄，不要使用代码块，"
               "所有概率用整数百分比表示。")
@@ -1417,6 +1444,19 @@ def gen_by_rule(topic: str, template: str,
                 f"- equity_research_column 不可用：{e}",
                 f"- 运行时间：{now}（北京时间）",
                 "- 请确认 equity_research/ 已安装 skill 资源", "",
+                "> ⚠️ 非投资建议，仅供参考。"])
+    try:
+        import skills_hub as sh
+        if sh.is_skill_template(template):
+            return sh.gen_rule_skill(template, topic, context="")
+    except Exception as e:  # noqa: BLE001
+        if template in ("initiate", "earnings_preview", "earnings_update",
+                        "model_update", "morning_note", "catalysts",
+                        "thesis", "sector", "ideas"):
+            return "\n".join([
+                f"**{topic} · {TEMPLATE_TITLES.get(template, template)}**（rule 降级）",
+                "", f"- skills_hub 不可用：{e}",
+                f"- 运行时间：{now}（北京时间）",
                 "> ⚠️ 非投资建议，仅供参考。"])
     return "\n".join([
         f"**{topic} · {TEMPLATE_TITLES.get(template, '简报')}**（rule 演示模板）", "",

@@ -268,6 +268,17 @@ def run_report(raw_code: str, *, channel: str = "console",
     if hours not in (24, 48, 72, 156):
         hours = 48
 
+    # —— 官方 / 社区 Skills Hub（Anthropic 9 技能等）——
+    try:
+        import skills_hub as sh
+        if sh.is_skill_template(template):
+            return sh.run_skill(
+                raw_code, skill=template, ai_provider=ai_provider,
+                channel=channel, dry_run=dry_run, theme=theme,
+                timeout=max(push_timeout, 60))
+    except ImportError:
+        pass
+
     # —— 机构级个股投研独立栏目（equity-research-skill）——
     if template in ("equity", "equity_research", "deep_research"):
         try:
@@ -496,6 +507,22 @@ def selftest() -> int:
     check("no_chart 不强制出图", meta.get("has_chart") is False)
     args_h = parse_args(["09988", "--hours", "156"])
     check("argparse 接受 --hours 156", args_h.hours == 156)
+
+    print("⑤d Skills Hub（Anthropic 官方 9 技能）")
+    try:
+        import skills_hub as sh
+        check("skills_hub 可导入", True)
+        t = sh.catalog_teaser("09988")
+        check("catalog ≥10 且已安装", t.get("installed", 0) >= 10)
+        check("morning_note 是 skill 模板", sh.is_skill_template("morning_note"))
+        r_sk = run_report("09988", channel="console", ai_provider="rule",
+                          template="morning_note", dry_run=True, theme="monitor",
+                          collect_news=False, no_chart=True)
+        check("morning_note 返回结构", r_sk.get("template") == "morning_note"
+              and "晨会纪要" in (r_sk.get("report_md") or r_sk.get("skill_title") or ""))
+        check("morning_note 含免责", "投资建议" in (r_sk.get("report_md") or ""))
+    except Exception as e:  # noqa: BLE001
+        check(f"skills hub 异常: {e}", False)
 
     print("⑥ --ai-provider auto 合法且等价于空串")
     args_auto = parse_args(["600519", "--ai-provider", "auto"])

@@ -40,6 +40,27 @@ Skill 资源目录：`equity_research/`（含 `SKILL.md`、`references/`、`indu
 
 ---
 
+## 🧩 Skills Hub（2026-08-13 已更新）
+
+上一轮只把 `equity-research` 塞进了 `equity_research/`，**没有按 Agent Skills 标准安装，也没有接入 Anthropic 官方新技能**。现已补齐：
+
+| 来源 | Skills | 入口 |
+|---|---|---|
+| rollingSirius v3.0.0 | 九章个股投研 + `dcf.py` | `equity` / `skills/equity-research/` |
+| Anthropic financial-services（Apache-2.0） | 首次覆盖 / 财报前瞻 / 季报更新 / 模型修订 / 晨会纪要 / 催化剂日历 / 论点记分卡 / 行业格局 / 选股扫描 | `initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas` |
+
+```bash
+python skills_hub.py --list
+python skills_hub.py --selftest
+python skills_hub.py 09988 --skill morning_note --ai-provider rule
+python stock_report.py 09988 --template initiate --ai-provider rule
+python server_dashboard.py 8080   # GET /api/skills · POST /api/skills
+```
+
+目录：`skills/`（catalog + NOTICE）· `.claude/skills/`（Agent 可直接读）。
+
+---
+
 ## 📦 功能特性（文件合并）
 
 ## 📦 功能特性

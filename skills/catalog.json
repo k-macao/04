@@ -1,0 +1,82 @@
+{
+  "updated": "2026-08-13",
+  "version": "1.1.0-skills-2026-08-13",
+  "skills": [
+    {
+      "id": "equity-research",
+      "template": "equity",
+      "title": "机构级个股投研",
+      "family": "rollingSirius",
+      "upstream": "https://github.com/rollingSirius/equity-research-skill",
+      "version": "v3.0.0",
+      "path": "equity_research",
+      "modes": ["full", "earnings"]
+    },
+    {
+      "id": "initiating-coverage",
+      "template": "initiate",
+      "title": "首次覆盖 · 公司研究",
+      "family": "anthropic",
+      "upstream": "https://github.com/anthropics/financial-services",
+      "version": "2026-08-04",
+      "path": "skills/anthropic-equity-research/initiating-coverage",
+      "default_task": "task1"
+    },
+    {
+      "id": "earnings-preview",
+      "template": "earnings_preview",
+      "title": "财报前瞻",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/earnings-preview"
+    },
+    {
+      "id": "earnings-analysis",
+      "template": "earnings_update",
+      "title": "季报更新",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/earnings-analysis"
+    },
+    {
+      "id": "model-update",
+      "template": "model_update",
+      "title": "模型修订",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/model-update"
+    },
+    {
+      "id": "morning-note",
+      "template": "morning_note",
+      "title": "晨会纪要",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/morning-note"
+    },
+    {
+      "id": "catalyst-calendar",
+      "template": "catalysts",
+      "title": "催化剂日历",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/catalyst-calendar"
+    },
+    {
+      "id": "thesis-tracker",
+      "template": "thesis",
+      "title": "论点记分卡",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/thesis-tracker"
+    },
+    {
+      "id": "sector-overview",
+      "template": "sector",
+      "title": "行业格局",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/sector-overview"
+    },
+    {
+      "id": "idea-generation",
+      "template": "ideas",
+      "title": "选股/主题扫描",
+      "family": "anthropic",
+      "path": "skills/anthropic-equity-research/idea-generation"
+    }
+  ]
+}
