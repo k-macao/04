@@ -2685,6 +2685,11 @@ def fit_for_channel(channel: str, content: str,
     return trimmed, f"已按 {limit} 字节截断"
 
 
+# 微信订阅号/服务通知对单条 HTML 很敏感：超过约 48KB 常出现
+# PushPlus 接口 code=200，但微信端不投递或进不了会话。
+WECHAT_HTML_SOFT_LIMIT = 48_000
+
+
 def push_pushplus(title: str, content: str, timeout: int,
                   theme: str = "default") -> str:
     token = env("PUSHPLUS_TOKEN")
@@ -2693,20 +2698,36 @@ def push_pushplus(title: str, content: str, timeout: int,
     title = title[:200]  # PushPlus 标题上限（会员支持 200 字）
     content, note = fit_for_channel("pushplus", content, brand_footer_md())
     fields = {"token": token, "title": title}
+    notes: list[str] = [note] if note else []
     # 主题：game / klein / pixel 均为 html 模板，其余走 markdown
     if theme in THEMES:
-        fields.update({"content": themed_html(title, content, theme_name=theme),
-                       "template": "html"})
+        html = themed_html(title, content, theme_name=theme)
+        html_bytes = _utf8_len(html)
+        log(f"  📦 PushPlus HTML {html_bytes} 字节（主题 {theme}）")
+        if html_bytes > WECHAT_HTML_SOFT_LIMIT:
+            # 超限改走 markdown，避免「接口成功、微信没收」
+            fields.update({"content": content, "template": "markdown"})
+            notes.append(f"HTML {html_bytes}B 超微信软上限，已改 markdown")
+            log(f"  ⚠️ HTML {html_bytes} 字节超过微信软上限 "
+                f"{WECHAT_HTML_SOFT_LIMIT}，改用 markdown 投递")
+        else:
+            fields.update({"content": html, "template": "html"})
     else:
         fields.update({"content": content, "template": "markdown"})
+        log(f"  📦 PushPlus markdown {_utf8_len(content)} 字节")
     status, body = http_post_form(PUSHPLUS_URL, fields, timeout)
     code = None
+    msg = ""
     try:
-        code = json.loads(body).get("code")
+        parsed = json.loads(body)
+        code = parsed.get("code")
+        msg = str(parsed.get("msg") or parsed.get("message") or "")
     except json.JSONDecodeError:
         pass
+    log(f"  📡 PushPlus HTTP {status} code={code} msg={msg[:120]}")
     if status == 200 and code == 200:
-        return "发送成功" + (f"（{note}）" if note else "")
+        extra = "；".join(n for n in notes if n)
+        return "发送成功" + (f"（{extra}）" if extra else "")
     raise PushError(f"PushPlus 返回异常（HTTP {status}）：{body[:400]}")
 
 
@@ -3220,6 +3241,11 @@ def selftest() -> int:
           and trim_with_title.rstrip().endswith(footer.rstrip()))
     unlim_c, _ = fit_for_channel("pushplus", "x" * 5000)
     check("pushplus 5000字不限", len(unlim_c) == 5000)
+    check("微信 HTML 软上限已设置",
+          20_000 <= WECHAT_HTML_SOFT_LIMIT <= 80_000)
+    fat = themed_html("超长标题", "# 章\n\n" + ("明细行 价格 16.80 多头概率 65%\n" * 4000), "game")
+    check("九章级 HTML 会触发微信软上限",
+          _utf8_len(fat) > WECHAT_HTML_SOFT_LIMIT)
 
     log("③f game 主题渲染（8-bit 像素游戏风·整体默认）")
     gh = md_to_html("## 标题\n\n| 板块 | 概率 |\n|---|---|\n| 云计算 | 65% |\n\n"
