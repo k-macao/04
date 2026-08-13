@@ -542,11 +542,22 @@ def get_cluster_status() -> dict:
 
 
 def render_server_monitor_html(stock_code: str = "09988") -> str:
-    """生成完全不含 <table> 的纯文字 + 列表横排服务器大屏监视风格 HTML"""
+    """生成完全不含 <table> 的纯文字 + 列表横排 8-bit 复古游戏风大屏监视 HTML
+
+    视觉与 pushplus_deepseek.themed_html(theme_name='game') 统一：
+    深夜蓝游戏屏 + 像素星点 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE/PRESS START。
+    """
     data = get_stock_view(stock_code)
     cluster = get_cluster_status()
     # 页面时钟由 JS 实时走动；行情若接入免费数据源则为实时，失败时回退静态快照
     generated_at = cluster["cst_time"]
+    # —— 8-bit 游戏参数：由标的代码稳定生成 SCORE / HP / LV（与 pushplus game 主题一致）——
+    game_seed = sum(ord(c) for c in str(stock_code))
+    game_score = game_seed * 7 % 999999
+    game_hp = 60 + game_seed % 40                       # 60-99
+    game_hp_filled = round(game_hp / 10)
+    game_hp_bar = "█" * game_hp_filled + "░" * (10 - game_hp_filled)
+    game_lv = 1 + game_seed % 9                         # LV.01-09
 
     # —— 数据状态横幅：实时行情 / 静态演示 ——
     if data.get("quote_live"):
@@ -573,7 +584,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     """ for n in cluster["nodes"])
 
     # 2. 横排核心量化指标流
-    up_down_color = "#00ff9d" if data["is_up"] else "#ff3366"
+    up_down_color = "#5cff5c" if data["is_up"] else "#ff5c5c"
     up_down_sign = "▲" if data["is_up"] else "▼"
 
     metrics_ribbon = f"""
@@ -587,7 +598,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <div class="kpi-label">现价 / 涨跌幅</div>
             <div class="kpi-value" style="color:{up_down_color};">
                 <span id="q-price">{data["price"]}</span> <span style="font-size:14px;" id="q-currency">{data["currency"]}</span>
-                <span class="pill-badge" id="q-change" style="background:{'rgba(0,255,157,0.15)' if data['is_up'] else 'rgba(255,51,102,0.15)'};color:{up_down_color};border-color:{up_down_color};">
+                <span class="pill-badge" id="q-change" style="background:{'rgba(92,255,92,0.15)' if data['is_up'] else 'rgba(255,92,92,0.15)'};color:{up_down_color};border-color:{up_down_color};">
                     {up_down_sign} {data["change"]} ({data["change_val"]})
                 </span>
             </div>
@@ -595,7 +606,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         </div>
         <div class="kpi-card">
             <div class="kpi-label">24H 成交量 / 估值</div>
-            <div class="kpi-value amber-glow"><span id="q-vol">{data["vol"]}</span> <span style="font-size:13px;color:#94a3b8;">(PE <span id="q-pe">{data["pe"]}</span>)</span></div>
+            <div class="kpi-value amber-glow"><span id="q-vol">{data["vol"]}</span> <span style="font-size:13px;color:#8a90bc;">(PE <span id="q-pe">{data["pe"]}</span>)</span></div>
             <div class="kpi-foot" id="q-pe-foot">历史分位: {data["pe_percentile"]} (深度价值区)</div>
         </div>
         <div class="kpi-card highlight-green">
@@ -605,7 +616,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         </div>
         <div class="kpi-card">
             <div class="kpi-label">综合研判 / 多头胜率</div>
-            <div class="kpi-value purple-glow">{data["overall_direction"]} <span style="font-size:18px;color:#00ff9d;">{data["overall_prob"]}</span></div>
+            <div class="kpi-value purple-glow">{data["overall_direction"]} <span style="font-size:18px;color:#5cff5c;">{data["overall_prob"]}</span></div>
             <div class="kpi-foot">全网舆情指数: {data["sentiment_score"]}/100</div>
         </div>
     </div>
@@ -678,7 +689,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
             <!-- TradingView 官方高级图表组件面板 (可一键切换) -->
             <div id="tradeview-widget-panel" style="display:none;">
-                <div id="tradingview_widget_box" style="height:520px;width:100%;border-radius:4px;overflow:hidden;background:#05080c;border:1px solid var(--border-dim);">
+                <div id="tradingview_widget_box" style="height:520px;width:100%;border-radius:4px;overflow:hidden;background:#0b0e2a;border:1px solid var(--border-dim);">
                     <div id="tv_widget_embed_container" style="width:100%;height:100%;"></div>
                 </div>
                 <div class="tv-footer-bar" style="margin-top:8px;">
@@ -754,28 +765,32 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>章鱼 AI · 服务器大屏监视中心 (NOC Telemetry Wallboard)</title>
+    <title>章鱼 AI · 服务器大屏监视中心 (8-BIT RETRO ARCADE WALLBOARD)</title>
     <style>
         :root {{
-            --bg-deep: #06090e;
-            --bg-panel: #0a0f1d;
-            --bg-card: #0d1527;
-            --bg-card-hover: #121c33;
-            --border-glow: #00f0ff;
-            --border-dim: #1e293b;
-            --border-subtle: rgba(0, 240, 255, 0.2);
-            --cyan: #00f0ff;
-            --green: #00ff9d;
-            --amber: #ffb800;
-            --red: #ff3366;
-            --purple: #a855f7;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --text-dim: #64748b;
+            /* —— 8-bit 复古游戏风（与 pushplus game 主题统一）——
+               深夜蓝游戏屏 #0b0e2a + 金色粗框 #f8b800 + 硬黑像素阴影 +
+               ♥HP血条 / ★LV 等级 / SCORE 计分 / PRESS START */
+            --bg-deep: #0b0e2a;            /* 游戏背景（深夜蓝） */
+            --bg-panel: #0e1130;           /* 游戏面板底（深靛蓝） */
+            --bg-card: #16193b;            /* 游戏面板底（靛蓝） */
+            --bg-card-hover: #1d2150;
+            --border-glow: #f8b800;        /* 金色粗框（2px 游戏描边） */
+            --border-dim: #4a4280;         /* 暗靛蓝细框 */
+            --border-subtle: rgba(248, 184, 0, 0.25);
+            --cyan: #ffd23f;               /* 金币黄 重点凸显 */
+            --green: #5cff5c;              /* 磷光绿 涨 */
+            --amber: #f8b800;              /* 金色 */
+            --red: #ff5c5c;                /* 警示红 跌 */
+            --purple: #a78bfa;
+            --text-main: #e9eaf5;          /* 正文米白 */
+            --text-muted: #8a90bc;         /* 辅助蓝灰 */
+            --text-dim: #5b6090;
             --font-mono: 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
-            --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.35);
-            --glow-green: 0 0 15px rgba(0, 255, 157, 0.35);
-            --glow-red: 0 0 15px rgba(255, 51, 102, 0.35);
+            /* 硬黑像素阴影：所有发光改用 4px 偏移纯黑块 */
+            --glow-cyan: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            --glow-green: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            --glow-red: 4px 4px 0 rgba(0, 0, 0, 0.9);
         }}
 
         * {{
@@ -794,10 +809,19 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             padding: 12px;
             position: relative;
             overflow-x: hidden;
+            /* 像素星点 + 金色网格：游戏机屏幕 */
             background-image:
-                radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
-                repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px),
-                repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px);
+                radial-gradient(circle at 50% 0%, rgba(248, 184, 0, 0.08) 0%, transparent 60%),
+                radial-gradient(1.5px 1.5px at 26px 32px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 88px 74px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 152px 22px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 212px 96px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 310px 52px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 390px 118px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 470px 34px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 560px 84px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                repeating-linear-gradient(0deg, rgba(248, 184, 0, 0.03) 0 1px, transparent 1px 24px),
+                repeating-linear-gradient(90deg, rgba(248, 184, 0, 0.03) 0 1px, transparent 1px 24px);
         }}
 
         /* CRT 扫描线特效 (可开关) */
@@ -820,32 +844,33 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             gap: 12px;
         }}
 
-        /* 顶部 HUD 状态栏 */
+        /* 顶部游戏菜单金条（HUD 状态栏）：金色底 + 黑字 + 硬黑像素阴影 */
         .hud-header {{
-            background: var(--bg-panel);
-            border: 1px solid var(--border-glow);
-            box-shadow: var(--glow-cyan);
-            padding: 10px 16px;
+            background: #f8b800;            /* 游戏菜单金条 */
+            color: #111111;
+            border: 2px solid #111111;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            padding: 8px 14px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             position: relative;
         }}
 
         .hud-header::before, .hud-header::after {{
-            content: "⌜";
+            content: "◤";
             position: absolute;
-            top: -2px; left: -2px;
-            color: var(--cyan);
-            font-size: 14px;
+            top: 2px; left: 5px;
+            color: rgba(17, 17, 17, 0.5);
+            font-size: 12px;
             font-weight: bold;
         }}
         .hud-header::after {{
-            content: "⌟";
+            content: "◥";
             top: auto; left: auto;
-            bottom: -2px; right: -2px;
+            bottom: 2px; right: 5px;
         }}
 
         .hud-brand {{
@@ -857,42 +882,42 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .hud-logo {{
             width: 24px;
             height: 24px;
-            background: var(--cyan);
-            color: #000;
+            background: #111111;
+            color: #ffd23f;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 900;
             font-size: 14px;
-            box-shadow: var(--glow-cyan);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
         }}
 
         .hud-title {{
             font-size: 15px;
             font-weight: 900;
             letter-spacing: 1.5px;
-            color: var(--cyan);
+            color: #111111;
             text-transform: uppercase;
         }}
 
         .hud-subtitle {{
             font-size: 10px;
-            color: var(--text-muted);
+            color: rgba(17, 17, 17, 0.7);
             letter-spacing: 1px;
         }}
 
         .hud-clocks {{
             display: flex;
-            gap: 14px;
+            gap: 10px;
             align-items: center;
             font-size: 11px;
         }}
 
         .clock-badge {{
-            background: rgba(0, 240, 255, 0.08);
-            border: 1px solid var(--border-subtle);
+            background: rgba(17, 17, 17, 0.1);
+            border: 1px solid rgba(17, 17, 17, 0.55);
             padding: 3px 8px;
-            color: var(--cyan);
+            color: #111111;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -902,9 +927,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             width: 8px;
             height: 8px;
             background: var(--green);
-            border-radius: 50%;
             display: inline-block;
-            box-shadow: 0 0 8px var(--green);
+            box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
             animation: pulse 1.5s infinite;
         }}
 
@@ -920,10 +944,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         .btn-action {{
-            background: rgba(0, 240, 255, 0.1);
-            border: 1px solid var(--cyan);
-            color: var(--cyan);
-            padding: 4px 10px;
+            background: rgba(17, 17, 17, 0.08);
+            border: 2px solid #111111;
+            color: #111111;
+            padding: 3px 10px;
             font-size: 11px;
             font-family: var(--font-mono);
             cursor: pointer;
@@ -933,16 +957,37 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
 
         .btn-action:hover {{
-            background: var(--cyan);
-            color: #000;
-            box-shadow: var(--glow-cyan);
+            background: #111111;
+            color: #ffd23f;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
         }}
+
+        /* 8-bit 游戏状态栏：♥HP 血条 + ★LV 等级 + SCORE 计分 + UTC */
+        .game-statusbar {{
+            background: var(--bg-panel);
+            border: 2px solid var(--border-glow);
+            border-top: none;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            color: var(--text-muted);
+            font-size: 10px;
+            letter-spacing: 1px;
+            padding: 4px 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+        }}
+        .game-statusbar .gs-hp-fill {{ color: var(--green); letter-spacing: 0; }}
+        .game-statusbar .gs-hp-num {{ color: var(--green); font-weight: bold; }}
+        .game-statusbar .gs-score {{ margin-left: auto; color: var(--cyan); font-weight: bold; }}
+        .game-statusbar .gs-utc {{ color: var(--text-dim); font-size: 9px; }}
 
         /* 数据状态横幅：明确标注当前为静态演示数据，避免误以为实时更新 */
         .data-status-banner {{
-            background: rgba(255, 184, 0, 0.08);
+            background: rgba(248, 184, 0, 0.08);
             border: 1px solid var(--amber);
-            box-shadow: 0 0 12px rgba(255, 184, 0, 0.18);
+            box-shadow: 0 0 12px rgba(248, 184, 0, 0.18);
             padding: 8px 14px;
             display: flex;
             align-items: center;
@@ -952,7 +997,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             flex-wrap: wrap;
         }}
         .data-status-banner .dsb-icon {{ font-size: 14px; }}
-        .data-status-banner .dsb-strong {{ font-weight: bold; color: #ffd46b; }}
+        .data-status-banner .dsb-strong {{ font-weight: bold; color: #ffd23f; }}
         .data-status-banner .dsb-hint {{ color: var(--text-muted); }}
         .data-status-banner .dsb-time {{ margin-left: auto; color: var(--text-dim); font-size: 10px; }}
 
@@ -989,8 +1034,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .stock-btn.active {{
             border-color: var(--cyan);
             color: var(--cyan);
-            background: rgba(0, 240, 255, 0.12);
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            background: rgba(255, 210, 63, 0.12);
+            box-shadow: 0 0 10px rgba(255, 210, 63, 0.2);
             font-weight: bold;
         }}
 
@@ -1009,7 +1054,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .report-input:focus {{
             outline: none;
             border-color: var(--cyan);
-            box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+            box-shadow: 0 0 8px rgba(255, 210, 63, 0.25);
         }}
         .report-select {{
             background: var(--bg-card);
@@ -1021,7 +1066,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             cursor: pointer;
         }}
         .report-btn {{
-            background: rgba(0, 255, 157, 0.12);
+            background: rgba(92, 255, 92, 0.12);
             border: 1px solid var(--green);
             color: var(--green);
             padding: 5px 12px;
@@ -1043,8 +1088,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
         .report-panel {{
             background: var(--bg-panel);
-            border: 1px solid var(--border-glow);
-            box-shadow: var(--glow-cyan);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 12px 16px;
             margin-bottom: 12px;
         }}
@@ -1092,7 +1137,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             color: var(--text-main);
         }}
         .report-body th {{
-            background: rgba(0, 240, 255, 0.08);
+            background: rgba(255, 210, 63, 0.08);
             color: var(--cyan);
             font-weight: bold;
         }}
@@ -1102,7 +1147,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             letter-spacing: 0.5px;
         }}
         .report-body pre {{
-            background: #04060a;
+            background: #0b0e2a;
             border: 1px solid var(--border-dim);
             padding: 8px;
             overflow-x: auto;
@@ -1122,8 +1167,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         /* 🏛 机构级个股投研独立栏目 */
         .equity-column-panel {{
             background: var(--bg-panel);
-            border: 1px solid rgba(255, 184, 0, 0.35);
-            box-shadow: 0 0 18px rgba(255, 184, 0, 0.12);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 14px 16px;
             display: flex;
             flex-direction: column;
@@ -1201,9 +1246,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .equity-chip {{
             font-size: 10px;
             padding: 3px 8px;
-            border: 1px solid rgba(255, 184, 0, 0.35);
+            border: 1px solid rgba(248, 184, 0, 0.35);
             color: var(--amber);
-            background: rgba(255, 184, 0, 0.06);
+            background: rgba(248, 184, 0, 0.06);
         }}
         .equity-chapters {{
             display: flex;
@@ -1231,7 +1276,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
         .skill-card:hover, .skill-card.active {{
             border-color: var(--purple);
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+            box-shadow: 0 0 10px rgba(167, 139, 250, 0.25);
         }}
         .skill-card .sk-id {{
             color: var(--purple);
@@ -1344,10 +1389,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             color: var(--text-muted);
         }}
 
-        .cyan-glow {{ color: var(--cyan); text-shadow: 0 0 10px rgba(0,240,255,0.4); }}
-        .green-glow {{ color: var(--green); text-shadow: 0 0 10px rgba(0,255,157,0.4); }}
-        .amber-glow {{ color: var(--amber); text-shadow: 0 0 10px rgba(255,184,0,0.4); }}
-        .purple-glow {{ color: var(--purple); text-shadow: 0 0 10px rgba(168,85,247,0.4); }}
+        .cyan-glow {{ color: var(--cyan); text-shadow: 0 0 10px rgba(255,210,63,0.4); }}
+        .green-glow {{ color: var(--green); text-shadow: 0 0 10px rgba(92,255,92,0.4); }}
+        .amber-glow {{ color: var(--amber); text-shadow: 0 0 10px rgba(248,184,0,0.4); }}
+        .purple-glow {{ color: var(--purple); text-shadow: 0 0 10px rgba(167,139,250,0.4); }}
 
         .pill-badge {{
             font-size: 11px;
@@ -1356,16 +1401,16 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             font-weight: bold;
             letter-spacing: 0.5px;
         }}
-        .badge-green {{ background: rgba(0,255,157,0.15); color: var(--green); border-color: var(--green); }}
+        .badge-green {{ background: rgba(92,255,92,0.15); color: var(--green); border-color: var(--green); }}
 
         /* 📊 字符模拟图 · 智能行情交互组件 */
         .tradeview-panel {{
             background: var(--bg-panel);
-            border: 1px solid var(--border-subtle);
-            border-radius: 6px;
+            border: 2px solid var(--border-glow);
+            border-radius: 0;
             margin-bottom: 18px;
             padding: 14px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             position: relative;
         }}
         .tradeview-toolbar {{
@@ -1396,7 +1441,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             border: 1px solid var(--border-dim);
             color: var(--text-muted);
             padding: 4px 10px;
-            border-radius: 4px;
+            border-radius: 0;
             font-size: 11px;
             font-family: var(--font-mono);
             cursor: pointer;
@@ -1408,17 +1453,17 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             background: var(--bg-card-hover);
         }}
         .tv-btn.active {{
-            color: #06090e;
+            color: #111111;
             background: var(--cyan);
             border-color: var(--cyan);
             font-weight: bold;
-            box-shadow: var(--glow-cyan);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
         }}
         .tv-btn.engine-btn.active {{
             background: var(--green);
             border-color: var(--green);
-            color: #06090e;
-            box-shadow: var(--glow-green);
+            color: #111111;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
         }}
         .tv-legend-bar {{
             display: flex;
@@ -1427,7 +1472,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             gap: 14px;
             background: var(--bg-card);
             border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            border-radius: 0;
             padding: 8px 12px;
             margin-bottom: 10px;
             font-size: 12px;
@@ -1447,9 +1492,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .tv-legend-ma20 {{ color: #ff00b8; font-weight: bold; }}
         .tv-canvas-wrap {{
             position: relative;
-            background: #05080c;
-            border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            background: #0b0e2a;
+            border: 2px solid var(--border-dim);
+            border-radius: 0;
             overflow: hidden;
             margin-bottom: 6px;
         }}
@@ -1466,17 +1511,17 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             padding: 12px 10px;
             overflow: hidden;
             white-space: pre;
-            color: #00ff9d;
-            background: #05080c;
+            color: #5cff5c;
+            background: #0b0e2a;
             font: 12px/1.15 monospace;
             letter-spacing: 1px;
         }}
         .tv-dotmatrix.tv-volume {{ min-height: 6em; color: #ffcf00; }}
         .tv-vol-wrap {{
             position: relative;
-            background: #05080c;
-            border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            background: #0b0e2a;
+            border: 2px solid var(--border-dim);
+            border-radius: 0;
             overflow: hidden;
             margin-bottom: 10px;
         }}
@@ -1492,7 +1537,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         }}
         .tv-badge-live {{
             color: var(--green);
-            background: rgba(0, 255, 157, 0.1);
+            background: rgba(92, 255, 92, 0.1);
             border: 1px solid var(--green);
             padding: 2px 6px;
             border-radius: 3px;
@@ -1609,9 +1654,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .factor-pill {{
             font-size: 9px;
             padding: 1px 5px;
-            background: rgba(0, 240, 255, 0.1);
+            background: rgba(255, 210, 63, 0.1);
             color: var(--cyan);
-            border: 1px solid rgba(0, 240, 255, 0.3);
+            border: 1px solid rgba(255, 210, 63, 0.3);
         }}
         .tag-muted {{
             background: rgba(255, 255, 255, 0.05);
@@ -1754,8 +1799,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             padding: 0 4px;
             font-size: 9px;
         }}
-        .cat-fin {{ background: rgba(0, 240, 255, 0.1); color: var(--cyan); }}
-        .cat-soc {{ background: rgba(168, 85, 247, 0.1); color: var(--purple); }}
+        .cat-fin {{ background: rgba(255, 210, 63, 0.1); color: var(--cyan); }}
+        .cat-soc {{ background: rgba(167, 139, 250, 0.1); color: var(--purple); }}
 
         .feed-time {{
             color: var(--text-dim);
@@ -1767,9 +1812,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             font-size: 9px;
             font-weight: bold;
         }}
-        .badge-pos {{ background: rgba(0, 255, 157, 0.15); color: var(--green); }}
-        .badge-neg {{ background: rgba(255, 51, 102, 0.15); color: var(--red); }}
-        .badge-neu {{ background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }}
+        .badge-pos {{ background: rgba(92, 255, 92, 0.15); color: var(--green); }}
+        .badge-neg {{ background: rgba(255, 92, 92, 0.15); color: var(--red); }}
+        .badge-neu {{ background: rgba(138, 144, 188, 0.15); color: var(--text-muted); }}
 
         .feed-title {{
             font-size: 11px;
@@ -1786,8 +1831,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
         /* 终端实时日志流 */
         .terminal-panel {{
-            background: #04060a;
-            border: 1px solid var(--border-dim);
+            background: #0b0e2a;
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 8px 12px;
             font-size: 11px;
             color: var(--text-muted);
@@ -1809,10 +1855,11 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         .log-tag {{ color: var(--cyan); }}
         .log-msg {{ color: var(--text-main); }}
 
-        /* 底部品牌与声明 */
+        /* 底部品牌与声明（游戏结算画面：GAME.LOG + PRESS START） */
         .hud-footer {{
             background: var(--bg-panel);
-            border: 1px solid var(--border-dim);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 8px 16px;
             display: flex;
             flex-wrap: wrap;
@@ -1821,6 +1868,17 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             gap: 8px;
             font-size: 11px;
             color: var(--text-muted);
+        }}
+
+        .game-footer-line {{
+            flex-basis: 100%;
+            border-bottom: 1px dashed var(--border-dim);
+            padding-bottom: 5px;
+            margin-bottom: 2px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
         }}
 
         .footer-brand {{
@@ -1871,9 +1929,19 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <button class="btn-action" onclick="toggleAudio()">🔊 音效: <span id="audio-state">开</span></button>
                 <button class="btn-action" onclick="toggleScanline()">📺 扫描线</button>
                 <button class="btn-action" onclick="toggleFullscreen()">⛶ 全屏大屏</button>
-                <button class="btn-action" style="background:var(--cyan);color:#000;" onclick="manualRefresh()">⚡ 实时刷新</button>
+                <button class="btn-action" style="background:#111111;color:#ffd23f;" onclick="manualRefresh()">⚡ 实时刷新</button>
             </div>
         </header>
+
+        <!-- 8-bit 游戏状态栏：♥HP 血条 + ★LV 等级 + SCORE 计分 + UTC -->
+        <div class="game-statusbar">
+            <span style="color:var(--red);">♥</span>
+            <span class="gs-hp-fill">{game_hp_bar}</span>
+            <span class="gs-hp-num" id="gs-hp-num">{game_hp}</span>/100
+            &nbsp;<span style="color:var(--cyan);">★</span> LV.<span id="gs-lv">{game_lv:02d}</span>
+            <span class="gs-score" id="gs-score">SCORE {game_score:06d}</span>
+            <span class="gs-utc">✦ <span id="gs-utc-clock"></span> UTC</span>
+        </div>
 
         <!-- 数据状态横幅：实时行情 or 静态演示数据 -->
         <div class="data-status-banner" id="q-banner">
@@ -1979,7 +2047,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     <option value="wecom">💬 企微</option>
                     <option value="serverchan">🔔 Server酱</option>
                 </select>
-                <button class="report-btn" id="equity-btn" onclick="genEquityColumn()" style="border-color:var(--amber);color:var(--amber);background:rgba(255,184,0,0.12);">🏛 生成机构级研报</button>
+                <button class="report-btn" id="equity-btn" onclick="genEquityColumn()" style="border-color:var(--amber);color:var(--amber);background:rgba(248,184,0,0.12);">🏛 生成机构级研报</button>
             </div>
             <div id="equity-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--amber);">
                 <div class="report-head">
@@ -1996,7 +2064,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <span>🧩 Skills Hub · 最新投研技能目录 (AGENT SKILLS)</span>
             <span class="section-tag">rollingSirius v3 + Anthropic financial-services 官方 9 技能 · Apache-2.0 / MIT</span>
         </div>
-        <div class="equity-column-panel" id="skills-hub-panel" style="border-color:rgba(168,85,247,0.4);box-shadow:0 0 18px rgba(168,85,247,0.12);">
+        <div class="equity-column-panel" id="skills-hub-panel" style="border-color:rgba(167,139,250,0.4);box-shadow:0 0 18px rgba(167,139,250,0.12);">
             <div class="equity-hero">
                 <div class="equity-hero-main">
                     <div class="equity-kicker" style="color:var(--purple);">SKILLS UPDATED · 2026-08-13</div>
@@ -2035,7 +2103,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     <option value="wecom">💬 企微</option>
                     <option value="serverchan">🔔 Server酱</option>
                 </select>
-                <button class="report-btn" id="skill-btn" onclick="genSkill()" style="border-color:var(--purple);color:var(--purple);background:rgba(168,85,247,0.12);">🧩 运行 Skill</button>
+                <button class="report-btn" id="skill-btn" onclick="genSkill()" style="border-color:var(--purple);color:var(--purple);background:rgba(167,139,250,0.12);">🧩 运行 Skill</button>
             </div>
             <div id="skill-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--purple);">
                 <div class="report-head">
@@ -2111,8 +2179,14 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <div class="log-line"><span class="log-ts">[SENTIMENT]</span> <span class="log-tag">CALC</span> <span class="log-msg">Momentum score computed at +8.4. Cross-source confidence verified at 99.4%.</span></div>
         </div>
 
-        <!-- 底部品牌与声明 -->
+        <!-- 底部品牌与声明（游戏结算画面） -->
         <footer class="hud-footer">
+            <div class="game-footer-line">
+                <span style="color:var(--cyan);">▞▚</span> GAME.LOG · 8-BIT RETRO WALLBOARD ·
+                <span style="color:var(--green);">♥ {game_hp}</span>/100 ·
+                <span style="color:var(--cyan);">★</span> LV.{game_lv:02d}
+                <span style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
+            </div>
             <div class="footer-brand">章鱼 AI 全景调研平台 · OCTOPUS AI LABS</div>
             <div class="footer-author">作者：章鱼 ai 调研团队</div>
             <div class="footer-disclaimer">声明：本大屏数据与分析结果仅供参考，不构成任何实质性投资建议。</div>
@@ -2164,7 +2238,26 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
         function switchStock(code) {{
             playBeep(920, 'triangle', 0.06);
+            refreshGameHud(code);
             window.location.href = '/?code=' + code;
+        }}
+
+        // 8-bit 游戏 HUD：由标的代码稳定生成 SCORE / HP / LV（与后端 game 参数一致）
+        function refreshGameHud(code) {{
+            const seed = (code || '09988').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+            const score = (seed * 7) % 999999;
+            const hp = 60 + (seed % 40);
+            const filled = Math.round(hp / 10);
+            const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+            const lv = 1 + (seed % 9);
+            const barEl = document.querySelector('.game-statusbar .gs-hp-fill');
+            const hpEl = document.getElementById('gs-hp-num');
+            const lvEl = document.getElementById('gs-lv');
+            const scEl = document.getElementById('gs-score');
+            if (barEl) barEl.textContent = bar;
+            if (hpEl) hpEl.textContent = hp;
+            if (lvEl) lvEl.textContent = String(lv).padStart(2, '0');
+            if (scEl) scEl.textContent = 'SCORE ' + String(score).padStart(6, '0');
         }}
 
         function manualRefresh() {{
@@ -2207,7 +2300,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         code: code, channel: channel, template: template,
-                        dry_run: channel === 'console', theme: 'monitor',
+                        dry_run: channel === 'console', theme: 'game',
                         mode: template === 'equity' ? 'full' : undefined
                     }})
                 }});
@@ -2450,7 +2543,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     return;
                 }}
                 const up = (q.change_pct || '').indexOf('-') !== 0;
-                const color = up ? '#00ff9d' : '#ff3366';
+                const color = up ? '#5cff5c' : '#ff5c5c';
                 const sign = up ? '▲' : '▼';
                 const el = (id) => document.getElementById(id);
                 if (el('q-price')) el('q-price').textContent = q.price;
@@ -2459,7 +2552,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     el('q-change').textContent = sign + ' ' + q.change_pct + ' (' + q.change + ')';
                     el('q-change').style.color = color;
                     el('q-change').style.borderColor = color;
-                    el('q-change').style.background = up ? 'rgba(0,255,157,0.15)' : 'rgba(255,51,102,0.15)';
+                    el('q-change').style.background = up ? 'rgba(92,255,92,0.15)' : 'rgba(255,92,92,0.15)';
                     const wrap = el('q-price').parentElement;
                     if (wrap) wrap.style.color = color;
                 }}
@@ -2641,7 +2734,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 const pct = (diff / bar.open) * 100;
                 const sign = diff >= 0 ? '+' : '';
                 chgEl.textContent = sign + pct.toFixed(2) + '% (' + sign + diff.toFixed(2) + ')';
-                chgEl.style.color = diff >= 0 ? '#00ff9d' : '#ff3366';
+                chgEl.style.color = diff >= 0 ? '#5cff5c' : '#ff5c5c';
             }}
         }}
 
@@ -2724,7 +2817,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                         "theme": "dark",
                         "style": "1",
                         "locale": "zh_CN",
-                        "toolbar_bg": "#0a0f1d",
+                        "toolbar_bg": "#0e1130",
                         "enable_publishing": false,
                         "hide_side_toolbar": false,
                         "allow_symbol_change": true,
@@ -2760,8 +2853,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
             const utcEl = document.getElementById('utc-clock');
             const cstEl = document.getElementById('cst-clock');
+            const gsUtcEl = document.getElementById('gs-utc-clock');
             if (utcEl) utcEl.textContent = utc;
             if (cstEl) cstEl.textContent = cst;
+            if (gsUtcEl) gsUtcEl.textContent = utc.replace(' UTC', '');
         }}, 1000);
 
         // 模拟遥测日志滚动
@@ -3007,10 +3102,14 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
 
 
+class MonitorTCPServer(socketserver.TCPServer):
+    """允许端口快速复用，避免停止后 TIME_WAIT 导致无法立即重启。"""
+    allow_reuse_address = True
+
+
 def run_server(port: int = 8080):
     host = "0.0.0.0"
-    server = socketserver.TCPServer((host, port), MonitorHandler)
-    server.allow_reuse_address = True
+    server = MonitorTCPServer((host, port), MonitorHandler)
     print(f"📡 [OCTOPUS-NOC] 服务器大屏监视服务已启动: http://{host}:{port}")
     try:
         server.serve_forever()

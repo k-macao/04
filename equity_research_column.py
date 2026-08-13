@@ -896,7 +896,7 @@ def generate_column(
     ai_provider: str | None = None,
     channel: str = "console",
     dry_run: bool = True,
-    theme: str = "monitor",
+    theme: str = "game",          # 全站统一 8-bit 复古游戏风
     industry: str | None = None,
     timeout: int = 90,
     run_check: bool = True,
@@ -1229,7 +1229,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--industry", default="", help="行业附录 slug（默认自动猜测）")
     p.add_argument("--ai-provider", default="auto", dest="ai_provider")
     p.add_argument("--channel", default="console")
-    p.add_argument("--theme", default="monitor")
+    p.add_argument("--theme", default="game",
+                   choices=["game", "klein", "pixel", "monitor", "noc", "default"])
     p.add_argument("--push", action="store_true")
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--hours", type=int, default=48)
