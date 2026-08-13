@@ -1,13 +1,16 @@
 # 手动复制版（股票研报 · 港股/A股）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
-# 请将本文件完整内容复制到 .github/workflows/ 下（可另存为任意文件名，如 stock_report.yml），
-# 再到 Actions 页面手动 Run workflow。
-# 匹配 stock_report.py v1.0-report-2026-08-13：输入港股/A股代码 → 实时行情（免 Key）→ AI 研报 → 多通道推送。
+# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml
+# （或另存为任意文件名，如 stock_report.yml），再到 Actions 页面手动 Run workflow。
+# 匹配 stock_report.py v1.0.1-report-2026-08-13：输入港股/A股代码 → 实时行情（免 Key）→ AI 研报 → 多通道推送。
 #
 # 要点：
 #   - 行情数据源（腾讯财经/东方财富）免 Key，无需配置任何行情 Secret；
 #   - ai_provider=auto 时：配了 DEEPSEEK_API_KEY 走 DeepSeek，否则自动降级 rule 规则模板（不耗 API）；
 #   - 需真实推送时按所选通道配置对应 Secret（PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY）；
 #   - 本工作流不写图片回仓库，permissions.contents 仅需 read。
+#   - --ai-provider 直接传 inputs.ai_provider（含 auto）。
+#     不要写 `cond && '' || x`：GHA 里空串是假值，auto 会被原样传下去，
+#     旧版 argparse 不认 auto 就会 exit 2。现版 stock_report.py 已正式接受 auto。
 
 name: Manual Run - Stock Report (HK/A-share)
 
@@ -85,18 +88,20 @@ jobs:
         with:
           python-version: '3.11'
 
+      # 直接把 auto / deepseek / openai / rule 传给 CLI。
+      # stock_report.py 已把 auto 当作「有 DEEPSEEK_API_KEY 用 deepseek，否则 rule」。
       - name: Check required secrets
         run: >-
           python stock_report.py --check-only
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider }}"
 
       - name: Dry run (只生成研报，不真实推送)
         if: ${{ inputs.dry_run == 'true' }}
         run: >-
           python stock_report.py "${{ inputs.code }}"
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider }}"
           --template "${{ inputs.template }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
@@ -106,7 +111,7 @@ jobs:
         run: >-
           python stock_report.py "${{ inputs.code }}"
           --channel "${{ inputs.channel }}"
-          --ai-provider "${{ inputs.ai_provider == 'auto' && '' || inputs.ai_provider }}"
+          --ai-provider "${{ inputs.ai_provider }}"
           --template "${{ inputs.template }}"
           --risk "${{ inputs.risk }}"
           --theme "${{ inputs.theme }}"
