@@ -8,9 +8,10 @@ source_check_db.py — 数据源检查验证数据库
 
 覆盖范围：
  - 离线模式（默认，不触网）：社媒热榜 10 源（newsnow_sources.SAMPLES
-   注册表内的离线样本 → 解析器 → 字段级校验规则）。
- - 在线模式（--live 真抓取）：社媒热榜 10 源（FETCHERS 实测抓取）+
-   财经快讯 7 源（stock_news_scan 的 Google/财联社/华尔街见闻/格隆汇/
+   注册表内的离线样本 → 解析器 → 字段级校验规则）+ 境外行情 4 源
+   （us_quote.US_PARSERS 固定样本 → 字段校验，含延迟源标注规则）。
+ - 在线模式（--live 真抓取）：社媒热榜 10 源 + 境外行情 4 源
+   + 财经快讯 7 源（stock_news_scan 的 Google/财联社/华尔街见闻/格隆汇/
    金十/MKTNews/雪球，任一失败只记一行 fail，不中断其余源）。
 
 状态口径：ok = 通过；warn = 有校验违例或结果为空；fail = 抓取/解析异常。
@@ -262,6 +263,43 @@ def run_checks(con: sqlite3.Connection, live: bool = False, timeout: int = 12,
             results.append(r)
             record_check(con, run_id, r)
 
+    # ---- 境外（美股）行情 4 源（us_quote，离线样本/在线实抓）----
+    try:
+        import us_quote
+        us_offline = [("us_tencent", "腾讯财经(美股)", "腾讯美股样本"),
+                      ("us_eastmoney", "东方财富(美股)", "东财美股样本"),
+                      ("us_yahoo", "Yahoo Finance", "Yahoo 样本"),
+                      ("us_stooq", "Stooq(延迟)", "Stooq 样本")]
+        for key, name, _tag in us_offline:
+            if only and key not in only and key.removeprefix("us_") not in only:
+                continue
+            if live:
+                fn = us_quote.US_FETCHERS[key.removeprefix("us_")]
+                produce = lambda fn=fn: fn("AAPL")
+            else:
+                parse_fn, sample, code = us_quote.US_PARSERS[key]
+                produce = lambda fn=parse_fn, smp=sample, c=code: fn(smp, c)
+            t0 = time.monotonic()
+            r = CheckResult(source_key=key, source_name=name,
+                            group_name="境外行情")
+            try:
+                q = produce()
+                r.items_count = 1 if q else 0
+                r.violations = us_quote.validate_us_quote(q)
+                r.status = "warn" if r.violations else "ok"
+            except Exception as e:  # noqa: BLE001
+                r.status = "fail"
+                r.error = str(e)[:200]
+            r.latency_ms = int((time.monotonic() - t0) * 1000)
+            results.append(r)
+            record_check(con, run_id, r)
+    except ImportError as e:
+        r = CheckResult(source_key="us_quote", source_name="境外行情组",
+                        group_name="境外行情", status="fail",
+                        error=f"us_quote 不可导入：{e}")
+        results.append(r)
+        record_check(con, run_id, r)
+
     finish_run(con, run_id, results)
     return run_id, results
 
@@ -368,9 +406,10 @@ def selftest_checkdb() -> int:
 
     # 2) 离线跑检 + 落库 + 报告
     run_id, results = run_checks(con, live=False)
-    check("覆盖社媒热榜 10 源", len(results) == 10
+    check("覆盖社媒热榜 10 源 + 境外行情 4 源", len(results) == 14
           and {r.source_key for r in results} >=
-          {"zhihu", "toutiao", "baidu", "bilibili"})
+          {"zhihu", "toutiao", "baidu", "bilibili",
+           "us_tencent", "us_eastmoney", "us_yahoo", "us_stooq"})
     check("样本解析全部 ok 且有条目",
           all(r.status == "ok" and r.items_count >= 1 for r in results))
     n_rows = con.execute(

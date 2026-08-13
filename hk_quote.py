@@ -28,6 +28,9 @@ hk_quote.py — 免费港股/A股实时行情采集（无需 API Key，纯标准
   python hk_quote.py --selftest         # 三源对比测试（判定哪个好）
   python hk_quote.py --selftest 00700 09988 03690
   python hk_quote.py --fixture-test     # 离线解析自检（内置真实抓包样本，含 A 股）
+
+境外（美股）请用 us_quote.py：detect_market("NVDA") 会返回 market="us"，
+fetch_quote 自动转交 us_quote（腾讯美股/东财美股/Yahoo/Stooq 四源交叉验证）。
 """
 
 from __future__ import annotations
@@ -129,11 +132,19 @@ def detect_market(raw: str) -> tuple[str, str, str]:
     em_secid 为东方财富 secid（116.xxxxx / 1.xxxxxx / 0.xxxxxx）。
 
     规则：
+      - 纯字母代码（含 ``.US``/``.OQ``/``.N`` 等后缀或 ``NASDAQ:`` 前缀）→ 美股/境外 (us)，
+        行情链路见 us_quote.py（4 源 + 交叉验证）；em_secid 为 105 占位猜测，
+        抓取时自动尝试 105/106/107
       - 显式 ``.SH`` / ``sh`` 前缀，或 6 位数字且首位为 6/9 → 上交所 (sh)
       - 显式 ``.SZ`` / ``sz`` 前缀，或 6 位数字且首位为 0/1/2/3 → 深交所 (sz)
       - 其余（含 ``.HK``、5 位数字）→ 港股 (hk)
     """
     s = str(raw).strip().upper()
+    m_us = re.fullmatch(
+        r"(?:(?:US|NASDAQ|NYSE|AMEX)[:\s])?\s*([A-Z]{1,6})"
+        r"(?:\.(US|OQ|N|UN|UQ|NASDAQ|NYSE|AMEX))?", s)
+    if m_us:
+        return "us", m_us.group(1), f"105.{m_us.group(1)}"
     digits = re.sub(r"[^0-9]", "", s)
     # A 股：6 位代码，靠首数字 + 显式前缀区分沪深
     if "SH" in s or (len(digits) == 6 and digits[0] in "69"):
@@ -454,6 +465,12 @@ def fetch_quote(code: str, chain: tuple | list | None = None,
     market, code, _em_secid = detect_market(code)
     if not code:
         return None
+    if market == "us":                    # 境外：委托 us_quote（4 源 + 交叉验证）
+        try:
+            import us_quote
+        except ImportError:
+            return None
+        return us_quote.fetch_us_quote(code)
     chain = tuple(chain or DEFAULT_CHAIN)
     if market != "hk":
         chain = tuple(s for s in chain if s != "yahoo")

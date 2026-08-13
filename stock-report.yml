@@ -1,5 +1,5 @@
 # ============================================================================
-# 【过渡文件 · 手动复制版】股票研报（港股 / A股）
+# 【过渡文件 · 手动复制版】股票研报（港股 / A股 / 美股）
 # ----------------------------------------------------------------------------
 # 本文件位于「仓库根目录」，GitHub Actions 不会执行它 —— 它只是一个中转/过渡副本。
 #
@@ -7,12 +7,16 @@
 #   1. 复制本文件全部内容；
 #   2. 在 main 分支上覆盖写入 .github/workflows/stock-report.yml
 #      （或另存为任意文件名，例如 .github/workflows/r.yml）；
-#   3. 提交后到 Actions 页面选择 "Manual Run - Stock Report (HK/A-share)"
+#   3. 提交后到 Actions 页面选择 "Manual Run - Stock Report (HK/A-share/US)"
 #      → Run workflow 手动触发。
 #
-# 匹配脚本：stock_report.py（v1.1.0-latest-2026-08-13）
-#   输入港股/A股代码 → 实时行情（免 Key）→ 最新功能（🧭 新鲜度看板 + 📊 字符模拟图
+# 匹配脚本：stock_report.py（v1.2.0-us-2026-08-14）
+#   输入港股/A股/美股代码 → 实时行情（免 Key）→ 最新功能（🧭 新鲜度看板 + 📊 字符模拟图
 #   + 🛰 十七平台扫描）→ AI 研报 / 机构级九章投研 / Skills Hub → 多通道推送。
+#   【2026-08-14 新增】境外（美股）支持：NVDA / AAPL / aapl.us 等代码自动识别，
+#   行情经 us_quote.py 四源采集（腾讯美股主 → 东财美股备 → Yahoo 核验 → Stooq 延迟核验）,
+#   研报行情块附「🔁 境外行情四源交叉验证」（中位共识价 ±0.8%/2% 口径、离群源点名）。
+#   【2026-08-13 起】社媒热榜 7→10 源并含数据源检查验证数据库（详见 DATA_SOURCES.md）。
 #
 # 要点：
 #   - 默认 template=equity（机构级个股投研独立栏目）；也可选 analysis 等经典模板 /
@@ -32,13 +36,13 @@
 #
 # workflow_dispatch 输入上限为 10 个，本文件正好用满 10 个，新增输入前请先删一个。
 # ============================================================================
-name: Manual Run - Stock Report (HK/A-share)
+name: Manual Run - Stock Report (HK/A-share/US)
 
 on:
   workflow_dispatch:
     inputs:
       code:
-        description: '股票代码（港股 09988 / A股 600519 / 000001.SZ）'
+        description: '股票代码（港股 09988 / A股 600519 / 000001.SZ / 美股 NVDA）'
         required: true
         default: '09988'
         type: string

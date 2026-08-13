@@ -155,6 +155,7 @@ python merge.py folder dir1 dir2 -o merged_dir --conflict merge
 ├── equity_research_column.py # 机构级个股投研独立栏目
 ├── skills_hub.py             # Skills Hub 调度（equity + Anthropic 9 技能）
 ├── hk_quote.py               # 免费港股/A股实时行情（三源核验）
+├── us_quote.py               # 境外（美股）行情 · 四源交叉验证（腾讯美股/东财美股/Yahoo/Stooq）
 ├── stock_news_scan.py        # 量价舆情动量 · 十七平台股票扫描
 ├── newsnow_sources.py        # NewsNow 社媒热榜 10 源采集
 ├── source_check_db.py        # 数据源检查验证数据库（SQLite 落库）
@@ -446,6 +447,26 @@ python server_dashboard.py          # 启动大屏（8080，自动接入实时�
 
 - **A 股数据源**：腾讯财经 `qt.gtimg.cn/q=sh600519` / `sz000001`（字段最全，含 PE/PB/换手/振幅/总市值）；东方财富 `push2.eastmoney.com`（`secid=1.600519` / `0.000001`，价格 ×100，**带 PE/PB**，区别于港股接口无 PE）。
 - **币种自动标注**：港股 `HKD`，A 股 `CNY`；CLI 打印自动切换「港元/元」。
+
+### 🌐 境外（美股）实时行情 + 四源交叉验证（`us_quote.py`，2026-08-14 新增）
+
+美股代码（`NVDA` / `aapl.us` / `NASDAQ:NVDA`）经 `hk_quote.detect_market` 识别为
+`market="us"`，全链路（`stock_report.py` / 九章投研 / 大屏 / 字符模拟图）自动走境外链路：
+
+- **四源采集**：腾讯美股（主）→ 东财美股（备，交易所未知自动试 105/106/107）→
+  Yahoo（核验，双 host）→ Stooq CSV（延迟 ≥15min，仅核验不用作主源）。
+- **交叉验证**：四源同采取**中位共识价**，逐源给偏离度——≤0.8% ✅ 一致 /
+  ≤2% 🟡 基本一致 / >2% ❌ 分歧并点名离群源；研报「实时行情」块下方附
+  「🔁 境外行情四源交叉验证」表格（价格/涨跌幅/偏离/行情时间/延迟标注）。
+- **字段熔断**：币种非 USD、涨跌幅超 ±25%、有昨收缺涨跌幅 → 计入违例
+  （`source_check_db.py` 离线/在线均覆盖境外 4 源）。
+
+```bash
+python us_quote.py NVDA            # 首个成功源行情（单行打印 / --json）
+python us_quote.py NVDA --verify   # 四源交叉验证 Markdown 表
+python us_quote.py --selftest      # 离线样本自检（不触网）
+python stock_report.py NVDA --template analysis --ai-provider rule   # 研报直出
+```
 
 ```bash
 python hk_quote.py 600519            # 沪A 贵州茅台实时行情（CNY）

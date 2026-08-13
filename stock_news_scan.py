@@ -18,7 +18,9 @@ stock_news_scan.py — 量价舆情动量 · 十七平台股票扫描
  - 热榜类条目（雪球/社媒）本身是实时快照：不参与时间过滤，标记「实时」。
 
 板块识别：
- - 预设板块：内置个股档案 STOCK_PROFILES（代码→名称/别名/板块）；
+ - 预设板块：内置个股档案 STOCK_PROFILES（代码→名称/别名/板块），
+   覆盖港股/A股与热门美股（NVDA/AAPL/TSLA/MSFT/GOOGL/AMZN/META/BABA，
+   美股行情见 us_quote.py 四源交叉验证）；
  - 自定义板块：--sectors 追加关键词；
  - 动态板块：从命中标题中按位提取「XX板块」，长命中被同频短命中吸收。
 
@@ -160,6 +162,47 @@ STOCK_PROFILES: dict[str, dict] = {
         "aliases": ["宁王", "CATL"],
         "sectors": ["锂电池", "储能", "新能源车", "动力电池"],
     },
+    # ---- 境外（美股）档案：行情经 us_quote 四源交叉验证 ----
+    "NVDA": {
+        "name": "英伟达",
+        "aliases": ["NVIDIA", "黄仁勋", "Nvidia"],
+        "sectors": ["芯片", "算力", "AI", "半导体"],
+    },
+    "AAPL": {
+        "name": "苹果",
+        "aliases": ["Apple", "iPhone", "蒂姆库克"],
+        "sectors": ["消费电子", "科技", "硬件"],
+    },
+    "TSLA": {
+        "name": "特斯拉",
+        "aliases": ["Tesla", "马斯克", "Musk"],
+        "sectors": ["新能源车", "自动驾驶", "AI", "电池"],
+    },
+    "MSFT": {
+        "name": "微软",
+        "aliases": ["Microsoft", "纳德拉"],
+        "sectors": ["云计算", "AI", "软件"],
+    },
+    "GOOGL": {
+        "name": "谷歌",
+        "aliases": ["Google", "Alphabet", "皮查伊"],
+        "sectors": ["互联网", "AI", "广告", "云计算"],
+    },
+    "AMZN": {
+        "name": "亚马逊",
+        "aliases": ["Amazon", "AWS", "贝索斯"],
+        "sectors": ["电商", "云计算", "物流"],
+    },
+    "META": {
+        "name": "Meta",
+        "aliases": ["Meta", "Facebook", "扎克伯格"],
+        "sectors": ["社交", "AI", "广告", "元宇宙"],
+    },
+    "BABA": {
+        "name": "阿里巴巴(美股)",
+        "aliases": ["阿里", "Alibaba"],
+        "sectors": ["电商", "云计算", "互联网", "AI"],
+    },
 }
 
 # 按位前瞻提取「XX板块」：'港股电商板块' 同时产出 '港股电商板块' 与 '电商板块'
@@ -191,9 +234,10 @@ def build_stock_query(code: str = "", name: str = "",
     if code:
         stripped = code.lstrip("0") or code
         direct.append(code)
-        if stripped != code:
-            direct.append(f"{stripped}.HK")
-        direct.append(f"{code}.HK")
+        if code.isdigit():                      # ".HK" 变体仅适用港股数字代码
+            if stripped != code:
+                direct.append(f"{stripped}.HK")
+            direct.append(f"{code}.HK")
     if name:
         direct.append(name)
     for a in prof.get("aliases", []):
@@ -895,6 +939,11 @@ def selftest_scan() -> int:
     q2 = build_stock_query("09988", "", extra_sectors=["数字经济"])
     check("无名时档案补全名称+追加自定义板块",
           q2.name == "阿里巴巴" and "数字经济" in q2.sectors)
+    q3 = build_stock_query("nvda", "")
+    check("美股档案补全：中文名+英文别名+算力板块",
+          q3.code == "NVDA" and q3.name == "英伟达"
+          and "NVIDIA" in q3.direct_words and "算力" in q3.sectors
+          and not any(w.endswith(".HK") for w in q3.direct_words))
 
     check("epoch 秒/毫秒均解析",
           parse_any_time(ts10h) is not None

@@ -36,11 +36,12 @@ import hk_quote
 import pushplus_deepseek as pp
 
 # 市场中文名映射（展示用）
-MARKET_LABELS = {"hk": "港股", "sh": "沪A", "sz": "深A"}
-MARKET_FULL = {"hk": "香港交易所", "sh": "上海证券交易所", "sz": "深圳证券交易所"}
-MARKET_TICKER = {"hk": "HK", "sh": "SH", "sz": "SZ"}
+MARKET_LABELS = {"hk": "港股", "sh": "沪A", "sz": "深A", "us": "美股"}
+MARKET_FULL = {"hk": "香港交易所", "sh": "上海证券交易所",
+               "sz": "深圳证券交易所", "us": "美国市场（NASDAQ/NYSE/AMEX）"}
+MARKET_TICKER = {"hk": "HK", "sh": "SH", "sz": "SZ", "us": ""}
 
-VERSION = "1.1.0-latest-2026-08-13"
+VERSION = "1.2.0-us-2026-08-14"   # 境外（美股）4 源交叉验证 + 输出页排版整理
 
 # CLI / Actions 可选值。auto（及空串）= 有 DEEPSEEK_API_KEY 走 deepseek，否则 rule。
 AI_PROVIDERS = ("", "auto", "deepseek", "openai", "rule")
@@ -81,7 +82,8 @@ def _fmt_amount(v) -> str:
 def quote_to_context(market: str, code: str, q: dict) -> str:
     """把标准化行情 dict 转成注入 AI 的文本上下文。"""
     label = MARKET_LABELS.get(market, market)
-    cur = q.get("currency") or ("CNY" if market != "hk" else "HKD")
+    cur = q.get("currency") or ("USD" if market == "us"
+                                else "HKD" if market == "hk" else "CNY")
     lines = [
         f"标的：{code} {q.get('name') or ''}（{label} · {MARKET_FULL.get(market, '')}）",
         f"最新价 {q['price']:.3f} {cur}"
@@ -109,7 +111,8 @@ def quote_to_context(market: str, code: str, q: dict) -> str:
 def quote_to_md(market: str, code: str, q: dict) -> str:
     """把标准化行情 dict 转成研报正文顶部的行情核验块（Markdown）。"""
     label = MARKET_LABELS.get(market, market)
-    cur = q.get("currency") or ("CNY" if market != "hk" else "HKD")
+    cur = q.get("currency") or ("USD" if market == "us"
+                                else "HKD" if market == "hk" else "CNY")
     chg = (f"{q.get('change_pct'):+.2f}%" if q.get('change_pct') is not None else "—")
     lines = [
         "---",
@@ -142,6 +145,49 @@ def quote_to_pp_quotes(quote: dict | None) -> list:
         change_pct=quote.get("change_pct"),
         time_str=str(quote.get("time") or quote.get("fetched_at") or ""),
     )]
+
+
+def fetch_verified_quote(market: str, code: str, raw_code: str):
+    """港/A 走 hk_quote 主备链路；美股走 us_quote 四源 + 交叉验证。
+
+    返回 (quote, cross_pack)：cross_pack 仅美股存在，可直接传给
+    us_quote.us_cross_md / us_context_line。
+    """
+    if market == "us":
+        try:
+            import us_quote
+            return us_quote.fetch_us_verified(code)
+        except ImportError:
+            return hk_quote.fetch_quote(raw_code), None
+    return hk_quote.fetch_quote(raw_code), None
+
+
+def quote_with_context(market: str, code: str, q: dict,
+                       cross_pack: dict | None = None) -> tuple[str, str]:
+    """(AI 上下文, 研报行情块)。境外标的在两者尾部附四源交叉验证。"""
+    context, md = quote_to_context(market, code, q), quote_to_md(market, code, q)
+    if cross_pack:
+        try:
+            import us_quote
+            context = context.rstrip() + "\n" + us_quote.us_context_line(cross_pack)
+            md = md.rstrip() + "\n\n" + us_quote.us_cross_md(cross_pack)
+        except Exception:  # noqa: BLE001 —— 交叉验证失败只丢附加段
+            pass
+    return context, md
+
+
+def tidy_report_md(md: str) -> str:
+    """研报输出页排版整理：合并相邻 "---" 分隔线、压缩 3+ 连续换行、去首尾空块。"""
+    blocks = [b.strip() for b in re.split(r"\n{2,}", md) if b.strip()]
+    out: list[str] = []
+    prev_hr = False
+    for b in blocks:
+        hr = (b == "---")
+        if hr and prev_hr:
+            continue
+        prev_hr = hr
+        out.append(b)
+    return "\n\n".join(out)
 
 
 def collect_latest_pack(topic: str, raw_code: str, hours: int,
@@ -186,7 +232,7 @@ def wrap_with_latest_features(
             extra_points["scan_hit"] = sa.get("platforms_hit")
             anchor_parts.append(
                 f"十七平台命中 {sa.get('platforms_hit', 0)}"
-                f"/{sa.get('platforms_total', 14)}")
+                f"/{sa.get('platforms_total', 17)}")
     anchor_line = (" · ".join(anchor_parts)
                    or "无本地预聚合数据（本模板未采集窗口样本）")
 
@@ -213,10 +259,12 @@ def wrap_with_latest_features(
             appendix_md = ""
 
     chart_md = pp.make_chart_block(raw_code, quotes, no_chart)
-    pieces = [freshness_md, "---", chart_md, body_md.rstrip()]
+    # 输出页排版：新鲜度看板（元信息）→ 字符走势图 → 行情快照+正文 → 十七平台附录；
+    # 分隔线与空行统一由 tidy_report_md 去重压缩，页面更简洁
+    pieces = [freshness_md, chart_md, body_md.rstrip()]
     if appendix_md:
         pieces.append(appendix_md)
-    content = pp.add_branding("\n\n".join(p for p in pieces if p))
+    content = pp.add_branding(tidy_report_md("\n\n".join(p for p in pieces if p)))
 
     if persist_state:
         st["version"] = pp.STATE_VERSION
@@ -302,19 +350,21 @@ def run_report(raw_code: str, *, channel: str = "console",
     ticker = MARKET_TICKER.get(market, "")
 
     # ---- ① 实时行情（失败不抛，记录数据缺口）----
-    quote = hk_quote.fetch_quote(raw_code)
+    #     境外（美股）：腾讯美股/东财美股/Yahoo/Stooq 四源采集 + 交叉验证
+    quote, cross_pack = fetch_verified_quote(market, code, raw_code)
     name = (quote or {}).get("name") or ""
     topic = f"{ticker}{code}" + (f" {name}" if name else "")
 
     if quote:
-        context = quote_to_context(market, code, quote)
-        market_md = quote_to_md(market, code, quote)
+        context, market_md = quote_with_context(market, code, quote, cross_pack)
         quote_error = None
     else:
+        src_hint = ("腾讯美股/东财美股/Yahoo/Stooq 四源"
+                    if market == "us" else "腾讯财经/东方财富")
         context = (f"标的：{topic}（{label}）。\n"
                    f"注意：实时行情暂不可用（网络受限或数据源失败），"
                    f"凡涉及具体点位/估值的地方请标注 *（推断）。")
-        market_md = (f"> ⚠️ 实时行情暂不可用（数据源：腾讯财经/东方财富均失败），"
+        market_md = (f"> ⚠️ 实时行情暂不可用（数据源：{src_hint}均失败），"
                      f"以下研报基于模型既有知识推断，价格相关结论请谨慎参考。")
         quote_error = "行情数据源失败，研报基于模型知识推断"
 
@@ -354,10 +404,10 @@ def run_report(raw_code: str, *, channel: str = "console",
                 pp.TEMPLATE_MAX_TOKENS.get(template, 3000), push_timeout)
             gen_note = f"{provider}（{model}）"
 
-    # ---- ③ 组装研报正文（新鲜度 + 字符图 + 研报 + 十七平台 + 品牌头尾）----
+    # ---- ③ 组装研报正文（行情快照 → 研报正文 → 新鲜度看板/字符图/附录由 wrap 包装）----
     body = report_md.rstrip()
     if market_md:
-        body += "\n\n" + market_md
+        body = market_md.rstrip() + "\n\n" + body  # 行情块顶置：先价后文，界面更顺
     content, latest_meta = wrap_with_latest_features(
         body, raw_code=raw_code, template=template, topic=topic,
         hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,

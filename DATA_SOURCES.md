@@ -1,6 +1,8 @@
 # 数据源配置说明
 
-> 最后更新：2026-08-13　·　覆盖 **17 个数据源**：财经快讯 7 源 + 社媒热榜 10 源（2026-08-13 由 7 源扩充至 10 源：新增今日头条 / 百度 / B 站）。
+> 最后更新：2026-08-14　·　覆盖 **17 个舆情数据源**（财经快讯 7 源 + 社媒热榜 10 源，2026-08-13 由 7 源扩充至 10 源：新增今日头条 / 百度 / B 站）+ **境外（美股）行情 4 源**（2026-08-14 新增，带交叉验证）。
+
+> 行情链路另计：港股/A股走 `hk_quote.py`（腾讯主→东财备→Yahoo 核验）；美股走 `us_quote.py`（腾讯美股/东财美股/Yahoo/Stooq 四源交叉验证，详见本文 二、3）。
 
 本项目全部采集器仅依赖 Python 标准库，任何单源失败只记入「数据缺口」，不中断整体流程。
 
@@ -34,6 +36,23 @@
 | 金十数据 | JSON（JS 壳剥离） | 同上 |
 | MKTNews 快讯 | JSON | 同上 |
 | 雪球热门股票 | JSON | Cookie 预热（`xueqiu.com/hq`）；实时热榜，标记「实时」不过滤 |
+
+### 境外（美股）行情 4 源（`us_quote.py`，2026-08-14 新增）
+
+| 键名 | 源 | 端点 | 角色 | 备注 |
+|---|---|---|---|---|
+| `tencent` | 腾讯财经(美股) | `qt.gtimg.cn/q=us{CODE}`（GBK 管道串） | **主源** | 字段最全：价/涨跌/PE/52周/市值（USD） |
+| `eastmoney` | 东方财富(美股) | `push2...secid={105\|106\|107}.{CODE}` | 备源 | 交易所未知自动逐个试（NASDAQ/NYSE/AMEX），价 ×1000 |
+| `yahoo` | Yahoo Finance | `query1 finance chart/{CODE}` | 核验 | 双 host 容灾，含盘前盘后时间戳 |
+| `stooq` | Stooq(延迟) | `stooq.com/q/l/?s={code}.us&...e=csv` | 核验/兜底 | **延迟 ≥15 分钟**，只参与核验、不充当主源 |
+
+**交叉验证规则**：四源同采 → 中位价为共识价 → 逐源算偏离度：
+- 最大偏离 ≤ **0.8%** → ✅ 一致（N/N 源交叉验证通过）
+- ≤ **2%** → 🟡 基本一致（仍标注逐源偏离）
+- > **2%** → ❌ 分歧（点名离群源）；仅 1 源成功 → ⚠️ 明示「无法交叉验证」
+
+代码识别：`NVDA` / `aapl.us` / `NASDAQ:NVDA` / `NVDA.OQ` 等写法统一归一；
+`hk_quote.detect_market` 返回 `market="us"` 后全链路（研报/九章投研/大屏/字符图）自动走美股链路。
 
 ---
 
@@ -71,10 +90,11 @@ SQLite 持久化每次检查：**运行台账 + 逐源明细 + 违例字段**，
 ### 命令
 
 ```bash
-python source_check_db.py               # 离线校验 10 源（样本→解析器→规则），不落网
-python source_check_db.py --live        # 真抓取：社媒 10 源 + 财经 7 源
+python source_check_db.py               # 离线校验 14 源（社媒10样本 + 境外行情4样本），不落网
+python source_check_db.py --live        # 真抓取：社媒 10 源 + 境外行情 4 源 + 财经快讯 7 源
 python source_check_db.py --report      # 打印最近一次运行报告（不重新检查）
 python source_check_db.py --history toutiao   # 单源历史记录（报错率/延迟趋势）
+python source_check_db.py --history us_stooq  # 境外行情源键名带 us_ 前缀
 python source_check_db.py --db my.db    # 指定库文件（默认 SOURCE_CHECK_DB 或 ./source_check.db）
 python source_check_db.py --only zhihu,baidu --live   # 只检查指定源
 python source_check_db.py --selftest    # 内存库自检（不落盘不触网）
@@ -87,6 +107,9 @@ python source_check_db.py --selftest    # 内存库自检（不落盘不触网�
 | ✅ `ok` | 抓取/解析成功，字段校验全通过 |
 | ⚠️ `warn` | 结果为空，或有违例：标题缺失/超长、链接缺失/非 http(s)、重复标题超 30%、条目数异常（>50） |
 | ❌ `fail` | 抓取或解析抛异常（错误截断 200 字入库） |
+
+境外行情源附加字段规则：价格必须 >0、币种必须 USD、涨跌幅 ±25% 外视为异常熔断、
+有昨收但缺涨跌幅记字段不完整；Stooq 恒为延迟源，标注但不惩罚。
 
 ### 表结构
 

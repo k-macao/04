@@ -67,7 +67,7 @@ except Exception:
 
 def _generic_profile(market: str, code: str) -> dict:
     """未内置演示档案的标的（A 股 / 任意港股代码）→ 生成中性占位档案，行情由实时源覆盖。"""
-    label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+    label = {"hk": "港股", "sh": "沪A", "sz": "深A", "us": "美股"}.get(market, market)
     factor_names = ["基本面", "行业与政策面", "技术面", "资金面", "消息与情绪面", "估值面", "量价舆情动量"]
     factors = [{
         "id": f"f{i}", "name": n, "dir": "中性", "is_up": True,
@@ -79,7 +79,7 @@ def _generic_profile(market: str, code: str) -> dict:
         "code": code,
         "name": f"{label} {code}（实时行情 · 因子演示）",
         "price": "—",
-        "currency": "CNY" if market != "hk" else "HKD",
+        "currency": "HKD" if market == "hk" else "USD" if market == "us" else "CNY",
         "change": "—", "change_val": "—", "is_up": True,
         "high": "—", "low": "—", "vol": "—",
         "target": "—", "target_pct": "—",
@@ -158,7 +158,7 @@ def get_stock_view(stock_code: str) -> dict:
         if data.get("_generic") and market == "hk":
             data["name"] = f"{q['name']}（实时行情）"
         elif data.get("_generic"):
-            label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+            label = {"hk": "港股", "sh": "沪A", "sz": "深A", "us": "美股"}.get(market, market)
             data["name"] = f"{label} {code} {q['name']}（实时行情）"
 
     data["quote_live"] = True
@@ -1969,7 +1969,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         <!-- 🧠 AI 研报输入栏：填入港股/A股代码 → 实时行情 + AI 分析 + 推送 -->
         <div class="stock-selector-ribbon" id="report-bar">
             <span class="selector-label">🧠 AI 研报:</span>
-            <input id="report-code-input" class="report-input" placeholder="输入港股/A股代码：09988 / 600519 / 000001.SZ" autocomplete="off" />
+            <input id="report-code-input" class="report-input" placeholder="输入港股/A股/美股代码：09988 / 600519 / 000001.SZ / NVDA" autocomplete="off" />
             <select id="report-channel" class="report-select">
                 <option value="console">📺 预览（不推送）</option>
                 <option value="pushplus">📲 PushPlus 微信</option>
@@ -2097,7 +2097,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <div class="skill-grid" id="skill-grid"></div>
             <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
                 <span class="selector-label">🧩 跑 Skill:</span>
-                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519" autocomplete="off" value="{stock_code}" />
+                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519 / NVDA" autocomplete="off" value="{stock_code}" />
                 <select id="skill-pick" class="report-select">
                     <option value="morning_note">🌅 晨会纪要</option>
                     <option value="initiate">📑 首次覆盖</option>

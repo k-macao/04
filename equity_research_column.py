@@ -923,14 +923,13 @@ def generate_column(
     label = sr.MARKET_LABELS.get(market, market)
     ticker = sr.MARKET_TICKER.get(market, "")
 
-    quote = hk_quote.fetch_quote(raw_code)
+    quote, cross_pack = sr.fetch_verified_quote(market, code, raw_code)
     name = (quote or {}).get("name") or ""
     topic = f"{ticker}{code}" + (f" {name}" if name else "")
     industry = industry or guess_industry(topic, code)
 
     if quote:
-        context = sr.quote_to_context(market, code, quote)
-        market_md = sr.quote_to_md(market, code, quote)
+        context, market_md = sr.quote_with_context(market, code, quote, cross_pack)
         quote_error = None
     else:
         context = (f"标的：{topic}（{label}）。\n"
@@ -989,10 +988,8 @@ def generate_column(
                 url, key, model, messages, TEMPLATE_MAX_TOKENS, timeout)
             gen_note = f"{provider}（{model}）+ dcf.py + equity-research skill"
 
-    # 附加行情核验与脚本摘要
+    # 输出页排版：行情核验块顶置（先价后文、跨市场统一），栏目元数据留在末尾
     extras = []
-    if market_md:
-        extras.append(market_md)
     extras.append(
         "\n---\n"
         f"### 📎 栏目元数据\n\n"
@@ -1003,7 +1000,8 @@ def generate_column(
         f"- 估值标签：{(dcf_summary or {}).get('label', '—')}\n"
         f"- 生成说明：{gen_note}\n"
     )
-    body = report_md.rstrip() + "\n\n" + "\n\n".join(extras)
+    body = ((market_md.rstrip() + "\n\n") if market_md else "") \
+        + report_md.rstrip() + "\n\n" + "\n\n".join(extras)
     content, latest_meta = sr.wrap_with_latest_features(
         body, raw_code=raw_code, template=TEMPLATE_NAME, topic=topic,
         hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,

@@ -74,7 +74,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.18-sources-2026-08-13"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.19-us-2026-08-14"  # 脚本版本指纹：每次交付递增，日志首行可见  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -2920,14 +2920,18 @@ def _with_ma(bars: list[dict]) -> list[dict]:
 
 
 def resolve_chart_symbols(raw: str) -> tuple[str, str, str, str]:
-    """把任意港股/A股写法解析为 (统一代码, Yahoo 符号, 东财 secid, 市场后缀)。"""
+    """把任意港股/A股/美股写法解析为 (统一代码, Yahoo 符号, 东财 secid, 市场后缀)。"""
     try:
         import hk_quote
         market, code, em_secid = hk_quote.detect_market(raw)
     except Exception:
         code = normalize_hk_code(raw)
         return code, f"{int(code)}.HK", f"116.{code}", "HK"
-    suffix = {"hk": "HK", "sh": "SH", "sz": "SZ"}.get(market, "HK")
+    suffix = {"hk": "HK", "sh": "SH", "sz": "SZ", "us": "US"}.get(market, "HK")
+    if market == "us":
+        # 美股：Yahoo 原生代码（NVDA）；东财 secid 为 105 占位猜测，
+        # kline 拉取失败时 Yahoo 已兜底，不影响出图
+        return code, code, em_secid, "US"
     if market == "hk":
         yahoo = f"{int(code)}.HK"
     elif market == "sh":
@@ -3603,12 +3607,13 @@ def selftest() -> int:
         with tempfile.TemporaryDirectory() as td:
             con = connect(os.path.join(td, "ck.db"))
             run_id, results = run_checks(con, live=False)
-            check("校验库覆盖社媒热榜 10 源", len(results) == 10)
+            check("校验库覆盖社媒 10 源 + 境外行情 4 源", len(results) == 14
+                  and any(r.source_key == "us_stooq" for r in results))
             check("离线样本全部 ok 无 fail", run_id > 0
                   and all(r.status == "ok" for r in results))
             rep = latest_report(con)
             check("运行台账落库汇总正确",
-                  bool(rep["run"]) and rep["run"]["total"] == 10
+                  bool(rep["run"]) and rep["run"]["total"] == 14
                   and rep["run"]["fail"] == 0)
             md_ck = render_report_md(rep)
             check("校验报告含新增三源",
