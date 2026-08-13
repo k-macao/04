@@ -40,6 +40,27 @@ Skill 资源目录：`equity_research/`（含 `SKILL.md`、`references/`、`indu
 
 ---
 
+## 🧩 Skills Hub（2026-08-13 已更新）
+
+上一轮只把 `equity-research` 塞进了 `equity_research/`，**没有按 Agent Skills 标准安装，也没有接入 Anthropic 官方新技能**。现已补齐：
+
+| 来源 | Skills | 入口 |
+|---|---|---|
+| rollingSirius v3.0.0 | 九章个股投研 + `dcf.py` | `equity` / `skills/equity-research/` |
+| Anthropic financial-services（Apache-2.0） | 首次覆盖 / 财报前瞻 / 季报更新 / 模型修订 / 晨会纪要 / 催化剂日历 / 论点记分卡 / 行业格局 / 选股扫描 | `initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas` |
+
+```bash
+python skills_hub.py --list
+python skills_hub.py --selftest
+python skills_hub.py 09988 --skill morning_note --ai-provider rule
+python stock_report.py 09988 --template initiate --ai-provider rule
+python server_dashboard.py 8080   # GET /api/skills · POST /api/skills
+```
+
+目录：`skills/`（catalog + NOTICE）· `.claude/skills/`（Agent 可直接读）。
+
+---
+
 ## 📦 功能特性（文件合并）
 
 ## 📦 功能特性
@@ -361,6 +382,7 @@ python stock_report.py --check-only               # 只检查 Secrets
 - **AI 提供方**：`--ai-provider auto`（默认，Actions 下拉同名）或留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。也可显式指定 `deepseek` / `openai` / `rule`。
 - **通道**：console（预览）/ pushplus / wecom / serverchan / all；默认 `--dry-run` 只打印，加 `--push` 才真实推送。
 - **主题**：`--theme game/klein/pixel/monitor`（推送 HTML 主题，同 `pushplus_deepseek.py`）。
+- **最新功能一律附带**（不再只在旧的 `pushplus_deepseek.py` 主流程里）：🧭 数据新鲜度看板与内容指纹、📊 港股/A股字符模拟走势图、🛰 十四平台扫描 + 量价舆情动量（`--hours 24/48/72/156`）。Actions 工作流默认模板已切到 `equity`（机构级九章投研）。
 
 ### 大屏输入框（`server_dashboard.py`）
 

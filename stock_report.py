@@ -40,7 +40,7 @@ MARKET_LABELS = {"hk": "港股", "sh": "沪A", "sz": "深A"}
 MARKET_FULL = {"hk": "香港交易所", "sh": "上海证券交易所", "sz": "深圳证券交易所"}
 MARKET_TICKER = {"hk": "HK", "sh": "SH", "sz": "SZ"}
 
-VERSION = "1.0.1-report-2026-08-13"
+VERSION = "1.1.0-latest-2026-08-13"
 
 # CLI / Actions 可选值。auto（及空串）= 有 DEEPSEEK_API_KEY 走 deepseek，否则 rule。
 AI_PROVIDERS = ("", "auto", "deepseek", "openai", "rule")
@@ -129,6 +129,120 @@ def quote_to_md(market: str, code: str, q: dict) -> str:
     return "\n".join(lines)
 
 
+def quote_to_pp_quotes(quote: dict | None) -> list:
+    """把 hk_quote 标准化行情转成 pushplus_deepseek.Quote 列表（供字符图/新鲜度复用）。"""
+    if not quote or quote.get("price") is None:
+        return []
+    return [pp.Quote(
+        source=quote.get("source_label") or quote.get("source") or "行情",
+        ok=True,
+        name=quote.get("name") or "",
+        price=quote.get("price"),
+        prev_close=quote.get("prev_close"),
+        change_pct=quote.get("change_pct"),
+        time_str=str(quote.get("time") or quote.get("fetched_at") or ""),
+    )]
+
+
+def collect_latest_pack(topic: str, raw_code: str, hours: int,
+                        timeout: int = 12) -> object | None:
+    """采集量价舆情 + 十四平台扫描。单源失败只记缺口，绝不中断研报。"""
+    try:
+        return pp.collect_sentiment(topic, raw_code, hours, timeout)
+    except Exception as e:  # noqa: BLE001
+        print(f"  ⚠️ 最新因子采集失败（不影响研报）：{e}", flush=True)
+        return None
+
+
+def wrap_with_latest_features(
+    body_md: str, *,
+    raw_code: str,
+    template: str,
+    topic: str,
+    hours: int = 48,
+    no_chart: bool = False,
+    quote: dict | None = None,
+    sent_pack=None,
+    persist_state: bool = False,
+) -> tuple[str, dict]:
+    """把「最新功能」装进推送正文：新鲜度看板 + 字符模拟图 + 十四平台附录。"""
+    quotes = quote_to_pp_quotes(quote)
+    qb = pp._quote_brief(quotes)
+    item_keys = pp.gather_item_keys(sent_pack)
+    extra_points: dict = {}
+    anchor_parts: list[str] = []
+    if sent_pack is not None:
+        anchor = sent_pack.agg.get("综合多头概率锚点")
+        extra_points["anchor"] = anchor
+        extra_points["mom"] = (sent_pack.momentum or {}).get("score")
+        anchor_parts.append(
+            f"综合多头概率锚点 ≈ {anchor if anchor is not None else '—'}%")
+        if (sent_pack.momentum or {}).get("ok"):
+            anchor_parts.append(
+                f"量价动量 {sent_pack.momentum['score']:+.2f}")
+        scan = getattr(sent_pack, "scan", None)
+        if scan is not None:
+            sa = scan.agg
+            extra_points["scan_hit"] = sa.get("platforms_hit")
+            anchor_parts.append(
+                f"十四平台命中 {sa.get('platforms_hit', 0)}"
+                f"/{sa.get('platforms_total', 14)}")
+    anchor_line = (" · ".join(anchor_parts)
+                   or "无本地预聚合数据（本模板未采集窗口样本）")
+
+    st = pp.load_state(pp.state_path())
+    skey = pp.run_state_key(template, topic, raw_code)
+    prev = st["runs"].get(skey) or {}
+    new_items = pp.diff_item_keys(item_keys, prev.get("item_keys", {})) if prev else {}
+    new_key_set = {k for keys in new_items.values() for k in keys}
+    fp = pp.content_fingerprint(template, topic, body_md, qb, extra_points, item_keys)
+    dup = bool(prev) and prev.get("fingerprint") == fp
+    freshness_md = pp.render_freshness_md(
+        now_cst=pp.datetime.now(pp.CST).strftime("%m-%d %H:%M"),
+        template=template, hours=hours, fingerprint=fp,
+        dup=dup if prev else None,
+        quote_line=pp._quote_freshness_line(qb, prev.get("price")),
+        new_items=new_items, first_run=not prev,
+        anchor_line=anchor_line, state_enabled=True)
+
+    appendix_md = ""
+    if sent_pack is not None:
+        try:
+            appendix_md = pp.render_sentiment_appendix(sent_pack, new_keys=new_key_set)
+        except Exception:  # noqa: BLE001
+            appendix_md = ""
+
+    chart_md = pp.make_chart_block(raw_code, quotes, no_chart)
+    pieces = [freshness_md, "---", chart_md, body_md.rstrip()]
+    if appendix_md:
+        pieces.append(appendix_md)
+    content = pp.add_branding("\n\n".join(p for p in pieces if p))
+
+    if persist_state:
+        st["version"] = pp.STATE_VERSION
+        st["runs"][skey] = {
+            "fingerprint": fp,
+            "ts": pp.datetime.now(pp.CST).isoformat(timespec="seconds"),
+            "price": qb.get("price"),
+            "anchor": extra_points.get("anchor"),
+            "item_keys": {s: ks[:pp.STATE_MAX_KEYS_PER_SRC]
+                          for s, ks in item_keys.items()},
+        }
+        if len(st["runs"]) > pp.STATE_MAX_RUN_KEYS:
+            ordered = sorted(st["runs"], key=lambda k: st["runs"][k].get("ts", ""))
+            for old_key in ordered[:-pp.STATE_MAX_RUN_KEYS]:
+                del st["runs"][old_key]
+        pp.save_state(pp.state_path(), st)
+
+    return content, {
+        "fingerprint": fp,
+        "dup": dup,
+        "has_chart": bool(chart_md),
+        "has_scan": bool(sent_pack and getattr(sent_pack, "scan", None)),
+        "hours": hours,
+    }
+
+
 # ================================================================ 核心：行情 → AI 研报 → 推送
 
 def run_report(raw_code: str, *, channel: str = "console",
@@ -136,15 +250,34 @@ def run_report(raw_code: str, *, channel: str = "console",
                dry_run: bool = True, theme: str = "game",
                push_timeout: int = 30, no_chart: bool = False,
                risk: str = "mid", mode: str = "full",
-               industry: str | None = None) -> dict:
+               industry: str | None = None, hours: int = 48,
+               collect_news: bool = True) -> dict:
     """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。
 
+    一律附带最新功能：🧭 数据新鲜度看板、📊 字符模拟图、🛰 十四平台扫描。
     template=equity 时走独立栏目 equity_research_column（equity-research-skill
-    九章深度 + dcf.py 可复算估值）。
+    九章深度 + dcf.py 可复算估值），同样注入上述最新能力。
     """
     raw_code = (raw_code or "").strip()
     if not raw_code:
         raise ValueError("股票代码不能为空")
+    try:
+        hours = int(hours)
+    except (TypeError, ValueError):
+        hours = 48
+    if hours not in (24, 48, 72, 156):
+        hours = 48
+
+    # —— 官方 / 社区 Skills Hub（Anthropic 9 技能等）——
+    try:
+        import skills_hub as sh
+        if sh.is_skill_template(template):
+            return sh.run_skill(
+                raw_code, skill=template, ai_provider=ai_provider,
+                channel=channel, dry_run=dry_run, theme=theme,
+                timeout=max(push_timeout, 60))
+    except ImportError:
+        pass
 
     # —— 机构级个股投研独立栏目（equity-research-skill）——
     if template in ("equity", "equity_research", "deep_research"):
@@ -161,7 +294,8 @@ def run_report(raw_code: str, *, channel: str = "console",
         return erc.generate_column(
             raw_code, mode=eq_mode, ai_provider=ai_provider, channel=channel,
             dry_run=dry_run, theme=theme, industry=industry,
-            timeout=max(push_timeout, 60), run_check=True)
+            timeout=max(push_timeout, 60), run_check=True,
+            hours=hours, no_chart=no_chart, collect_news=collect_news)
 
     market, code, _em_secid = hk_quote.detect_market(raw_code)
     label = MARKET_LABELS.get(market, market)
@@ -184,11 +318,22 @@ def run_report(raw_code: str, *, channel: str = "console",
                      f"以下研报基于模型既有知识推断，价格相关结论请谨慎参考。")
         quote_error = "行情数据源失败，研报基于模型知识推断"
 
+    # ---- ①b 最新功能：量价舆情动量 + 十四平台扫描 ----
+    sent_pack = None
+    if collect_news and template in ("analysis", "sentiment", "scan", "feedscan", "newsnow"):
+        sent_pack = collect_latest_pack(
+            topic, raw_code, hours, timeout=min(push_timeout, 12))
+        if sent_pack is not None:
+            try:
+                context = (pp.sentiment_context(sent_pack) + "\n\n" + context)
+            except Exception:  # noqa: BLE001
+                pass
+
     # ---- ② AI / rule 生成研报 ----
     provider = resolve_ai_provider(ai_provider)
     messages = pp.build_messages(template, topic, context, risk)
     if provider == "rule":
-        report_md = pp.gen_by_rule(topic, template, sent_pack=None)
+        report_md = pp.gen_by_rule(topic, template, sent_pack=sent_pack)
         gen_note = "rule 规则模板（未调用大模型）"
     else:
         key_env = "DEEPSEEK_API_KEY" if provider == "deepseek" else "OPENAI_API_KEY"
@@ -209,11 +354,14 @@ def run_report(raw_code: str, *, channel: str = "console",
                 pp.TEMPLATE_MAX_TOKENS.get(template, 3000), push_timeout)
             gen_note = f"{provider}（{model}）"
 
-    # ---- ③ 组装研报正文（品牌头 + 行情块 + 研报 + 品牌尾）----
+    # ---- ③ 组装研报正文（新鲜度 + 字符图 + 研报 + 十四平台 + 品牌头尾）----
     body = report_md.rstrip()
     if market_md:
         body += "\n\n" + market_md
-    content = pp.add_branding(body)
+    content, latest_meta = wrap_with_latest_features(
+        body, raw_code=raw_code, template=template, topic=topic,
+        hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,
+        persist_state=not dry_run)
 
     now = pp.datetime.now(pp.CST).strftime("%m-%d %H:%M")
     title = (f"{pp.BRAND_TITLE}·{topic}"
@@ -250,6 +398,8 @@ def run_report(raw_code: str, *, channel: str = "console",
         "theme": theme,
         "dry_run": dry_run,
         "push": push_results,
+        "hours": hours,
+        "latest": latest_meta,
     }
 
 
@@ -292,17 +442,20 @@ def selftest() -> int:
     check("港股上下文币种 HKD", "HKD" in quote_to_context("hk", "00700", q2))
 
     print("③ 研报组装（rule 离线）")
-    r = run_report("600519", channel="console", ai_provider="rule", dry_run=True)
+    r = run_report("600519", channel="console", ai_provider="rule", dry_run=True,
+                   collect_news=False, no_chart=True)
     check("返回结构完整", r["market"] == "sh" and r["code"] == "600519"
           and r["provider"] == "rule" and "report_md" in r and "report_html" in r)
     check("品牌头尾齐全", pp.BRAND_TITLE in r["report_md"]
           and pp.BRAND_DISCLAIMER in r["report_md"]
           and r["report_md"].rstrip().endswith(pp.BRAND_SLOGAN))
     check("研报含行情核验块", "实时行情" in r["report_md"])
+    check("研报含最新功能新鲜度看板", "数据新鲜度" in r["report_md"] and "内容指纹" in r["report_md"])
     check("HTML 渲染非空", "<div" in r["report_html"] or "<pre" in r["report_html"])
     check("console dry-run 标记", "dry-run" in r["push"]["console"])
 
-    r2 = run_report("sz000001", channel="console", ai_provider="rule", dry_run=True)
+    r2 = run_report("sz000001", channel="console", ai_provider="rule", dry_run=True,
+                    collect_news=False, no_chart=True)
     check("深A 识别与研报", r2["market"] == "sz" and r2["code"] == "000001"
           and r2["name"] == ""           # 离线无行情时名称为空
           and "SZ000001" in r2["title"] and r2["quote_error"] is not None)
@@ -326,7 +479,8 @@ def selftest() -> int:
         check("equity_research_column 可导入", True)
         check("skill 可用", erc.skill_available())
         r_eq = run_report("09988", channel="console", ai_provider="rule",
-                          template="equity", dry_run=True, theme="monitor")
+                          template="equity", dry_run=True, theme="monitor",
+                          collect_news=False, no_chart=True)
         check("equity 返回 ok/结构", r_eq.get("template") == "equity"
               or r_eq.get("column", {}).get("column_id") == "equity_research")
         check("equity 九章正文", "个股投资研究报告" in (r_eq.get("report_md") or "")
@@ -338,6 +492,38 @@ def selftest() -> int:
     except Exception as e:  # noqa: BLE001
         check(f"equity 栏目异常: {e}", False)
 
+    print("⑤c 最新功能包装（新鲜度看板 + 字符图 + 十四平台附录）")
+    wrapped, meta = wrap_with_latest_features(
+        "**演示正文**\n\n- 综合判断：中性",
+        raw_code="09988", template="analysis", topic="HK09988 阿里巴巴",
+        hours=48, no_chart=True, quote={
+            "price": 16.8, "name": "阿里巴巴", "source_label": "演示",
+            "prev_close": 16.6, "change_pct": 1.2, "time": "2026-08-13 15:00",
+        }, sent_pack=None, persist_state=False)
+    check("包装含新鲜度看板", "数据新鲜度" in wrapped and "内容指纹" in wrapped)
+    check("包装含品牌头尾", pp.BRAND_TITLE in wrapped
+          and wrapped.rstrip().endswith(pp.BRAND_SLOGAN))
+    check("包装返回指纹", bool(meta.get("fingerprint")))
+    check("no_chart 不强制出图", meta.get("has_chart") is False)
+    args_h = parse_args(["09988", "--hours", "156"])
+    check("argparse 接受 --hours 156", args_h.hours == 156)
+
+    print("⑤d Skills Hub（Anthropic 官方 9 技能）")
+    try:
+        import skills_hub as sh
+        check("skills_hub 可导入", True)
+        t = sh.catalog_teaser("09988")
+        check("catalog ≥10 且已安装", t.get("installed", 0) >= 10)
+        check("morning_note 是 skill 模板", sh.is_skill_template("morning_note"))
+        r_sk = run_report("09988", channel="console", ai_provider="rule",
+                          template="morning_note", dry_run=True, theme="monitor",
+                          collect_news=False, no_chart=True)
+        check("morning_note 返回结构", r_sk.get("template") == "morning_note"
+              and "晨会纪要" in (r_sk.get("report_md") or r_sk.get("skill_title") or ""))
+        check("morning_note 含免责", "投资建议" in (r_sk.get("report_md") or ""))
+    except Exception as e:  # noqa: BLE001
+        check(f"skills hub 异常: {e}", False)
+
     print("⑥ --ai-provider auto 合法且等价于空串")
     args_auto = parse_args(["600519", "--ai-provider", "auto"])
     check("argparse 接受 auto", args_auto.ai_provider == "auto")
@@ -347,7 +533,8 @@ def selftest() -> int:
           resolve_ai_provider("auto") in ("rule", "deepseek")
           and resolve_ai_provider("") == resolve_ai_provider("auto")
           and resolve_ai_provider(None) == resolve_ai_provider("auto"))
-    r_auto = run_report("600519", channel="console", ai_provider="auto", dry_run=True)
+    r_auto = run_report("600519", channel="console", ai_provider="auto", dry_run=True,
+                        collect_news=False, no_chart=True)
     check("run_report(auto) 落到具体提供方", r_auto["provider"] in ("rule", "deepseek"))
 
     print(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
@@ -389,6 +576,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--theme", default="game", choices=["game", "klein", "pixel", "monitor", "noc", "default"])
     p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
     p.add_argument("--no-chart", action="store_true", dest="no_chart")
+    p.add_argument("--hours", type=int, default=48,
+                   help="量价舆情/十四平台扫描数据窗口（24/48/72/156）")
     p.add_argument("--timeout", type=int, default=30)
     p.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     p.add_argument("--selftest", action="store_true", help="离线自检")
@@ -414,7 +603,8 @@ def main(argv: list[str] | None = None) -> int:
             template=args.template, dry_run=not args.push, theme=args.theme,
             push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk,
             mode=getattr(args, "mode", "full"),
-            industry=(getattr(args, "industry", None) or None) or None)
+            industry=(getattr(args, "industry", None) or None) or None,
+            hours=getattr(args, "hours", 48))
     except ValueError as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1

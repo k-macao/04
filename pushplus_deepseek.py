@@ -83,7 +83,10 @@ RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
 
 TEMPLATES = ["brief", "analysis", "scan", "picker", "fusion",
              "plan", "earnings", "portfolio", "review", "regime",
-             "sentiment", "feedscan", "newsnow", "equity"]
+             "sentiment", "feedscan", "newsnow", "equity",
+             "initiate", "earnings_preview", "earnings_update",
+             "model_update", "morning_note", "catalysts",
+             "thesis", "sector", "ideas"]
 TEMPLATE_TITLES = {
     "brief": "简报", "analysis": "多空因子分析", "scan": "市场情报扫描",
     "picker": "选股器·未来30日", "fusion": "技术面×基本面融合",
@@ -92,12 +95,24 @@ TEMPLATE_TITLES = {
     "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
     "newsnow": "NewsNow热榜聚合·7源",
     "equity": "机构级个股投研",
+    "initiate": "首次覆盖·公司研究",
+    "earnings_preview": "财报前瞻·Skill",
+    "earnings_update": "季报更新",
+    "model_update": "模型修订",
+    "morning_note": "晨会纪要",
+    "catalysts": "催化剂日历",
+    "thesis": "论点记分卡",
+    "sector": "行业格局",
+    "ideas": "选股/主题扫描",
 }
 TEMPLATE_MAX_TOKENS = {
     "brief": 2000, "analysis": 3000, "scan": 4000, "picker": 4000,
     "fusion": 3000, "plan": 4000, "earnings": 3000, "portfolio": 4000,
     "review": 3000, "regime": 3000, "sentiment": 4000, "feedscan": 4000,
     "newsnow": 4000, "equity": 8000,
+    "initiate": 6000, "earnings_preview": 3500, "earnings_update": 5000,
+    "model_update": 3500, "morning_note": 2500, "catalysts": 3000,
+    "thesis": 3000, "sector": 4500, "ideas": 4000,
 }
 
 # analysis 的第 7 项是新增因子。它与“消息面与情绪面”不同：这里使用
@@ -1327,9 +1342,21 @@ def build_messages(template: str, topic: str, context: str,
             "至少三种估值方法交叉验证、反方论证（一年后失败的3个原因）、"
             "监控清单与免责声明。关键数据标注来源+时间戳；缺失写「未获取到」。\n"
             "输出简体中文 Markdown。" + RULES_TAIL)
-    else:  # brief
-        user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
-                "每个要点一句话；结尾一句小结。\n\n" + ctx)
+    else:
+        # Anthropic 官方 skill 模板：委托 skills_hub 构造完整 prompt
+        try:
+            import skills_hub as sh
+            if sh.is_skill_template(template):
+                return sh.build_messages(template, topic, context)
+        except Exception:
+            pass
+        if template == "brief":
+            user = (f"请围绕「{topic}」生成一份今日简报：3~5 个要点，"
+                    "每个要点一句话；结尾一句小结。\n\n" + ctx)
+        else:
+            user = (
+                f"请围绕「{topic}」按模板「{template}」生成一份研究备忘录。\n\n"
+                + ctx + RULES_TAIL)
     system = ("你是一位严谨的跨市场分析师，深耕港股/A股市场，熟悉宏观与行业政策。"
               "输出必须是简体中文 Markdown，不要寒暄，不要使用代码块，"
               "所有概率用整数百分比表示。")
@@ -1417,6 +1444,19 @@ def gen_by_rule(topic: str, template: str,
                 f"- equity_research_column 不可用：{e}",
                 f"- 运行时间：{now}（北京时间）",
                 "- 请确认 equity_research/ 已安装 skill 资源", "",
+                "> ⚠️ 非投资建议，仅供参考。"])
+    try:
+        import skills_hub as sh
+        if sh.is_skill_template(template):
+            return sh.gen_rule_skill(template, topic, context="")
+    except Exception as e:  # noqa: BLE001
+        if template in ("initiate", "earnings_preview", "earnings_update",
+                        "model_update", "morning_note", "catalysts",
+                        "thesis", "sector", "ideas"):
+            return "\n".join([
+                f"**{topic} · {TEMPLATE_TITLES.get(template, template)}**（rule 降级）",
+                "", f"- skills_hub 不可用：{e}",
+                f"- 运行时间：{now}（北京时间）",
                 "> ⚠️ 非投资建议，仅供参考。"])
     return "\n".join([
         f"**{topic} · {TEMPLATE_TITLES.get(template, '简报')}**（rule 演示模板）", "",
@@ -2492,7 +2532,14 @@ def _quote_brief(quotes: list[Quote]) -> dict:
 
 
 def run_state_key(template: str, topic: str, hk_code_raw: str) -> str:
-    code = normalize_hk_code(hk_code_raw) if hk_code_raw else "-"
+    if not hk_code_raw:
+        code = "-"
+    else:
+        try:
+            _c, _y, _em, sfx = resolve_chart_symbols(hk_code_raw)
+            code = f"{sfx}{_c}"
+        except Exception:
+            code = normalize_hk_code(hk_code_raw)
     return f"{template}|{topic[:24]}|{code}"
 
 
@@ -2723,11 +2770,32 @@ def _with_ma(bars: list[dict]) -> list[dict]:
     return out
 
 
+def resolve_chart_symbols(raw: str) -> tuple[str, str, str, str]:
+    """把任意港股/A股写法解析为 (统一代码, Yahoo 符号, 东财 secid, 市场后缀)。"""
+    try:
+        import hk_quote
+        market, code, em_secid = hk_quote.detect_market(raw)
+    except Exception:
+        code = normalize_hk_code(raw)
+        return code, f"{int(code)}.HK", f"116.{code}", "HK"
+    suffix = {"hk": "HK", "sh": "SH", "sz": "SZ"}.get(market, "HK")
+    if market == "hk":
+        yahoo = f"{int(code)}.HK"
+    elif market == "sh":
+        yahoo = f"{code}.SS"
+    else:
+        yahoo = f"{code}.SZ"
+    return code, yahoo, em_secid, suffix
+
+
 def fetch_chart_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
-    """日级字符模拟图数据：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。"""
-    code = normalize_hk_code(code)
+    """日级字符模拟图数据：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。
+
+    支持港股（09988）与 A 股（600519 / 000001.SZ）。
+    """
+    code, yahoo_sym, em_secid, _sfx = resolve_chart_symbols(code)
     try:  # ① Yahoo Finance
-        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{int(code)}.HK"
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
                "?interval=1d&range=6mo")
         status, body = http_request(url, timeout=timeout)
         if status == 200:
@@ -2751,9 +2819,8 @@ def fetch_chart_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
     except Exception as e:
         log(f"  ⚠️ 字符模拟图 Yahoo 源失败：{e}")
     try:  # ② 东方财富
-        secid = f"116.{code}"
         url = ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
-               f"?secid={secid}&klt=101&fqt=1&lmt=90&end=20500101"
+               f"?secid={em_secid}&klt=101&fqt=1&lmt=90&end=20500101"
                "&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57")
         status, body = http_request(url, timeout=timeout)
         if status == 200:
@@ -2794,6 +2861,7 @@ def render_char_chart(bars: list[dict], meta: dict | None = None,
     meta = meta or {}
     code = str(meta.get("code") or "09988")
     source = str(meta.get("source") or "YAHOO")
+    suffix = str(meta.get("suffix") or "HK")
 
     # 选用收盘价决定量纲，保留适当上下边距
     lo = min(b["low"] for b in bars)
@@ -2904,7 +2972,7 @@ def render_char_chart(bars: list[dict], meta: dict | None = None,
         pass
 
     # 图例与数据说明
-    header = f"{code}.HK 字符模拟走势（近 {len(bars)} 日 · {source}）"
+    header = f"{code}.{suffix} 字符模拟走势（近 {len(bars)} 日 · {source}）"
     if s1 is not None and r1 is not None:
         footer = f"S1 {s1:.2f} ── 支撑  ·  R1 {r1:.2f} ── 压力  ·  MA5 ·  MA10 ×  MA20 +"
     else:
@@ -2924,9 +2992,9 @@ def make_chart_block(hk_code_raw: str, quotes: list[Quote],
     """
     if no_chart or not hk_code_raw:
         return ""
-    code = normalize_hk_code(hk_code_raw)
+    code, _yahoo, _em, suffix = resolve_chart_symbols(hk_code_raw)
     try:
-        bars, source = fetch_chart_bars(code, timeout=15)
+        bars, source = fetch_chart_bars(hk_code_raw, timeout=15)
     except PushError as e:
         log(f"  ⚠️ 字符模拟图数据获取失败，本次推送不含字符图：{e}")
         return ""
@@ -2935,10 +3003,11 @@ def make_chart_block(hk_code_raw: str, quotes: list[Quote],
         return ""
 
     name = pick_cn_name(quotes, fallback="") if quotes else ""
-    label = name or f"HK{code}"
+    label = name or f"{suffix}{code}"
     chart_txt = ""
     try:
-        chart_txt = render_char_chart(bars, {"code": code, "source": source})
+        chart_txt = render_char_chart(
+            bars, {"code": code, "source": source, "suffix": suffix})
     except PushError as e:
         log(f"  ⚠️ 字符模拟图渲染失败，本次推送不含字符图：{e}")
         return ""
@@ -3045,6 +3114,12 @@ def selftest() -> int:
     log("③ 港股代码规整")
     check("normalize 9988→09988", normalize_hk_code("9988") == "09988")
     check("normalize 9988.HK→09988", normalize_hk_code("9988.HK") == "09988")
+    c, y, em, sfx = resolve_chart_symbols("09988")
+    check("chart 符号 港股", c == "09988" and y == "9988.HK" and em.startswith("116.") and sfx == "HK")
+    c, y, em, sfx = resolve_chart_symbols("600519")
+    check("chart 符号 沪A", c == "600519" and y == "600519.SS" and em == "1.600519" and sfx == "SH")
+    c, y, em, sfx = resolve_chart_symbols("000001.SZ")
+    check("chart 符号 深A", c == "000001" and y == "000001.SZ" and em == "0.000001" and sfx == "SZ")
 
     log("③b 情绪模块（48h 窗口）")
     NOW = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)

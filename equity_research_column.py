@@ -39,7 +39,7 @@ INDUSTRIES_DIR = SKILL_DIR / "industries"
 EXAMPLES_DIR = SKILL_DIR / "Example"
 
 CST = timezone(timedelta(hours=8), "CST")
-VERSION = "1.0.0-equity-2026-08-13"
+VERSION = "1.1.0-equity-2026-08-13"
 
 COLUMN_ID = "equity_research"
 COLUMN_TITLE = "机构级个股投研"
@@ -900,6 +900,9 @@ def generate_column(
     industry: str | None = None,
     timeout: int = 90,
     run_check: bool = True,
+    hours: int = 48,
+    no_chart: bool = False,
+    collect_news: bool = True,
 ) -> dict:
     """
     独立栏目主流程：行情 → 估值脚本 → AI/rule 九章报告 → 检查器 → 可选推送。
@@ -934,6 +937,17 @@ def generate_column(
                    f"注意：实时行情暂不可用，凡涉及具体点位请标注未获取到。")
         market_md = "> ⚠️ 实时行情暂不可用，价格相关结论请谨慎。"
         quote_error = "行情数据源失败"
+
+    # 最新功能：量价舆情 + 十四平台扫描注入第八章上下文
+    sent_pack = None
+    if collect_news:
+        sent_pack = sr.collect_latest_pack(
+            topic, raw_code, hours, timeout=min(timeout, 12))
+    if sent_pack is not None:
+        try:
+            context = (pp.sentiment_context(sent_pack) + "\n\n" + context)
+        except Exception:  # noqa: BLE001
+            pass
 
     assumptions = default_assumptions_from_quote(quote, code=code)
     dcf_out, dcf_summary, dcf_err = run_dcf(assumptions, timeout=min(timeout, 45))
@@ -990,7 +1004,10 @@ def generate_column(
         f"- 生成说明：{gen_note}\n"
     )
     body = report_md.rstrip() + "\n\n" + "\n\n".join(extras)
-    content = pp.add_branding(body)
+    content, latest_meta = sr.wrap_with_latest_features(
+        body, raw_code=raw_code, template=TEMPLATE_NAME, topic=topic,
+        hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,
+        persist_state=not dry_run)
 
     check_out, check_code = "", 0
     if run_check:
@@ -1215,6 +1232,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--theme", default="monitor")
     p.add_argument("--push", action="store_true")
     p.add_argument("--timeout", type=int, default=90)
+    p.add_argument("--hours", type=int, default=48)
+    p.add_argument("--no-chart", action="store_true")
     p.add_argument("--no-check", action="store_true")
     p.add_argument("--json", action="store_true")
     p.add_argument("--selftest", action="store_true")
@@ -1245,6 +1264,8 @@ def main(argv: list[str] | None = None) -> int:
             industry=args.industry or None,
             timeout=args.timeout,
             run_check=not args.no_check,
+            hours=getattr(args, "hours", 48),
+            no_chart=getattr(args, "no_chart", False),
         )
     except Exception as e:  # noqa: BLE001
         print(f"❌ {e}", file=sys.stderr)

@@ -58,6 +58,11 @@ try:
 except Exception:
     equity_col = None
 
+try:
+    import skills_hub as skills_hub_mod
+except Exception:
+    skills_hub_mod = None
+
 # ================================================================ 实时行情合并
 
 def _generic_profile(market: str, code: str) -> dict:
@@ -1212,6 +1217,37 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             border: 1px solid var(--border-dim);
             color: var(--text-muted);
         }}
+        .skill-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 8px;
+        }}
+        .skill-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 8px 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }}
+        .skill-card:hover, .skill-card.active {{
+            border-color: var(--purple);
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+        }}
+        .skill-card .sk-id {{
+            color: var(--purple);
+            font-size: 10px;
+            letter-spacing: 1px;
+        }}
+        .skill-card .sk-title {{
+            font-weight: bold;
+            color: var(--text-main);
+            margin-top: 2px;
+        }}
+        .skill-card .sk-meta {{
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 3px;
+        }}
 
         /* 横排集群节点状态流 */
         .node-stream {{
@@ -1870,6 +1906,15 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <select id="report-template" class="report-select" title="分析框架">
                 <option value="analysis">多空因子分析</option>
                 <option value="equity" selected>🏛 机构级个股投研</option>
+                <option value="morning_note">🌅 晨会纪要</option>
+                <option value="initiate">📑 首次覆盖</option>
+                <option value="earnings_preview">🔭 财报前瞻 Skill</option>
+                <option value="earnings_update">📰 季报更新</option>
+                <option value="thesis">📌 论点记分卡</option>
+                <option value="catalysts">📅 催化剂日历</option>
+                <option value="sector">🗺 行业格局</option>
+                <option value="ideas">💡 选股扫描</option>
+                <option value="model_update">🧮 模型修订</option>
                 <option value="brief">简报</option>
                 <option value="fusion">技术×基本面</option>
                 <option value="earnings">财报前瞻</option>
@@ -1943,6 +1988,62 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     <span class="report-meta" id="equity-meta"></span>
                 </div>
                 <div class="report-body" id="equity-body"></div>
+            </div>
+        </div>
+
+        <!-- 🧩 Skills Hub：官方 + 社区最新技能 -->
+        <div class="section-header" id="skills-section">
+            <span>🧩 Skills Hub · 最新投研技能目录 (AGENT SKILLS)</span>
+            <span class="section-tag">rollingSirius v3 + Anthropic financial-services 官方 9 技能 · Apache-2.0 / MIT</span>
+        </div>
+        <div class="equity-column-panel" id="skills-hub-panel" style="border-color:rgba(168,85,247,0.4);box-shadow:0 0 18px rgba(168,85,247,0.12);">
+            <div class="equity-hero">
+                <div class="equity-hero-main">
+                    <div class="equity-kicker" style="color:var(--purple);">SKILLS UPDATED · 2026-08-13</div>
+                    <div class="equity-title">最新 Skills 已接入</div>
+                    <div class="equity-sub">按 Agent Skills 标准安装，大屏 / CLI / Actions 可直接跑</div>
+                    <div class="equity-links">
+                        <a class="equity-link" href="https://github.com/anthropics/financial-services" target="_blank" rel="noopener">📦 Anthropic equity-research 9 skills</a>
+                        <a class="equity-link" href="https://github.com/rollingSirius/equity-research-skill" target="_blank" rel="noopener">⬆ equity-research v3.0.0</a>
+                    </div>
+                </div>
+                <div class="equity-hero-side">
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-total">10</span><span class="equity-stat-l">已安装 Skills</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-anth">9</span><span class="equity-stat-l">Anthropic 官方</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-status">—</span><span class="equity-stat-l">Hub 状态</span></div>
+                </div>
+            </div>
+            <div class="skill-grid" id="skill-grid"></div>
+            <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
+                <span class="selector-label">🧩 跑 Skill:</span>
+                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519" autocomplete="off" value="{stock_code}" />
+                <select id="skill-pick" class="report-select">
+                    <option value="morning_note">🌅 晨会纪要</option>
+                    <option value="initiate">📑 首次覆盖</option>
+                    <option value="earnings_preview">🔭 财报前瞻</option>
+                    <option value="earnings_update">📰 季报更新</option>
+                    <option value="model_update">🧮 模型修订</option>
+                    <option value="catalysts">📅 催化剂日历</option>
+                    <option value="thesis">📌 论点记分卡</option>
+                    <option value="sector">🗺 行业格局</option>
+                    <option value="ideas">💡 选股扫描</option>
+                    <option value="equity">🏛 九章深度</option>
+                </select>
+                <select id="skill-channel" class="report-select">
+                    <option value="console">📺 预览</option>
+                    <option value="pushplus">📲 PushPlus</option>
+                    <option value="wecom">💬 企微</option>
+                    <option value="serverchan">🔔 Server酱</option>
+                </select>
+                <button class="report-btn" id="skill-btn" onclick="genSkill()" style="border-color:var(--purple);color:var(--purple);background:rgba(168,85,247,0.12);">🧩 运行 Skill</button>
+            </div>
+            <div id="skill-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--purple);">
+                <div class="report-head">
+                    <span class="report-title" id="skill-title" style="color:var(--purple);">🧩 Skill</span>
+                    <span class="report-status" id="skill-status" style="color:var(--purple);border-color:var(--purple);">待命</span>
+                    <span class="report-meta" id="skill-meta"></span>
+                </div>
+                <div class="report-body" id="skill-body"></div>
             </div>
         </div>
 
@@ -2235,8 +2336,107 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             if (eq) eq.addEventListener('keydown', function(e) {{
                 if (e.key === 'Enter') genEquityColumn();
             }});
+            const sk = document.getElementById('skill-code-input');
+            if (sk) sk.addEventListener('keydown', function(e) {{
+                if (e.key === 'Enter') genSkill();
+            }});
             setTimeout(loadEquityTeaser, 600);
+            setTimeout(loadSkillsHub, 700);
         }})();
+
+        async function loadSkillsHub() {{
+            try {{
+                const resp = await fetch('/api/skills');
+                const t = await resp.json();
+                const st = document.getElementById('sk-status');
+                if (!t || !t.ok) {{
+                    if (st) st.textContent = '缺失';
+                    return;
+                }}
+                if (st) st.textContent = '就绪';
+                const tot = document.getElementById('sk-total');
+                if (tot) tot.textContent = t.installed || t.total || '—';
+                const anth = document.getElementById('sk-anth');
+                if (anth) anth.textContent = (t.skills || []).filter(s => s.family === 'anthropic').length;
+                const grid = document.getElementById('skill-grid');
+                if (grid && t.skills) {{
+                    grid.innerHTML = t.skills.map(s =>
+                        '<div class="skill-card" data-tmpl="' + (s.template || '') + '">'
+                        + '<div class="sk-id">' + (s.family || '') + ' · ' + (s.version || '') + '</div>'
+                        + '<div class="sk-title">' + (s.title || s.id) + '</div>'
+                        + '<div class="sk-meta">' + (s.installed ? '已安装' : '缺失') + ' · ' + (s.template || s.id) + '</div>'
+                        + '</div>'
+                    ).join('');
+                    grid.querySelectorAll('.skill-card').forEach(el => {{
+                        el.addEventListener('click', () => pickSkill(el.getAttribute('data-tmpl') || ''));
+                    }});
+                }}
+                appendLog('SKILLS.HUB', 'OK', (t.installed || 0) + '/' + (t.total || 0) + ' skills');
+            }} catch (e) {{
+                appendLog('SKILLS.HUB', 'WARN', e.message);
+            }}
+        }}
+
+        function pickSkill(tmpl) {{
+            const sel = document.getElementById('skill-pick');
+            if (sel && tmpl) sel.value = tmpl;
+            playBeep(980, 'triangle', 0.05);
+        }}
+
+        async function genSkill() {{
+            const input = document.getElementById('skill-code-input');
+            const code = (input ? input.value : '').trim() || STOCK_CODE;
+            const panel = document.getElementById('skill-panel');
+            const body = document.getElementById('skill-body');
+            const title = document.getElementById('skill-title');
+            const meta = document.getElementById('skill-meta');
+            const status = document.getElementById('skill-status');
+            const btn = document.getElementById('skill-btn');
+            const channel = (document.getElementById('skill-channel') || {{}}).value || 'console';
+            const skill = (document.getElementById('skill-pick') || {{}}).value || 'morning_note';
+            if (panel) panel.style.display = 'block';
+            if (title) title.textContent = '🧩 ' + skill + ' · ' + code;
+            if (meta) meta.textContent = skill + ' · ' + channel;
+            if (status) {{ status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }}
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在按最新 skill 生成…</div>';
+            if (btn) btn.disabled = true;
+            playBeep(760, 'triangle', 0.08);
+            appendLog('SKILL.GEN', 'QUERY', code + ' · ' + skill);
+            try {{
+                const resp = await fetch('/api/skills', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        code: code, skill: skill, channel: channel,
+                        dry_run: channel === 'console', theme: 'monitor'
+                    }})
+                }});
+                const r = await resp.json();
+                if (!r || !r.ok) {{
+                    if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                    if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + ((r && r.error) || '未知错误') + '</div>';
+                    appendLog('SKILL.GEN', 'ERR', (r && r.error) || '未知错误');
+                    return;
+                }}
+                if (meta) meta.textContent = (r.market_label || '') + ' ' + r.code
+                    + (r.name ? ' ' + r.name : '')
+                    + ' · ' + (r.skill || skill)
+                    + ' · ' + (r.gen_note || '');
+                if (status) {{
+                    status.textContent = r.dry_run ? '预览完成' : '已推送';
+                    status.style.color = 'var(--green)';
+                    status.style.borderColor = 'var(--green)';
+                }}
+                if (body) body.innerHTML = r.report_html || ('<pre style="white-space:pre-wrap;">' + (r.report_md || '') + '</pre>');
+                appendLog('SKILL.GEN', 'OK', r.code + ' · ' + (r.skill || skill));
+            }} catch (e) {{
+                if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + e.message + '</div>';
+                appendLog('SKILL.GEN', 'ERR', e.message);
+            }} finally {{
+                if (btn) btn.disabled = false;
+            }}
+        }}
 
         // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
         const STOCK_CODE = '{stock_code}';
@@ -2603,12 +2803,39 @@ def _api_report(params: dict) -> dict:
     mode = str(params.get("mode") or "full")
     industry = str(params.get("industry") or "").strip() or None
     try:
+        hours = int(params.get("hours") or 48)
         r = stock_report.run_report(
             code, channel=channel, ai_provider=ai_provider, template=template,
-            dry_run=dry_run, theme=theme, mode=mode, industry=industry)
+            dry_run=dry_run, theme=theme, mode=mode, industry=industry,
+            hours=hours)
         r["ok"] = True
         return r
     except Exception as e:            # noqa: BLE001
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+
+
+def _api_skills_run(params: dict) -> dict:
+    """Skills Hub：按官方/社区 skill 生成备忘录。"""
+    code = str(params.get("code") or "").strip()
+    if not code:
+        return {"ok": False, "error": "缺少股票代码"}
+    if skills_hub_mod is None:
+        return {"ok": False, "error": "skills_hub 模块加载失败"}
+    skill = str(params.get("skill") or params.get("template") or "morning_note")
+    channel = str(params.get("channel") or "console")
+    if channel not in ("console", "pushplus", "wecom", "serverchan", "all"):
+        channel = "console"
+    ai_provider = str(params.get("ai_provider") or "") or None
+    dry_run = bool(params.get("dry_run", True))
+    theme = str(params.get("theme") or "monitor")
+    try:
+        r = skills_hub_mod.run_skill(
+            code, skill=skill, ai_provider=ai_provider, channel=channel,
+            dry_run=dry_run, theme=theme,
+            timeout=int(params.get("timeout") or 90))
+        r["ok"] = True
+        return r
+    except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
 
 
@@ -2634,7 +2861,8 @@ def _api_equity_column(params: dict) -> dict:
             code, mode=mode, ai_provider=ai_provider, channel=channel,
             dry_run=dry_run, theme=theme, industry=industry,
             timeout=int(params.get("timeout") or 90),
-            run_check=bool(params.get("run_check", True)))
+            run_check=bool(params.get("run_check", True)),
+            hours=int(params.get("hours") or 48))
         r["ok"] = True
         return r
     except Exception as e:  # noqa: BLE001
@@ -2717,6 +2945,18 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
             return
 
+        if path in ("/api/skills", "/api/skills/teaser"):
+            stock_code = qs.get("code", ["09988"])[0]
+            if skills_hub_mod is None:
+                payload = {"ok": False, "error": "skills_hub 未加载", "installed": 0}
+            else:
+                payload = skills_hub_mod.catalog_teaser(stock_code)
+                payload["ok"] = True
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            return
+
         if path in ("/api/equity", "/api/equity/teaser"):
             stock_code = qs.get("code", ["09988"])[0]
             if equity_col is None:
@@ -2758,6 +2998,8 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
             payload = _api_report(params)
         elif path in ("/api/equity", "/api/equity/report"):
             payload = _api_equity_column(params)
+        elif path in ("/api/skills", "/api/skills/run"):
+            payload = _api_skills_run(params)
         else:
             payload = {"ok": False, "error": "Not Found"}
 
