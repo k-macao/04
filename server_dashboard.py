@@ -2603,9 +2603,11 @@ def _api_report(params: dict) -> dict:
     mode = str(params.get("mode") or "full")
     industry = str(params.get("industry") or "").strip() or None
     try:
+        hours = int(params.get("hours") or 48)
         r = stock_report.run_report(
             code, channel=channel, ai_provider=ai_provider, template=template,
-            dry_run=dry_run, theme=theme, mode=mode, industry=industry)
+            dry_run=dry_run, theme=theme, mode=mode, industry=industry,
+            hours=hours)
         r["ok"] = True
         return r
     except Exception as e:            # noqa: BLE001
@@ -2634,7 +2636,8 @@ def _api_equity_column(params: dict) -> dict:
             code, mode=mode, ai_provider=ai_provider, channel=channel,
             dry_run=dry_run, theme=theme, industry=industry,
             timeout=int(params.get("timeout") or 90),
-            run_check=bool(params.get("run_check", True)))
+            run_check=bool(params.get("run_check", True)),
+            hours=int(params.get("hours") or 48))
         r["ok"] = True
         return r
     except Exception as e:  # noqa: BLE001

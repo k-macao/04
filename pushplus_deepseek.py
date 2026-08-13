@@ -2492,7 +2492,14 @@ def _quote_brief(quotes: list[Quote]) -> dict:
 
 
 def run_state_key(template: str, topic: str, hk_code_raw: str) -> str:
-    code = normalize_hk_code(hk_code_raw) if hk_code_raw else "-"
+    if not hk_code_raw:
+        code = "-"
+    else:
+        try:
+            _c, _y, _em, sfx = resolve_chart_symbols(hk_code_raw)
+            code = f"{sfx}{_c}"
+        except Exception:
+            code = normalize_hk_code(hk_code_raw)
     return f"{template}|{topic[:24]}|{code}"
 
 
@@ -2723,11 +2730,32 @@ def _with_ma(bars: list[dict]) -> list[dict]:
     return out
 
 
+def resolve_chart_symbols(raw: str) -> tuple[str, str, str, str]:
+    """把任意港股/A股写法解析为 (统一代码, Yahoo 符号, 东财 secid, 市场后缀)。"""
+    try:
+        import hk_quote
+        market, code, em_secid = hk_quote.detect_market(raw)
+    except Exception:
+        code = normalize_hk_code(raw)
+        return code, f"{int(code)}.HK", f"116.{code}", "HK"
+    suffix = {"hk": "HK", "sh": "SH", "sz": "SZ"}.get(market, "HK")
+    if market == "hk":
+        yahoo = f"{int(code)}.HK"
+    elif market == "sh":
+        yahoo = f"{code}.SS"
+    else:
+        yahoo = f"{code}.SZ"
+    return code, yahoo, em_secid, suffix
+
+
 def fetch_chart_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
-    """日级字符模拟图数据：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。"""
-    code = normalize_hk_code(code)
+    """日级字符模拟图数据：Yahoo 主源 → 东方财富备源（均免 Key）。返回 (bars, 数据源标签)。
+
+    支持港股（09988）与 A 股（600519 / 000001.SZ）。
+    """
+    code, yahoo_sym, em_secid, _sfx = resolve_chart_symbols(code)
     try:  # ① Yahoo Finance
-        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{int(code)}.HK"
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
                "?interval=1d&range=6mo")
         status, body = http_request(url, timeout=timeout)
         if status == 200:
@@ -2751,9 +2779,8 @@ def fetch_chart_bars(code: str, timeout: int = 15) -> tuple[list[dict], str]:
     except Exception as e:
         log(f"  ⚠️ 字符模拟图 Yahoo 源失败：{e}")
     try:  # ② 东方财富
-        secid = f"116.{code}"
         url = ("https://push2his.eastmoney.com/api/qt/stock/kline/get"
-               f"?secid={secid}&klt=101&fqt=1&lmt=90&end=20500101"
+               f"?secid={em_secid}&klt=101&fqt=1&lmt=90&end=20500101"
                "&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57")
         status, body = http_request(url, timeout=timeout)
         if status == 200:
@@ -2794,6 +2821,7 @@ def render_char_chart(bars: list[dict], meta: dict | None = None,
     meta = meta or {}
     code = str(meta.get("code") or "09988")
     source = str(meta.get("source") or "YAHOO")
+    suffix = str(meta.get("suffix") or "HK")
 
     # 选用收盘价决定量纲，保留适当上下边距
     lo = min(b["low"] for b in bars)
@@ -2904,7 +2932,7 @@ def render_char_chart(bars: list[dict], meta: dict | None = None,
         pass
 
     # 图例与数据说明
-    header = f"{code}.HK 字符模拟走势（近 {len(bars)} 日 · {source}）"
+    header = f"{code}.{suffix} 字符模拟走势（近 {len(bars)} 日 · {source}）"
     if s1 is not None and r1 is not None:
         footer = f"S1 {s1:.2f} ── 支撑  ·  R1 {r1:.2f} ── 压力  ·  MA5 ·  MA10 ×  MA20 +"
     else:
@@ -2924,9 +2952,9 @@ def make_chart_block(hk_code_raw: str, quotes: list[Quote],
     """
     if no_chart or not hk_code_raw:
         return ""
-    code = normalize_hk_code(hk_code_raw)
+    code, _yahoo, _em, suffix = resolve_chart_symbols(hk_code_raw)
     try:
-        bars, source = fetch_chart_bars(code, timeout=15)
+        bars, source = fetch_chart_bars(hk_code_raw, timeout=15)
     except PushError as e:
         log(f"  ⚠️ 字符模拟图数据获取失败，本次推送不含字符图：{e}")
         return ""
@@ -2935,10 +2963,11 @@ def make_chart_block(hk_code_raw: str, quotes: list[Quote],
         return ""
 
     name = pick_cn_name(quotes, fallback="") if quotes else ""
-    label = name or f"HK{code}"
+    label = name or f"{suffix}{code}"
     chart_txt = ""
     try:
-        chart_txt = render_char_chart(bars, {"code": code, "source": source})
+        chart_txt = render_char_chart(
+            bars, {"code": code, "source": source, "suffix": suffix})
     except PushError as e:
         log(f"  ⚠️ 字符模拟图渲染失败，本次推送不含字符图：{e}")
         return ""
@@ -3045,6 +3074,12 @@ def selftest() -> int:
     log("③ 港股代码规整")
     check("normalize 9988→09988", normalize_hk_code("9988") == "09988")
     check("normalize 9988.HK→09988", normalize_hk_code("9988.HK") == "09988")
+    c, y, em, sfx = resolve_chart_symbols("09988")
+    check("chart 符号 港股", c == "09988" and y == "9988.HK" and em.startswith("116.") and sfx == "HK")
+    c, y, em, sfx = resolve_chart_symbols("600519")
+    check("chart 符号 沪A", c == "600519" and y == "600519.SS" and em == "1.600519" and sfx == "SH")
+    c, y, em, sfx = resolve_chart_symbols("000001.SZ")
+    check("chart 符号 深A", c == "000001" and y == "000001.SZ" and em == "0.000001" and sfx == "SZ")
 
     log("③b 情绪模块（48h 窗口）")
     NOW = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
