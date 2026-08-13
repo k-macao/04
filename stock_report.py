@@ -615,10 +615,25 @@ def main(argv: list[str] | None = None) -> int:
 
     print("# " + result["title"])
     print(result["report_md"])
-    print("\n===== 推送结果 =====")
+    md = result.get("report_md") or ""
+    print(f"\n===== 推送结果 =====")
+    print(f"  正文 {len(md)} 字 / {len(md.encode('utf-8'))} 字节"
+          f" · dry_run={result.get('dry_run')} · 通道={list(result.get('push') or {})}")
+    failed = 0
     for ch, r in result["push"].items():
-        ok = not str(r).startswith("失败")
-        print(f"  {'✅' if ok else '❌'} {ch}: {r}")
+        text = str(r)
+        ok = not text.startswith("失败")
+        if ch == "console" and not result.get("dry_run"):
+            print(f"  ⚠️ {ch}: {text}（console 不会发到微信，请把 channel 改成 pushplus）")
+        else:
+            print(f"  {'✅' if ok else '❌'} {ch}: {text}")
+        if not ok:
+            failed += 1
+    if result.get("dry_run"):
+        print("  ℹ️ 本次是 dry-run，没有真实推送到微信。")
+    if failed:
+        print(f"\n❌ {failed} 个通道推送失败，微信不会收到。")
+        return 1
     return 0
 
 
