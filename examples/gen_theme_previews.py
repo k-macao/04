@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 生成 HTML 主题预览（与 pushplus_deepseek.py 的真实渲染代码同步）：
-    examples/theme_preview.html       game/klein/pixel 三主题对比
+    examples/theme_preview.html       game/klein/pixel 四主题对比
     examples/game_theme_preview.html  game（8-bit 像素游戏风）单独预览
+
+全站默认主题为 game（8-bit 复古游戏风），其余主题仅作对照保留。
 用法：
     python3 examples/gen_theme_previews.py
 """
@@ -47,9 +49,10 @@ THEME_LABELS = {
     "monitor": ("[ THEME: monitor · 服务器大屏监视风格 · 零表格 · 文字+列表横排 ]",
                 "[ PREVIEW ] themed_html(theme_name='monitor') · 深空暗黑科技大屏 · 荧光青绿发光边框 · "
                 "零表格 · 文字+横排卡片流 · HUD 双时钟 · 节点状态横排"),
-    "game": ("[ THEME: game · 8-bit 像素游戏风 · 整体默认 ]",
+    "game": ("[ THEME: game · 8-bit 像素游戏风 · 全站统一默认 ]",
              "[ PREVIEW ] themed_html(theme_name='game') · 深夜蓝游戏屏 · 金色粗框 · "
-             "硬黑像素阴影 · ♥HP血条 · ★LV · SCORE · PRESS START · UTC 时间戳"),
+             "硬黑像素阴影 · ♥HP血条 · ★LV · SCORE · PRESS START · UTC 时间戳 · "
+             "pushplus / stock_report / equity_research_column / 服务器大屏 均默认此风格"),
     "klein": ("[ THEME: klein · 游戏复古像素风 ]",
               "[ PREVIEW ] themed_html(theme_name='klein') · 米黄纸底 · 黑细框 · 像素图标 · RETRO 角标"),
     "pixel": ("[ THEME: pixel · 复古监控风 ]",

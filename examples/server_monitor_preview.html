@@ -3,28 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>章鱼 AI · 服务器大屏监视中心 (NOC Telemetry Wallboard)</title>
+    <title>章鱼 AI · 服务器大屏监视中心 (8-BIT RETRO ARCADE WALLBOARD)</title>
     <style>
         :root {
-            --bg-deep: #06090e;
-            --bg-panel: #0a0f1d;
-            --bg-card: #0d1527;
-            --bg-card-hover: #121c33;
-            --border-glow: #00f0ff;
-            --border-dim: #1e293b;
-            --border-subtle: rgba(0, 240, 255, 0.2);
-            --cyan: #00f0ff;
-            --green: #00ff9d;
-            --amber: #ffb800;
-            --red: #ff3366;
-            --purple: #a855f7;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --text-dim: #64748b;
+            /* —— 8-bit 复古游戏风（与 pushplus game 主题统一）——
+               深夜蓝游戏屏 #0b0e2a + 金色粗框 #f8b800 + 硬黑像素阴影 +
+               ♥HP血条 / ★LV 等级 / SCORE 计分 / PRESS START */
+            --bg-deep: #0b0e2a;            /* 游戏背景（深夜蓝） */
+            --bg-panel: #0e1130;           /* 游戏面板底（深靛蓝） */
+            --bg-card: #16193b;            /* 游戏面板底（靛蓝） */
+            --bg-card-hover: #1d2150;
+            --border-glow: #f8b800;        /* 金色粗框（2px 游戏描边） */
+            --border-dim: #4a4280;         /* 暗靛蓝细框 */
+            --border-subtle: rgba(248, 184, 0, 0.25);
+            --cyan: #ffd23f;               /* 金币黄 重点凸显 */
+            --green: #5cff5c;              /* 磷光绿 涨 */
+            --amber: #f8b800;              /* 金色 */
+            --red: #ff5c5c;                /* 警示红 跌 */
+            --purple: #a78bfa;
+            --text-main: #e9eaf5;          /* 正文米白 */
+            --text-muted: #8a90bc;         /* 辅助蓝灰 */
+            --text-dim: #5b6090;
             --font-mono: 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
-            --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.35);
-            --glow-green: 0 0 15px rgba(0, 255, 157, 0.35);
-            --glow-red: 0 0 15px rgba(255, 51, 102, 0.35);
+            /* 硬黑像素阴影：所有发光改用 4px 偏移纯黑块 */
+            --glow-cyan: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            --glow-green: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            --glow-red: 4px 4px 0 rgba(0, 0, 0, 0.9);
         }
 
         * {
@@ -43,10 +47,19 @@
             padding: 12px;
             position: relative;
             overflow-x: hidden;
+            /* 像素星点 + 金色网格：游戏机屏幕 */
             background-image:
-                radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 60%),
-                repeating-linear-gradient(0deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px),
-                repeating-linear-gradient(90deg, rgba(0, 240, 255, 0.02) 0 1px, transparent 1px 28px);
+                radial-gradient(circle at 50% 0%, rgba(248, 184, 0, 0.08) 0%, transparent 60%),
+                radial-gradient(1.5px 1.5px at 26px 32px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 88px 74px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 152px 22px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 212px 96px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 310px 52px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 390px 118px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(2px 2px at 470px 34px, rgba(255, 210, 63, 0.45), rgba(0, 0, 0, 0) 70%),
+                radial-gradient(1.5px 1.5px at 560px 84px, rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0) 70%),
+                repeating-linear-gradient(0deg, rgba(248, 184, 0, 0.03) 0 1px, transparent 1px 24px),
+                repeating-linear-gradient(90deg, rgba(248, 184, 0, 0.03) 0 1px, transparent 1px 24px);
         }
 
         /* CRT 扫描线特效 (可开关) */
@@ -69,32 +82,33 @@
             gap: 12px;
         }
 
-        /* 顶部 HUD 状态栏 */
+        /* 顶部游戏菜单金条（HUD 状态栏）：金色底 + 黑字 + 硬黑像素阴影 */
         .hud-header {
-            background: var(--bg-panel);
-            border: 1px solid var(--border-glow);
-            box-shadow: var(--glow-cyan);
-            padding: 10px 16px;
+            background: #f8b800;            /* 游戏菜单金条 */
+            color: #111111;
+            border: 2px solid #111111;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            padding: 8px 14px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             position: relative;
         }
 
         .hud-header::before, .hud-header::after {
-            content: "⌜";
+            content: "◤";
             position: absolute;
-            top: -2px; left: -2px;
-            color: var(--cyan);
-            font-size: 14px;
+            top: 2px; left: 5px;
+            color: rgba(17, 17, 17, 0.5);
+            font-size: 12px;
             font-weight: bold;
         }
         .hud-header::after {
-            content: "⌟";
+            content: "◥";
             top: auto; left: auto;
-            bottom: -2px; right: -2px;
+            bottom: 2px; right: 5px;
         }
 
         .hud-brand {
@@ -106,42 +120,42 @@
         .hud-logo {
             width: 24px;
             height: 24px;
-            background: var(--cyan);
-            color: #000;
+            background: #111111;
+            color: #ffd23f;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 900;
             font-size: 14px;
-            box-shadow: var(--glow-cyan);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
         }
 
         .hud-title {
             font-size: 15px;
             font-weight: 900;
             letter-spacing: 1.5px;
-            color: var(--cyan);
+            color: #111111;
             text-transform: uppercase;
         }
 
         .hud-subtitle {
             font-size: 10px;
-            color: var(--text-muted);
+            color: rgba(17, 17, 17, 0.7);
             letter-spacing: 1px;
         }
 
         .hud-clocks {
             display: flex;
-            gap: 14px;
+            gap: 10px;
             align-items: center;
             font-size: 11px;
         }
 
         .clock-badge {
-            background: rgba(0, 240, 255, 0.08);
-            border: 1px solid var(--border-subtle);
+            background: rgba(17, 17, 17, 0.1);
+            border: 1px solid rgba(17, 17, 17, 0.55);
             padding: 3px 8px;
-            color: var(--cyan);
+            color: #111111;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -151,9 +165,8 @@
             width: 8px;
             height: 8px;
             background: var(--green);
-            border-radius: 50%;
             display: inline-block;
-            box-shadow: 0 0 8px var(--green);
+            box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
             animation: pulse 1.5s infinite;
         }
 
@@ -169,10 +182,10 @@
         }
 
         .btn-action {
-            background: rgba(0, 240, 255, 0.1);
-            border: 1px solid var(--cyan);
-            color: var(--cyan);
-            padding: 4px 10px;
+            background: rgba(17, 17, 17, 0.08);
+            border: 2px solid #111111;
+            color: #111111;
+            padding: 3px 10px;
             font-size: 11px;
             font-family: var(--font-mono);
             cursor: pointer;
@@ -182,16 +195,37 @@
         }
 
         .btn-action:hover {
-            background: var(--cyan);
-            color: #000;
-            box-shadow: var(--glow-cyan);
+            background: #111111;
+            color: #ffd23f;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
         }
+
+        /* 8-bit 游戏状态栏：♥HP 血条 + ★LV 等级 + SCORE 计分 + UTC */
+        .game-statusbar {
+            background: var(--bg-panel);
+            border: 2px solid var(--border-glow);
+            border-top: none;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
+            color: var(--text-muted);
+            font-size: 10px;
+            letter-spacing: 1px;
+            padding: 4px 12px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-mono);
+        }
+        .game-statusbar .gs-hp-fill { color: var(--green); letter-spacing: 0; }
+        .game-statusbar .gs-hp-num { color: var(--green); font-weight: bold; }
+        .game-statusbar .gs-score { margin-left: auto; color: var(--cyan); font-weight: bold; }
+        .game-statusbar .gs-utc { color: var(--text-dim); font-size: 9px; }
 
         /* 数据状态横幅：明确标注当前为静态演示数据，避免误以为实时更新 */
         .data-status-banner {
-            background: rgba(255, 184, 0, 0.08);
+            background: rgba(248, 184, 0, 0.08);
             border: 1px solid var(--amber);
-            box-shadow: 0 0 12px rgba(255, 184, 0, 0.18);
+            box-shadow: 0 0 12px rgba(248, 184, 0, 0.18);
             padding: 8px 14px;
             display: flex;
             align-items: center;
@@ -201,7 +235,7 @@
             flex-wrap: wrap;
         }
         .data-status-banner .dsb-icon { font-size: 14px; }
-        .data-status-banner .dsb-strong { font-weight: bold; color: #ffd46b; }
+        .data-status-banner .dsb-strong { font-weight: bold; color: #ffd23f; }
         .data-status-banner .dsb-hint { color: var(--text-muted); }
         .data-status-banner .dsb-time { margin-left: auto; color: var(--text-dim); font-size: 10px; }
 
@@ -238,8 +272,8 @@
         .stock-btn.active {
             border-color: var(--cyan);
             color: var(--cyan);
-            background: rgba(0, 240, 255, 0.12);
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            background: rgba(255, 210, 63, 0.12);
+            box-shadow: 0 0 10px rgba(255, 210, 63, 0.2);
             font-weight: bold;
         }
 
@@ -258,7 +292,7 @@
         .report-input:focus {
             outline: none;
             border-color: var(--cyan);
-            box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+            box-shadow: 0 0 8px rgba(255, 210, 63, 0.25);
         }
         .report-select {
             background: var(--bg-card);
@@ -270,7 +304,7 @@
             cursor: pointer;
         }
         .report-btn {
-            background: rgba(0, 255, 157, 0.12);
+            background: rgba(92, 255, 92, 0.12);
             border: 1px solid var(--green);
             color: var(--green);
             padding: 5px 12px;
@@ -292,8 +326,8 @@
         }
         .report-panel {
             background: var(--bg-panel);
-            border: 1px solid var(--border-glow);
-            box-shadow: var(--glow-cyan);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 12px 16px;
             margin-bottom: 12px;
         }
@@ -341,7 +375,7 @@
             color: var(--text-main);
         }
         .report-body th {
-            background: rgba(0, 240, 255, 0.08);
+            background: rgba(255, 210, 63, 0.08);
             color: var(--cyan);
             font-weight: bold;
         }
@@ -351,7 +385,7 @@
             letter-spacing: 0.5px;
         }
         .report-body pre {
-            background: #04060a;
+            background: #0b0e2a;
             border: 1px solid var(--border-dim);
             padding: 8px;
             overflow-x: auto;
@@ -371,8 +405,8 @@
         /* 🏛 机构级个股投研独立栏目 */
         .equity-column-panel {
             background: var(--bg-panel);
-            border: 1px solid rgba(255, 184, 0, 0.35);
-            box-shadow: 0 0 18px rgba(255, 184, 0, 0.12);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 14px 16px;
             display: flex;
             flex-direction: column;
@@ -450,9 +484,9 @@
         .equity-chip {
             font-size: 10px;
             padding: 3px 8px;
-            border: 1px solid rgba(255, 184, 0, 0.35);
+            border: 1px solid rgba(248, 184, 0, 0.35);
             color: var(--amber);
-            background: rgba(255, 184, 0, 0.06);
+            background: rgba(248, 184, 0, 0.06);
         }
         .equity-chapters {
             display: flex;
@@ -465,6 +499,37 @@
             background: var(--bg-card);
             border: 1px solid var(--border-dim);
             color: var(--text-muted);
+        }
+        .skill-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 8px;
+        }
+        .skill-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 8px 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .skill-card:hover, .skill-card.active {
+            border-color: var(--purple);
+            box-shadow: 0 0 10px rgba(167, 139, 250, 0.25);
+        }
+        .skill-card .sk-id {
+            color: var(--purple);
+            font-size: 10px;
+            letter-spacing: 1px;
+        }
+        .skill-card .sk-title {
+            font-weight: bold;
+            color: var(--text-main);
+            margin-top: 2px;
+        }
+        .skill-card .sk-meta {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 3px;
         }
 
         /* 横排集群节点状态流 */
@@ -562,10 +627,10 @@
             color: var(--text-muted);
         }
 
-        .cyan-glow { color: var(--cyan); text-shadow: 0 0 10px rgba(0,240,255,0.4); }
-        .green-glow { color: var(--green); text-shadow: 0 0 10px rgba(0,255,157,0.4); }
-        .amber-glow { color: var(--amber); text-shadow: 0 0 10px rgba(255,184,0,0.4); }
-        .purple-glow { color: var(--purple); text-shadow: 0 0 10px rgba(168,85,247,0.4); }
+        .cyan-glow { color: var(--cyan); text-shadow: 0 0 10px rgba(255,210,63,0.4); }
+        .green-glow { color: var(--green); text-shadow: 0 0 10px rgba(92,255,92,0.4); }
+        .amber-glow { color: var(--amber); text-shadow: 0 0 10px rgba(248,184,0,0.4); }
+        .purple-glow { color: var(--purple); text-shadow: 0 0 10px rgba(167,139,250,0.4); }
 
         .pill-badge {
             font-size: 11px;
@@ -574,16 +639,16 @@
             font-weight: bold;
             letter-spacing: 0.5px;
         }
-        .badge-green { background: rgba(0,255,157,0.15); color: var(--green); border-color: var(--green); }
+        .badge-green { background: rgba(92,255,92,0.15); color: var(--green); border-color: var(--green); }
 
         /* 📊 字符模拟图 · 智能行情交互组件 */
         .tradeview-panel {
             background: var(--bg-panel);
-            border: 1px solid var(--border-subtle);
-            border-radius: 6px;
+            border: 2px solid var(--border-glow);
+            border-radius: 0;
             margin-bottom: 18px;
             padding: 14px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             position: relative;
         }
         .tradeview-toolbar {
@@ -614,7 +679,7 @@
             border: 1px solid var(--border-dim);
             color: var(--text-muted);
             padding: 4px 10px;
-            border-radius: 4px;
+            border-radius: 0;
             font-size: 11px;
             font-family: var(--font-mono);
             cursor: pointer;
@@ -626,17 +691,17 @@
             background: var(--bg-card-hover);
         }
         .tv-btn.active {
-            color: #06090e;
+            color: #111111;
             background: var(--cyan);
             border-color: var(--cyan);
             font-weight: bold;
-            box-shadow: var(--glow-cyan);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
         }
         .tv-btn.engine-btn.active {
             background: var(--green);
             border-color: var(--green);
-            color: #06090e;
-            box-shadow: var(--glow-green);
+            color: #111111;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.8);
         }
         .tv-legend-bar {
             display: flex;
@@ -645,7 +710,7 @@
             gap: 14px;
             background: var(--bg-card);
             border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            border-radius: 0;
             padding: 8px 12px;
             margin-bottom: 10px;
             font-size: 12px;
@@ -665,9 +730,9 @@
         .tv-legend-ma20 { color: #ff00b8; font-weight: bold; }
         .tv-canvas-wrap {
             position: relative;
-            background: #05080c;
-            border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            background: #0b0e2a;
+            border: 2px solid var(--border-dim);
+            border-radius: 0;
             overflow: hidden;
             margin-bottom: 6px;
         }
@@ -684,17 +749,17 @@
             padding: 12px 10px;
             overflow: hidden;
             white-space: pre;
-            color: #00ff9d;
-            background: #05080c;
+            color: #5cff5c;
+            background: #0b0e2a;
             font: 12px/1.15 monospace;
             letter-spacing: 1px;
         }
         .tv-dotmatrix.tv-volume { min-height: 6em; color: #ffcf00; }
         .tv-vol-wrap {
             position: relative;
-            background: #05080c;
-            border: 1px solid var(--border-dim);
-            border-radius: 4px;
+            background: #0b0e2a;
+            border: 2px solid var(--border-dim);
+            border-radius: 0;
             overflow: hidden;
             margin-bottom: 10px;
         }
@@ -710,7 +775,7 @@
         }
         .tv-badge-live {
             color: var(--green);
-            background: rgba(0, 255, 157, 0.1);
+            background: rgba(92, 255, 92, 0.1);
             border: 1px solid var(--green);
             padding: 2px 6px;
             border-radius: 3px;
@@ -827,9 +892,9 @@
         .factor-pill {
             font-size: 9px;
             padding: 1px 5px;
-            background: rgba(0, 240, 255, 0.1);
+            background: rgba(255, 210, 63, 0.1);
             color: var(--cyan);
-            border: 1px solid rgba(0, 240, 255, 0.3);
+            border: 1px solid rgba(255, 210, 63, 0.3);
         }
         .tag-muted {
             background: rgba(255, 255, 255, 0.05);
@@ -972,8 +1037,8 @@
             padding: 0 4px;
             font-size: 9px;
         }
-        .cat-fin { background: rgba(0, 240, 255, 0.1); color: var(--cyan); }
-        .cat-soc { background: rgba(168, 85, 247, 0.1); color: var(--purple); }
+        .cat-fin { background: rgba(255, 210, 63, 0.1); color: var(--cyan); }
+        .cat-soc { background: rgba(167, 139, 250, 0.1); color: var(--purple); }
 
         .feed-time {
             color: var(--text-dim);
@@ -985,9 +1050,9 @@
             font-size: 9px;
             font-weight: bold;
         }
-        .badge-pos { background: rgba(0, 255, 157, 0.15); color: var(--green); }
-        .badge-neg { background: rgba(255, 51, 102, 0.15); color: var(--red); }
-        .badge-neu { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+        .badge-pos { background: rgba(92, 255, 92, 0.15); color: var(--green); }
+        .badge-neg { background: rgba(255, 92, 92, 0.15); color: var(--red); }
+        .badge-neu { background: rgba(138, 144, 188, 0.15); color: var(--text-muted); }
 
         .feed-title {
             font-size: 11px;
@@ -1004,8 +1069,9 @@
 
         /* 终端实时日志流 */
         .terminal-panel {
-            background: #04060a;
-            border: 1px solid var(--border-dim);
+            background: #0b0e2a;
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 8px 12px;
             font-size: 11px;
             color: var(--text-muted);
@@ -1027,10 +1093,11 @@
         .log-tag { color: var(--cyan); }
         .log-msg { color: var(--text-main); }
 
-        /* 底部品牌与声明 */
+        /* 底部品牌与声明（游戏结算画面：GAME.LOG + PRESS START） */
         .hud-footer {
             background: var(--bg-panel);
-            border: 1px solid var(--border-dim);
+            border: 2px solid var(--border-glow);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.9);
             padding: 8px 16px;
             display: flex;
             flex-wrap: wrap;
@@ -1039,6 +1106,17 @@
             gap: 8px;
             font-size: 11px;
             color: var(--text-muted);
+        }
+
+        .game-footer-line {
+            flex-basis: 100%;
+            border-bottom: 1px dashed var(--border-dim);
+            padding-bottom: 5px;
+            margin-bottom: 2px;
+            font-size: 10px;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
         }
 
         .footer-brand {
@@ -1074,11 +1152,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-13 17:39:56 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-14 02:44:55 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-13 09:39:56 UTC</span>
+                    <span id="utc-clock">2026-08-13 18:44:55 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -1089,16 +1167,26 @@
                 <button class="btn-action" onclick="toggleAudio()">🔊 音效: <span id="audio-state">开</span></button>
                 <button class="btn-action" onclick="toggleScanline()">📺 扫描线</button>
                 <button class="btn-action" onclick="toggleFullscreen()">⛶ 全屏大屏</button>
-                <button class="btn-action" style="background:var(--cyan);color:#000;" onclick="manualRefresh()">⚡ 实时刷新</button>
+                <button class="btn-action" style="background:#111111;color:#ffd23f;" onclick="manualRefresh()">⚡ 实时刷新</button>
             </div>
         </header>
+
+        <!-- 8-bit 游戏状态栏：♥HP 血条 + ★LV 等级 + SCORE 计分 + UTC -->
+        <div class="game-statusbar">
+            <span style="color:var(--red);">♥</span>
+            <span class="gs-hp-fill">█████████░</span>
+            <span class="gs-hp-num" id="gs-hp-num">94</span>/100
+            &nbsp;<span style="color:var(--cyan);">★</span> LV.<span id="gs-lv">05</span>
+            <span class="gs-score" id="gs-score">SCORE 001918</span>
+            <span class="gs-utc">✦ <span id="gs-utc-clock"></span> UTC</span>
+        </div>
 
         <!-- 数据状态横幅：实时行情 or 静态演示数据 -->
         <div class="data-status-banner" id="q-banner">
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-13 17:39:56 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 02:44:55 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -1124,6 +1212,15 @@
             <select id="report-template" class="report-select" title="分析框架">
                 <option value="analysis">多空因子分析</option>
                 <option value="equity" selected>🏛 机构级个股投研</option>
+                <option value="morning_note">🌅 晨会纪要</option>
+                <option value="initiate">📑 首次覆盖</option>
+                <option value="earnings_preview">🔭 财报前瞻 Skill</option>
+                <option value="earnings_update">📰 季报更新</option>
+                <option value="thesis">📌 论点记分卡</option>
+                <option value="catalysts">📅 催化剂日历</option>
+                <option value="sector">🗺 行业格局</option>
+                <option value="ideas">💡 选股扫描</option>
+                <option value="model_update">🧮 模型修订</option>
                 <option value="brief">简报</option>
                 <option value="fusion">技术×基本面</option>
                 <option value="earnings">财报前瞻</option>
@@ -1188,7 +1285,7 @@
                     <option value="wecom">💬 企微</option>
                     <option value="serverchan">🔔 Server酱</option>
                 </select>
-                <button class="report-btn" id="equity-btn" onclick="genEquityColumn()" style="border-color:var(--amber);color:var(--amber);background:rgba(255,184,0,0.12);">🏛 生成机构级研报</button>
+                <button class="report-btn" id="equity-btn" onclick="genEquityColumn()" style="border-color:var(--amber);color:var(--amber);background:rgba(248,184,0,0.12);">🏛 生成机构级研报</button>
             </div>
             <div id="equity-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--amber);">
                 <div class="report-head">
@@ -1197,6 +1294,62 @@
                     <span class="report-meta" id="equity-meta"></span>
                 </div>
                 <div class="report-body" id="equity-body"></div>
+            </div>
+        </div>
+
+        <!-- 🧩 Skills Hub：官方 + 社区最新技能 -->
+        <div class="section-header" id="skills-section">
+            <span>🧩 Skills Hub · 最新投研技能目录 (AGENT SKILLS)</span>
+            <span class="section-tag">rollingSirius v3 + Anthropic financial-services 官方 9 技能 · Apache-2.0 / MIT</span>
+        </div>
+        <div class="equity-column-panel" id="skills-hub-panel" style="border-color:rgba(167,139,250,0.4);box-shadow:0 0 18px rgba(167,139,250,0.12);">
+            <div class="equity-hero">
+                <div class="equity-hero-main">
+                    <div class="equity-kicker" style="color:var(--purple);">SKILLS UPDATED · 2026-08-13</div>
+                    <div class="equity-title">最新 Skills 已接入</div>
+                    <div class="equity-sub">按 Agent Skills 标准安装，大屏 / CLI / Actions 可直接跑</div>
+                    <div class="equity-links">
+                        <a class="equity-link" href="https://github.com/anthropics/financial-services" target="_blank" rel="noopener">📦 Anthropic equity-research 9 skills</a>
+                        <a class="equity-link" href="https://github.com/rollingSirius/equity-research-skill" target="_blank" rel="noopener">⬆ equity-research v3.0.0</a>
+                    </div>
+                </div>
+                <div class="equity-hero-side">
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-total">10</span><span class="equity-stat-l">已安装 Skills</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-anth">9</span><span class="equity-stat-l">Anthropic 官方</span></div>
+                    <div class="equity-stat"><span class="equity-stat-n" id="sk-status">—</span><span class="equity-stat-l">Hub 状态</span></div>
+                </div>
+            </div>
+            <div class="skill-grid" id="skill-grid"></div>
+            <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
+                <span class="selector-label">🧩 跑 Skill:</span>
+                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519" autocomplete="off" value="09988" />
+                <select id="skill-pick" class="report-select">
+                    <option value="morning_note">🌅 晨会纪要</option>
+                    <option value="initiate">📑 首次覆盖</option>
+                    <option value="earnings_preview">🔭 财报前瞻</option>
+                    <option value="earnings_update">📰 季报更新</option>
+                    <option value="model_update">🧮 模型修订</option>
+                    <option value="catalysts">📅 催化剂日历</option>
+                    <option value="thesis">📌 论点记分卡</option>
+                    <option value="sector">🗺 行业格局</option>
+                    <option value="ideas">💡 选股扫描</option>
+                    <option value="equity">🏛 九章深度</option>
+                </select>
+                <select id="skill-channel" class="report-select">
+                    <option value="console">📺 预览</option>
+                    <option value="pushplus">📲 PushPlus</option>
+                    <option value="wecom">💬 企微</option>
+                    <option value="serverchan">🔔 Server酱</option>
+                </select>
+                <button class="report-btn" id="skill-btn" onclick="genSkill()" style="border-color:var(--purple);color:var(--purple);background:rgba(167,139,250,0.12);">🧩 运行 Skill</button>
+            </div>
+            <div id="skill-panel" class="report-panel" style="display:none;margin-top:10px;border-color:var(--purple);">
+                <div class="report-head">
+                    <span class="report-title" id="skill-title" style="color:var(--purple);">🧩 Skill</span>
+                    <span class="report-status" id="skill-status" style="color:var(--purple);border-color:var(--purple);">待命</span>
+                    <span class="report-meta" id="skill-meta"></span>
+                </div>
+                <div class="report-body" id="skill-body"></div>
             </div>
         </div>
 
@@ -1250,9 +1403,9 @@
         </div>
         <div class="kpi-card highlight-red">
             <div class="kpi-label">现价 / 涨跌幅</div>
-            <div class="kpi-value" style="color:#ff3366;">
+            <div class="kpi-value" style="color:#ff5c5c;">
                 <span id="q-price">16.80</span> <span style="font-size:14px;" id="q-currency">HKD</span>
-                <span class="pill-badge" id="q-change" style="background:rgba(255,51,102,0.15);color:#ff3366;border-color:#ff3366;">
+                <span class="pill-badge" id="q-change" style="background:rgba(255,92,92,0.15);color:#ff5c5c;border-color:#ff5c5c;">
                     ▼ -1.2% (-0.20)
                 </span>
             </div>
@@ -1260,7 +1413,7 @@
         </div>
         <div class="kpi-card">
             <div class="kpi-label">24H 成交量 / 估值</div>
-            <div class="kpi-value amber-glow"><span id="q-vol">8.42M</span> <span style="font-size:13px;color:#94a3b8;">(PE <span id="q-pe">12.4x</span>)</span></div>
+            <div class="kpi-value amber-glow"><span id="q-vol">8.42M</span> <span style="font-size:13px;color:#8a90bc;">(PE <span id="q-pe">12.4x</span>)</span></div>
             <div class="kpi-foot" id="q-pe-foot">历史分位: 15% (深度价值区)</div>
         </div>
         <div class="kpi-card highlight-green">
@@ -1270,7 +1423,7 @@
         </div>
         <div class="kpi-card">
             <div class="kpi-label">综合研判 / 多头胜率</div>
-            <div class="kpi-value purple-glow">偏多 <span style="font-size:18px;color:#00ff9d;">68%</span></div>
+            <div class="kpi-value purple-glow">偏多 <span style="font-size:18px;color:#5cff5c;">68%</span></div>
             <div class="kpi-foot">全网舆情指数: 74/100</div>
         </div>
     </div>
@@ -1343,7 +1496,7 @@
 
             <!-- TradingView 官方高级图表组件面板 (可一键切换) -->
             <div id="tradeview-widget-panel" style="display:none;">
-                <div id="tradingview_widget_box" style="height:520px;width:100%;border-radius:4px;overflow:hidden;background:#05080c;border:1px solid var(--border-dim);">
+                <div id="tradingview_widget_box" style="height:520px;width:100%;border-radius:4px;overflow:hidden;background:#0b0e2a;border:1px solid var(--border-dim);">
                     <div id="tv_widget_embed_container" style="width:100%;height:100%;"></div>
                 </div>
                 <div class="tv-footer-bar" style="margin-top:8px;">
@@ -1756,8 +1909,14 @@
             <div class="log-line"><span class="log-ts">[SENTIMENT]</span> <span class="log-tag">CALC</span> <span class="log-msg">Momentum score computed at +8.4. Cross-source confidence verified at 99.4%.</span></div>
         </div>
 
-        <!-- 底部品牌与声明 -->
+        <!-- 底部品牌与声明（游戏结算画面） -->
         <footer class="hud-footer">
+            <div class="game-footer-line">
+                <span style="color:var(--cyan);">▞▚</span> GAME.LOG · 8-BIT RETRO WALLBOARD ·
+                <span style="color:var(--green);">♥ 94</span>/100 ·
+                <span style="color:var(--cyan);">★</span> LV.05
+                <span style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
+            </div>
             <div class="footer-brand">章鱼 AI 全景调研平台 · OCTOPUS AI LABS</div>
             <div class="footer-author">作者：章鱼 ai 调研团队</div>
             <div class="footer-disclaimer">声明：本大屏数据与分析结果仅供参考，不构成任何实质性投资建议。</div>
@@ -1809,7 +1968,26 @@
 
         function switchStock(code) {
             playBeep(920, 'triangle', 0.06);
+            refreshGameHud(code);
             window.location.href = '/?code=' + code;
+        }
+
+        // 8-bit 游戏 HUD：由标的代码稳定生成 SCORE / HP / LV（与后端 game 参数一致）
+        function refreshGameHud(code) {
+            const seed = (code || '09988').split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+            const score = (seed * 7) % 999999;
+            const hp = 60 + (seed % 40);
+            const filled = Math.round(hp / 10);
+            const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
+            const lv = 1 + (seed % 9);
+            const barEl = document.querySelector('.game-statusbar .gs-hp-fill');
+            const hpEl = document.getElementById('gs-hp-num');
+            const lvEl = document.getElementById('gs-lv');
+            const scEl = document.getElementById('gs-score');
+            if (barEl) barEl.textContent = bar;
+            if (hpEl) hpEl.textContent = hp;
+            if (lvEl) lvEl.textContent = String(lv).padStart(2, '0');
+            if (scEl) scEl.textContent = 'SCORE ' + String(score).padStart(6, '0');
         }
 
         function manualRefresh() {
@@ -1852,7 +2030,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: code, channel: channel, template: template,
-                        dry_run: channel === 'console', theme: 'monitor',
+                        dry_run: channel === 'console', theme: 'game',
                         mode: template === 'equity' ? 'full' : undefined
                     })
                 });
@@ -1981,8 +2159,107 @@
             if (eq) eq.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter') genEquityColumn();
             });
+            const sk = document.getElementById('skill-code-input');
+            if (sk) sk.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') genSkill();
+            });
             setTimeout(loadEquityTeaser, 600);
+            setTimeout(loadSkillsHub, 700);
         })();
+
+        async function loadSkillsHub() {
+            try {
+                const resp = await fetch('/api/skills');
+                const t = await resp.json();
+                const st = document.getElementById('sk-status');
+                if (!t || !t.ok) {
+                    if (st) st.textContent = '缺失';
+                    return;
+                }
+                if (st) st.textContent = '就绪';
+                const tot = document.getElementById('sk-total');
+                if (tot) tot.textContent = t.installed || t.total || '—';
+                const anth = document.getElementById('sk-anth');
+                if (anth) anth.textContent = (t.skills || []).filter(s => s.family === 'anthropic').length;
+                const grid = document.getElementById('skill-grid');
+                if (grid && t.skills) {
+                    grid.innerHTML = t.skills.map(s =>
+                        '<div class="skill-card" data-tmpl="' + (s.template || '') + '">'
+                        + '<div class="sk-id">' + (s.family || '') + ' · ' + (s.version || '') + '</div>'
+                        + '<div class="sk-title">' + (s.title || s.id) + '</div>'
+                        + '<div class="sk-meta">' + (s.installed ? '已安装' : '缺失') + ' · ' + (s.template || s.id) + '</div>'
+                        + '</div>'
+                    ).join('');
+                    grid.querySelectorAll('.skill-card').forEach(el => {
+                        el.addEventListener('click', () => pickSkill(el.getAttribute('data-tmpl') || ''));
+                    });
+                }
+                appendLog('SKILLS.HUB', 'OK', (t.installed || 0) + '/' + (t.total || 0) + ' skills');
+            } catch (e) {
+                appendLog('SKILLS.HUB', 'WARN', e.message);
+            }
+        }
+
+        function pickSkill(tmpl) {
+            const sel = document.getElementById('skill-pick');
+            if (sel && tmpl) sel.value = tmpl;
+            playBeep(980, 'triangle', 0.05);
+        }
+
+        async function genSkill() {
+            const input = document.getElementById('skill-code-input');
+            const code = (input ? input.value : '').trim() || STOCK_CODE;
+            const panel = document.getElementById('skill-panel');
+            const body = document.getElementById('skill-body');
+            const title = document.getElementById('skill-title');
+            const meta = document.getElementById('skill-meta');
+            const status = document.getElementById('skill-status');
+            const btn = document.getElementById('skill-btn');
+            const channel = (document.getElementById('skill-channel') || {}).value || 'console';
+            const skill = (document.getElementById('skill-pick') || {}).value || 'morning_note';
+            if (panel) panel.style.display = 'block';
+            if (title) title.textContent = '🧩 ' + skill + ' · ' + code;
+            if (meta) meta.textContent = skill + ' · ' + channel;
+            if (status) { status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在按最新 skill 生成…</div>';
+            if (btn) btn.disabled = true;
+            playBeep(760, 'triangle', 0.08);
+            appendLog('SKILL.GEN', 'QUERY', code + ' · ' + skill);
+            try {
+                const resp = await fetch('/api/skills', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code: code, skill: skill, channel: channel,
+                        dry_run: channel === 'console', theme: 'monitor'
+                    })
+                });
+                const r = await resp.json();
+                if (!r || !r.ok) {
+                    if (status) { status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }
+                    if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + ((r && r.error) || '未知错误') + '</div>';
+                    appendLog('SKILL.GEN', 'ERR', (r && r.error) || '未知错误');
+                    return;
+                }
+                if (meta) meta.textContent = (r.market_label || '') + ' ' + r.code
+                    + (r.name ? ' ' + r.name : '')
+                    + ' · ' + (r.skill || skill)
+                    + ' · ' + (r.gen_note || '');
+                if (status) {
+                    status.textContent = r.dry_run ? '预览完成' : '已推送';
+                    status.style.color = 'var(--green)';
+                    status.style.borderColor = 'var(--green)';
+                }
+                if (body) body.innerHTML = r.report_html || ('<pre style="white-space:pre-wrap;">' + (r.report_md || '') + '</pre>');
+                appendLog('SKILL.GEN', 'OK', r.code + ' · ' + (r.skill || skill));
+            } catch (e) {
+                if (status) { status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }
+                if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + e.message + '</div>';
+                appendLog('SKILL.GEN', 'ERR', e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
 
         // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
         const STOCK_CODE = '09988';
@@ -1996,7 +2273,7 @@
                     return;
                 }
                 const up = (q.change_pct || '').indexOf('-') !== 0;
-                const color = up ? '#00ff9d' : '#ff3366';
+                const color = up ? '#5cff5c' : '#ff5c5c';
                 const sign = up ? '▲' : '▼';
                 const el = (id) => document.getElementById(id);
                 if (el('q-price')) el('q-price').textContent = q.price;
@@ -2005,7 +2282,7 @@
                     el('q-change').textContent = sign + ' ' + q.change_pct + ' (' + q.change + ')';
                     el('q-change').style.color = color;
                     el('q-change').style.borderColor = color;
-                    el('q-change').style.background = up ? 'rgba(0,255,157,0.15)' : 'rgba(255,51,102,0.15)';
+                    el('q-change').style.background = up ? 'rgba(92,255,92,0.15)' : 'rgba(255,92,92,0.15)';
                     const wrap = el('q-price').parentElement;
                     if (wrap) wrap.style.color = color;
                 }
@@ -2189,7 +2466,7 @@
                 const pct = (diff / bar.open) * 100;
                 const sign = diff >= 0 ? '+' : '';
                 chgEl.textContent = sign + pct.toFixed(2) + '% (' + sign + diff.toFixed(2) + ')';
-                chgEl.style.color = diff >= 0 ? '#00ff9d' : '#ff3366';
+                chgEl.style.color = diff >= 0 ? '#5cff5c' : '#ff5c5c';
             }
         }
 
@@ -2272,7 +2549,7 @@
                         "theme": "dark",
                         "style": "1",
                         "locale": "zh_CN",
-                        "toolbar_bg": "#0a0f1d",
+                        "toolbar_bg": "#0e1130",
                         "enable_publishing": false,
                         "hide_side_toolbar": false,
                         "allow_symbol_change": true,
@@ -2308,8 +2585,10 @@
 
             const utcEl = document.getElementById('utc-clock');
             const cstEl = document.getElementById('cst-clock');
+            const gsUtcEl = document.getElementById('gs-utc-clock');
             if (utcEl) utcEl.textContent = utc;
             if (cstEl) cstEl.textContent = cst;
+            if (gsUtcEl) gsUtcEl.textContent = utc.replace(' UTC', '');
         }, 1000);
 
         // 模拟遥测日志滚动

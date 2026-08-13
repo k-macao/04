@@ -487,7 +487,7 @@ def selftest() -> int:
         check("equity_research_column 可导入", True)
         check("skill 可用", erc.skill_available())
         r_eq = run_report("09988", channel="console", ai_provider="rule",
-                          template="equity", dry_run=True, theme="monitor",
+                          template="equity", dry_run=True, theme="game",
                           collect_news=False, no_chart=True)
         check("equity 返回 ok/结构", r_eq.get("template") == "equity"
               or r_eq.get("column", {}).get("column_id") == "equity_research")
@@ -524,7 +524,7 @@ def selftest() -> int:
         check("catalog ≥10 且已安装", t.get("installed", 0) >= 10)
         check("morning_note 是 skill 模板", sh.is_skill_template("morning_note"))
         r_sk = run_report("09988", channel="console", ai_provider="rule",
-                          template="morning_note", dry_run=True, theme="monitor",
+                          template="morning_note", dry_run=True, theme="game",
                           collect_news=False, no_chart=True)
         check("morning_note 返回结构", r_sk.get("template") == "morning_note"
               and "晨会纪要" in (r_sk.get("report_md") or r_sk.get("skill_title") or ""))
