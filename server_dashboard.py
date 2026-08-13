@@ -12,7 +12,7 @@ server_dashboard.py — 服务器大屏监视风格（NOC Telemetry Wallboard）
    - 深度文字研判解读、重点摘要、预警风控文字。
    - 横排核心量化指标带（现价/高低/成交量/预测目标/可信度）。
    - 横排七大因子多空矩阵卡片流（基本面/政策/技术/资金/情绪/估值/量价动量）。
-   - 横排十四平台实时情报雷达流（财经7源 + 社媒7源）。
+   - 横排十七平台实时情报雷达流（财经7源 + 社媒10源）。
    - 横排关联板块与动态标签流（电商/云计算/AI/跨境出海等）。
    - 横排服务器集群节点状态流（HK-01 / SH-02 / SG-03 / AI-04 / DB-05）。
    - 横排预警与监控项清单。
@@ -530,7 +530,7 @@ def get_cluster_status() -> dict:
             },
             {
                 "id": "TS-Database-05",
-                "role": "十四源时序与情绪数据库",
+                "role": "十七源时序与情绪数据库",
                 "status": "SYNCED",
                 "ping": "1ms",
                 "load": "19%",
@@ -746,7 +746,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     </div>
     """ for a in data["alerts"])
 
-    # 6. 横排十四平台实时情报雷达流（财经7源 + 社媒7源）
+    # 6. 横排十七平台实时情报雷达流（财经7源 + 社媒10源）
     feeds_html = "".join(f"""
     <div class="feed-card">
         <div class="feed-top">
@@ -1765,7 +1765,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
         .alert-body {{ color: var(--text-muted); }}
 
-        /* 横排十四平台实时情报雷达流 (卡片横排流) */
+        /* 横排十七平台实时情报雷达流 (卡片横排流) */
         .feeds-matrix-horiz {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -2176,10 +2176,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             {alerts_html}
         </div>
 
-        <!-- 🌐 横排十四平台实时情报雷达流 (财经7源 + 社媒7源) -->
+        <!-- 🌐 横排十七平台实时情报雷达流 (财经7源 + 社媒10源) -->
         <div class="section-header">
-            <span>🌐 十四平台实时情报雷达流 (14-PLATFORM INTELLIGENCE RADAR)</span>
-            <span class="section-tag">财经7源 + 社媒7源 · 156H 窗口过滤 · 横排卡片流</span>
+            <span>🌐 十七平台实时情报雷达流 (17-PLATFORM INTELLIGENCE RADAR)</span>
+            <span class="section-tag">财经7源 + 社媒10源 · 156H 窗口过滤 · 横排卡片流</span>
         </div>
         <div class="feeds-matrix-horiz">
             {feeds_html}

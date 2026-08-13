@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 venv/
 *.log
+*.db
+source_check.db
 .DS_Store
 .merged/
 merged_*

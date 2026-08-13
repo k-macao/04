@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-stock_news_scan.py — 量价舆情动量 · 十四平台股票扫描
+stock_news_scan.py — 量价舆情动量 · 十七平台股票扫描
 
 输入股票代码（含名称/别名），在最近 156 小时（默认，可配）窗口内检索
-十四个平台，找出与该股票相关的新闻，以及它所属/被提及的有关板块。
+十七个平台，找出与该股票相关的新闻，以及它所属/被提及的有关板块。
 
-十四个平台 = 财经快讯 7 源 + 社媒热榜 7 源：
+十七个平台 = 财经快讯 7 源 + 社媒热榜 10 源（2026-08-13 由 7 源扩充）：
  - 财经 7：Google新闻(RSS检索) / 财联社电报 / 华尔街见闻快讯 /
    格隆汇事件 / 金十数据 / MKTNews快讯 / 雪球热门股票
- - 社媒 7：知乎热榜 / 微博实时热搜 / 抖音热搜 / 虎扑热搜 /
-   AI hot / 联合早报 / 香港01（复用 newsnow_sources.py）
+ - 社媒 10：知乎热榜 / 微博实时热搜 / 抖音热搜 / 虎扑热搜 /
+   AI hot / 联合早报 / 香港01 / 今日头条热榜 / 百度实时热点 / B站热榜
+   （复用 newsnow_sources.py，逐源健康度见 source_check_db.py 校验库）
 
 窗口规则：
  - 带可靠时间戳的条目：严格按 156h（默认）过滤；
@@ -44,7 +45,7 @@ SOCIAL_REALTIME = "实时"            # 热榜类条目的时效标记
 
 
 class ScanError(RuntimeError):
-    """十四平台扫描专用异常。"""
+    """十七平台扫描专用异常。"""
 
 
 # ---------------- 通用请求 ----------------
@@ -227,7 +228,7 @@ class ScanPack:
     sectors: list[str] = field(default_factory=list)
     dyn_sectors: list[tuple[str, int]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    platforms_total: int = 14
+    platforms_total: int = 17
     agg: dict = field(default_factory=dict)
 
 
@@ -568,7 +569,7 @@ def _needs(query: StockQuery) -> str:
 def scan_stock(code: str = "", name: str = "", hours: int = DEFAULT_WINDOW_HOURS,
                timeout: int = 12, extra_sectors: list[str] | None = None,
                now: datetime | None = None) -> ScanPack:
-    """输入股票代码/名称，扫描十四平台最近 hours 小时内的相关新闻与有关板块。
+    """输入股票代码/名称，扫描十七平台最近 hours 小时内的相关新闻与有关板块。
 
     任何单源失败只记录数据缺口、不中断；返回值可直接交给
     render_scan_md / scan_context 渲染。
@@ -609,7 +610,7 @@ def scan_stock(code: str = "", name: str = "", hours: int = DEFAULT_WINDOW_HOURS
         except Exception as e:                       # noqa: BLE001
             pack.errors.append(f"雪球 热门股票：{str(e)[:120]}")
 
-    # ---- 社媒热榜 7 源（复用 newsnow_sources，实时快照不过滤时间）----
+    # ---- 社媒热榜 10 源（复用 newsnow_sources，实时快照不过滤时间）----
     try:
         from newsnow_sources import FETCHERS as SOCIAL_FETCHERS, TARGET_SOURCES
         for key in TARGET_SOURCES:
@@ -627,7 +628,7 @@ def scan_stock(code: str = "", name: str = "", hours: int = DEFAULT_WINDOW_HOURS
             except Exception as e:                   # noqa: BLE001
                 pack.errors.append(f"{src_name}：{str(e)[:120]}")
     except ImportError as e:
-        pack.errors.append(f"社媒7源不可用（缺 newsnow_sources.py）：{e}")
+        pack.errors.append(f"社媒10源不可用（缺 newsnow_sources.py）：{e}")
 
     # ---- 动态板块 + 聚合 ----
     pack.dyn_sectors = extract_dyn_sectors(pack.direct, pack.sector_hits)
@@ -671,14 +672,14 @@ def _related_sector_lines(pack: ScanPack) -> list[str]:
 
 
 def render_scan_md(pack: ScanPack) -> str:
-    """十四平台扫描的 Markdown 附录（直接相关 + 板块相关 + 有关板块 + 缺口）。"""
+    """十七平台扫描的 Markdown 附录（直接相关 + 板块相关 + 有关板块 + 缺口）。"""
     a = pack.agg
     subject = f"HK{pack.code} {pack.name}".strip() or "标的"
     lines = [
         "---",
-        f"🛰 **{subject} · {pack.hours}h 十四平台扫描**"
+        f"🛰 **{subject} · {pack.hours}h 十七平台扫描**"
         f"（直接 {a.get('n_direct', 0)} 条 / 板块相关 {a.get('n_sector', 0)} 条，"
-        f"命中 {a.get('platforms_hit', 0)}/{a.get('platforms_total', 14)} 平台）",
+        f"命中 {a.get('platforms_hit', 0)}/{a.get('platforms_total', 17)} 平台）",
         "",
         f"- **情绪概览**：利好 {a.get('pos', 0)} / 利空 {a.get('neg', 0)}"
         f" / 中性 {a.get('neu', 0)}，动量均值 {a.get('mean', 0):+.2f}",
@@ -717,10 +718,10 @@ def scan_context(pack: ScanPack) -> str:
     """给 AI 的紧凑上下文（本地已分组打标，AI 只做综合）。"""
     a = pack.agg
     lines = [
-        f"【量价舆情动量·十四平台扫描：{pack.code or '—'}/{pack.name or '—'}，"
+        f"【量价舆情动量·十七平台扫描：{pack.code or '—'}/{pack.name or '—'}，"
         f"窗口 {pack.hours}h】",
         f"直接相关 {a.get('n_direct', 0)} 条 / 板块相关 {a.get('n_sector', 0)} 条，"
-        f"命中 {a.get('platforms_hit', 0)}/{a.get('platforms_total', 14)} 平台；"
+        f"命中 {a.get('platforms_hit', 0)}/{a.get('platforms_total', 17)} 平台；"
         f"情绪 利好{a.get('pos', 0)}/利空{a.get('neg', 0)}/中性{a.get('neu', 0)}，"
         f"动量均值 {a.get('mean', 0):+.2f}",
     ]
@@ -864,7 +865,7 @@ def demo_scan_pack(now: datetime | None = None) -> ScanPack:
         "mean": round(sum(i.score for i in all_items) / len(all_items), 2)
         if all_items else 0.0,
         "platforms_hit": len(set(pack.direct) | set(pack.sector_hits)),
-        "platforms_total": 14,
+        "platforms_total": 17,
     }
     return pack
 
@@ -879,7 +880,7 @@ def selftest_scan() -> int:
         if not cond:
             fails += 1
 
-    print("🛰 十四平台股票扫描（离线自检，不触网）")
+    print("🛰 十七平台股票扫描（离线自检，不触网）")
     now = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
     ts10h = int(now.timestamp() - 10 * 3600)
     ts160h = int(now.timestamp() - 160 * 3600)
@@ -958,9 +959,9 @@ def selftest_scan() -> int:
     a = pack.agg
     check("聚合：直接相关 ≥5 条", a["n_direct"] >= 5)
     check("聚合：板块相关 ≥2 条", a["n_sector"] >= 2)
-    check("聚合：命中平台 3<n≤14", 3 < a["platforms_hit"] <= 14)
+    check("聚合：命中平台 3<n≤17", 3 < a["platforms_hit"] <= 17)
     md = render_scan_md(pack)
-    check("渲染：标题含十四平台/156h", "十四平台扫描" in md and "156h" in md)
+    check("渲染：标题含十七平台/156h", "十七平台扫描" in md and "156h" in md)
     check("渲染：含直接分组与有关板块",
           "直接相关新闻" in md and "有关板块" in md)
     check("渲染：动态板块提取「电商板块」",
@@ -969,7 +970,7 @@ def selftest_scan() -> int:
     ctx = scan_context(pack)
     check("AI 上下文含代码+板块行", "09988" in ctx and "有关板块" in ctx)
 
-    print(f"\n{'✅ 十四平台扫描自检通过' if fails == 0 else f'❌ {fails} 项失败'}")
+    print(f"\n{'✅ 十七平台扫描自检通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
 
 
@@ -977,7 +978,7 @@ def selftest_scan() -> int:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="量价舆情动量·十四平台股票扫描：输入股票代码，"
+        description="量价舆情动量·十七平台股票扫描：输入股票代码，"
                     "检索最近 156 小时内的相关新闻与有关板块")
     p.add_argument("--code", default="", help="股票代码（如 09988 / 9988.HK / 600519）")
     p.add_argument("--name", default="", help="股票名称（留空时查内置档案补全）")

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-newsnow_sources.py — 移植自 ourongxing/newsnow 的 7 个热榜源
-已接入源（按用户要求）：
+newsnow_sources.py — 移植自 ourongxing/newsnow 的 10 个热榜源
+已接入源（前 7 个按用户指定，2026-08-13 新增 3 个）：
  - 知乎热榜 (zhihu)
  - 抖音热搜 (douyin)
  - 微博实时热搜 (weibo)
@@ -10,8 +10,14 @@ newsnow_sources.py — 移植自 ourongxing/newsnow 的 7 个热榜源
  - AI hot (aihot / aihot.virxact.com)
  - 联合早报 (zaobao / 早晨报 realtime)
  - 香港01 (hk01 / 自实现抓取)
+ - 今日头条热榜 (toutiao / hot-event API，cookie 预热)      [新增]
+ - 百度实时热点 (baidu / top.baidu.com board API)           [新增]
+ - B站热榜 (bilibili / 全站热门 popular API)                 [新增]
 
 所有代码仅依赖标准库，兼容 pushplus_deepseek.py 的离线自检与像素风格渲染。
+每个源遵循同一约定：SAMPLE（离线样本）→ parse_xxx（解析器）→ fetch_xxx（抓取器），
+并在下方 SAMPLES / FETCHERS 注册；source_check_db.py 据此做离线/在线校验入库。
+配置说明见 DATA_SOURCES.md。
 """
 
 from __future__ import annotations
@@ -414,6 +420,169 @@ def fetch_hk01(timeout: int = 15) -> List[HotItem]:
     raise RuntimeError(f"香港01 获取失败：{last_err}")
 
 
+# ---------------- 8. 今日头条热榜 (toutiao) ----------------
+TOUTIAO_HOT_URL = "https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc"
+TOUTIAO_HOME_URL = "https://www.toutiao.com/"
+
+TOUTIAO_SAMPLE = json.dumps({
+    "data": [
+        {"ClusterId": 7485100000000000001, "Title": "阿里巴巴宣布组织架构调整",
+         "HotValue": "12345678",
+         "Url": "https://www.toutiao.com/trending/7485100000000000001/"},
+        {"ClusterId": 7485100000000000002, "Title": "港股今日大涨电商板块领涨",
+         "HotValue": "9876543", "Url": ""}
+    ]
+})
+
+def parse_toutiao(text: str) -> List[HotItem]:
+    data = json.loads(text)
+    lst = data.get("data", [])
+    if isinstance(lst, dict):                       # 兼容 {"data": {"list": [...]}}
+        lst = lst.get("list", [])
+    items = []
+    for it in lst:
+        if not isinstance(it, dict):
+            continue
+        title = str(it.get("Title") or it.get("title") or "").strip()
+        if not title:
+            continue
+        cid = str(it.get("ClusterId") or it.get("cluster_id") or "").strip()
+        url = str(it.get("Url") or it.get("url") or "").strip()
+        if not url and cid:
+            url = f"https://www.toutiao.com/trending/{cid}/"
+        hot = str(it.get("HotValue") or it.get("hot_value") or "").strip()
+        items.append(HotItem(source="今日头条热榜", id=cid or title, title=title,
+                             url=url, extra_info=hot))
+    return items
+
+def fetch_toutiao(timeout: int = 15) -> List[HotItem]:
+    # 与抖音同款策略：先预热 cookie 再请求 JSON 接口，降低空响应概率
+    import http.cookiejar
+    cj = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+    opener.addheaders = [("User-Agent", "Mozilla/5.0 (newsnow-py/1.0)")]
+    try:
+        opener.open(TOUTIAO_HOME_URL, timeout=timeout).read()
+        cookies = "; ".join([f"{c.name}={c.value}" for c in cj])
+    except Exception:
+        cookies = ""
+    headers = {"cookie": cookies, "Referer": TOUTIAO_HOME_URL} if cookies \
+        else {"Referer": TOUTIAO_HOME_URL}
+    status, body, _ = http_request(TOUTIAO_HOT_URL, headers=headers, timeout=timeout)
+    if status != 200:
+        raise RuntimeError(f"今日头条 HTTP {status}")
+    items = parse_toutiao(body)
+    if not items:
+        raise RuntimeError("今日头条 解析为空（接口结构可能变更）")
+    return items
+
+
+# ---------------- 9. 百度实时热点 (baidu) ----------------
+BAIDU_URL = "https://top.baidu.com/api/board?platform=wise&tab=realtime"
+
+BAIDU_SAMPLE = json.dumps({
+    "data": {
+        "cards": [
+            {"component": "hotList", "content": [
+                {"word": "阿里巴巴港股创新高", "desc": "港股大涨",
+                 "hotScore": "1234567",
+                 "rawUrl": "https://www.baidu.com/s?wd=阿里巴巴港股创新高",
+                 "query": "阿里巴巴港股创新高"},
+                {"word": "AI大模型新品发布", "desc": "",
+                 "hotScore": "987654",
+                 "rawUrl": "https://www.baidu.com/s?wd=AI大模型新品发布"}
+            ]}
+        ]
+    }
+})
+
+def parse_baidu(text: str) -> List[HotItem]:
+    data = json.loads(text)
+    cards = data.get("data", {}).get("cards", [])
+    items = []
+    for card in cards:
+        for it in card.get("content", []) or []:
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("word") or it.get("query") or "").strip()
+            if not title:
+                continue
+            url = str(it.get("rawUrl") or it.get("url") or it.get("appUrl") or "").strip()
+            if not url:
+                url = "https://www.baidu.com/s?wd=" + urllib.parse.quote(title)
+            hot = str(it.get("hotScore") or "").strip()
+            extra = f"{hot}热度" if hot else ""
+            desc = str(it.get("desc") or "").strip()
+            if desc:
+                extra = f"{extra} {desc}".strip()
+            items.append(HotItem(source="百度实时热点", id=title, title=title,
+                                 url=url, extra_info=extra))
+    return items
+
+def fetch_baidu(timeout: int = 15) -> List[HotItem]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) newsnow-py/1.0",
+        "Referer": "https://top.baidu.com/board?tab=realtime",
+    }
+    status, body, _ = http_request(BAIDU_URL, headers=headers, timeout=timeout)
+    if status != 200:
+        raise RuntimeError(f"百度 HTTP {status}")
+    items = parse_baidu(body)
+    if not items:
+        raise RuntimeError("百度 解析为空（接口结构可能变更）")
+    return items
+
+
+# ---------------- 10. B站热榜 (bilibili) ----------------
+BILIBILI_URL = ("https://api.bilibili.com/x/web-interface/popular"
+                "?ps=20&pn=1")
+
+BILIBILI_SAMPLE = json.dumps({
+    "code": 0,
+    "data": {"list": [
+        {"bvid": "BV1xx411c7mD", "title": "3分钟看懂阿里巴巴Q3财报",
+         "tname": "财经", "stat": {"view": 123456},
+         "short_link_v2": "https://b23.tv/abcd1"},
+        {"bvid": "BV2yy411c7mE", "title": "AI大模型评测：电商客服实测",
+         "tname": "科技", "stat": {"view": 98765}}
+    ]}
+})
+
+def parse_bilibili(text: str) -> List[HotItem]:
+    data = json.loads(text)
+    if data.get("code") not in (0, None):
+        raise RuntimeError(f"B站 API code={data.get('code')}")
+    lst = data.get("data", {}).get("list", [])
+    items = []
+    for it in lst:
+        if not isinstance(it, dict):
+            continue
+        title = str(it.get("title") or "").strip()
+        bvid = str(it.get("bvid") or "").strip()
+        if not title or not bvid:
+            continue
+        url = f"https://www.bilibili.com/video/{bvid}"
+        tname = str(it.get("tname") or "").strip()
+        view = (it.get("stat") or {}).get("view")
+        extra = f"{tname} · 播放{view}" if view is not None else tname
+        items.append(HotItem(source="B站热榜", id=bvid, title=title,
+                             url=url, extra_info=extra))
+    return items
+
+def fetch_bilibili(timeout: int = 15) -> List[HotItem]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) newsnow-py/1.0",
+        "Referer": "https://www.bilibili.com/",
+    }
+    status, body, _ = http_request(BILIBILI_URL, headers=headers, timeout=timeout)
+    if status != 200:
+        raise RuntimeError(f"B站 HTTP {status}")
+    items = parse_bilibili(body)
+    if not items:
+        raise RuntimeError("B站 解析为空（接口结构可能变更）")
+    return items
+
+
 # ---------------- 聚合 ----------------
 
 FETCHERS = {
@@ -424,10 +593,28 @@ FETCHERS = {
     "aihot": ("AI hot", fetch_aihot),
     "zaobao": ("联合早报", fetch_zaobao),
     "hk01": ("香港01", fetch_hk01),
+    "toutiao": ("今日头条热榜", fetch_toutiao),
+    "baidu": ("百度实时热点", fetch_baidu),
+    "bilibili": ("B站热榜", fetch_bilibili),
 }
 
-# 用户指定的 7 个
-TARGET_SOURCES = ["zhihu", "douyin", "weibo", "hupu", "aihot", "zaobao", "hk01"]
+# 前 7 个为用户指定；2026-08-13 追加 3 个（今日头条/百度/B站）
+TARGET_SOURCES = ["zhihu", "douyin", "weibo", "hupu", "aihot", "zaobao", "hk01",
+                  "toutiao", "baidu", "bilibili"]
+
+# 离线校验样本注册表：source_check_db.py 离线模式逐源解析验证
+SAMPLES = {
+    "zhihu": (parse_zhihu, ZHIHU_SAMPLE),
+    "douyin": (parse_douyin, DOUYIN_SAMPLE),
+    "weibo": (parse_weibo, WEIBO_SAMPLE),
+    "hupu": (parse_hupu, HUPU_SAMPLE),
+    "aihot": (parse_aihot_json, AIHOT_SAMPLE_JSON),
+    "zaobao": (parse_zaobao, ZAOBAO_SAMPLE),
+    "hk01": (parse_hk01_html, HK01_SAMPLE_HTML),
+    "toutiao": (parse_toutiao, TOUTIAO_SAMPLE),
+    "baidu": (parse_baidu, BAIDU_SAMPLE),
+    "bilibili": (parse_bilibili, BILIBILI_SAMPLE),
+}
 
 @dataclass
 class NewsNowPack:
@@ -488,7 +675,7 @@ def render_newsnow_rule(topic: str, pack: NewsNowPack) -> str:
         lines.append("| — | — | 暂无数据 | — |")
     lines += ["",
               f"- **总计** {pack.agg.get('total',0)} 条 / {pack.agg.get('sources_ok',0)} 源",
-              "> 数据来源：ourongxing/newsnow 移植（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01）",
+              "> 数据来源：ourongxing/newsnow 移植（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01/今日头条/百度/B站）",
               "> ⚠️ 非投资建议，仅供参考。"]
     if pack.errors:
         lines.append("")
@@ -521,7 +708,7 @@ def selftest_newsnow() -> int:
         if not cond:
             fails += 1
 
-    print("④ NewsNow 7源解析器（离线样本）")
+    print("④ NewsNow 10源解析器（离线样本）")
     check("知乎解析 2条", len(parse_zhihu(ZHIHU_SAMPLE)) == 2 and "阿里巴巴" in parse_zhihu(ZHIHU_SAMPLE)[0].title)
     check("抖音解析 2条", len(parse_douyin(DOUYIN_SAMPLE)) == 2)
     check("微博解析 2条 新/热标识", len(parse_weibo(WEIBO_SAMPLE)) == 2 and parse_weibo(WEIBO_SAMPLE)[0].extra_info == "热")
@@ -530,13 +717,25 @@ def selftest_newsnow() -> int:
     check("AI hot RSS 1条", len(parse_aihot_rss(AIHOT_SAMPLE_RSS)) == 1)
     check("联合早报解析 2条", len(parse_zaobao(ZAOBAO_SAMPLE)) == 2)
     check("香港01 HTML 解析 2条", len(parse_hk01_html(HK01_SAMPLE_HTML)) == 2)
+    check("今日头条解析 2条 热度/URL补齐",
+          len(parse_toutiao(TOUTIAO_SAMPLE)) == 2
+          and "12345678" in parse_toutiao(TOUTIAO_SAMPLE)[0].extra_info
+          and parse_toutiao(TOUTIAO_SAMPLE)[1].url.startswith("https://www.toutiao.com/trending/"))
+    check("百度解析 2条 带热度",
+          len(parse_baidu(BAIDU_SAMPLE)) == 2
+          and "1234567" in parse_baidu(BAIDU_SAMPLE)[0].extra_info)
+    check("B站解析 2条 视频URL",
+          len(parse_bilibili(BILIBILI_SAMPLE)) == 2
+          and "bilibili.com/video/BV" in parse_bilibili(BILIBILI_SAMPLE)[0].url)
+    check("SAMPLES 注册表覆盖全部 10 源",
+          len(SAMPLES) == 10 and set(SAMPLES) == set(TARGET_SOURCES))
 
     pack = NewsNowPack()
     pack.items = {
         "知乎热榜": parse_zhihu(ZHIHU_SAMPLE),
         "抖音热搜": parse_douyin(DOUYIN_SAMPLE),
     }
-    pack.agg = {"total": 4, "sources_ok": 2, "sources_total": 7}
+    pack.agg = {"total": 4, "sources_ok": 2, "sources_total": 10}
     md = render_newsnow_rule("阿里巴巴", pack)
     check("newsnow rule 渲染含表格", "| 来源 |" in md and "知乎热榜" in md)
     ctx = newsnow_context(pack)

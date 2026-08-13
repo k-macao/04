@@ -146,7 +146,7 @@ def quote_to_pp_quotes(quote: dict | None) -> list:
 
 def collect_latest_pack(topic: str, raw_code: str, hours: int,
                         timeout: int = 12) -> object | None:
-    """采集量价舆情 + 十四平台扫描。单源失败只记缺口，绝不中断研报。"""
+    """采集量价舆情 + 十七平台扫描。单源失败只记缺口，绝不中断研报。"""
     try:
         return pp.collect_sentiment(topic, raw_code, hours, timeout)
     except Exception as e:  # noqa: BLE001
@@ -165,7 +165,7 @@ def wrap_with_latest_features(
     sent_pack=None,
     persist_state: bool = False,
 ) -> tuple[str, dict]:
-    """把「最新功能」装进推送正文：新鲜度看板 + 字符模拟图 + 十四平台附录。"""
+    """把「最新功能」装进推送正文：新鲜度看板 + 字符模拟图 + 十七平台附录。"""
     quotes = quote_to_pp_quotes(quote)
     qb = pp._quote_brief(quotes)
     item_keys = pp.gather_item_keys(sent_pack)
@@ -185,7 +185,7 @@ def wrap_with_latest_features(
             sa = scan.agg
             extra_points["scan_hit"] = sa.get("platforms_hit")
             anchor_parts.append(
-                f"十四平台命中 {sa.get('platforms_hit', 0)}"
+                f"十七平台命中 {sa.get('platforms_hit', 0)}"
                 f"/{sa.get('platforms_total', 14)}")
     anchor_line = (" · ".join(anchor_parts)
                    or "无本地预聚合数据（本模板未采集窗口样本）")
@@ -254,7 +254,7 @@ def run_report(raw_code: str, *, channel: str = "console",
                collect_news: bool = True) -> dict:
     """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。
 
-    一律附带最新功能：🧭 数据新鲜度看板、📊 字符模拟图、🛰 十四平台扫描。
+    一律附带最新功能：🧭 数据新鲜度看板、📊 字符模拟图、🛰 十七平台扫描。
     template=equity 时走独立栏目 equity_research_column（equity-research-skill
     九章深度 + dcf.py 可复算估值），同样注入上述最新能力。
     """
@@ -318,7 +318,7 @@ def run_report(raw_code: str, *, channel: str = "console",
                      f"以下研报基于模型既有知识推断，价格相关结论请谨慎参考。")
         quote_error = "行情数据源失败，研报基于模型知识推断"
 
-    # ---- ①b 最新功能：量价舆情动量 + 十四平台扫描 ----
+    # ---- ①b 最新功能：量价舆情动量 + 十七平台扫描 ----
     sent_pack = None
     if collect_news and template in ("analysis", "sentiment", "scan", "feedscan", "newsnow"):
         sent_pack = collect_latest_pack(
@@ -354,7 +354,7 @@ def run_report(raw_code: str, *, channel: str = "console",
                 pp.TEMPLATE_MAX_TOKENS.get(template, 3000), push_timeout)
             gen_note = f"{provider}（{model}）"
 
-    # ---- ③ 组装研报正文（新鲜度 + 字符图 + 研报 + 十四平台 + 品牌头尾）----
+    # ---- ③ 组装研报正文（新鲜度 + 字符图 + 研报 + 十七平台 + 品牌头尾）----
     body = report_md.rstrip()
     if market_md:
         body += "\n\n" + market_md
@@ -500,7 +500,7 @@ def selftest() -> int:
     except Exception as e:  # noqa: BLE001
         check(f"equity 栏目异常: {e}", False)
 
-    print("⑤c 最新功能包装（新鲜度看板 + 字符图 + 十四平台附录）")
+    print("⑤c 最新功能包装（新鲜度看板 + 字符图 + 十七平台附录）")
     wrapped, meta = wrap_with_latest_features(
         "**演示正文**\n\n- 综合判断：中性",
         raw_code="09988", template="analysis", topic="HK09988 阿里巴巴",
@@ -585,7 +585,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
     p.add_argument("--no-chart", action="store_true", dest="no_chart")
     p.add_argument("--hours", type=int, default=48,
-                   help="量价舆情/十四平台扫描数据窗口（24/48/72/156）")
+                   help="量价舆情/十七平台扫描数据窗口（24/48/72/156）")
     p.add_argument("--timeout", type=int, default=30)
     p.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     p.add_argument("--selftest", action="store_true", help="离线自检")

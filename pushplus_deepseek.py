@@ -48,7 +48,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from statistics import median
-# newsnow 7源（用户指定）
+# newsnow 10源（前 7 源用户指定，2026-08-13 追加 3 源：头条/百度/B站）
 try:
     import newsnow_sources as newsnow_mod
 except Exception:
@@ -74,7 +74,7 @@ HK_TZ = timezone(timedelta(hours=8), "HKT")
 DEFAULT_TOPIC = "阿里巴巴(Alibaba) 每日简报"
 CST = timezone(timedelta(hours=8), "CST")
 
-VERSION = "2.17-char-2026-08-07"  # 脚本版本指纹：每次交付递增，日志首行可见
+VERSION = "2.18-sources-2026-08-13"  # 脚本版本指纹：每次交付递增，日志首行可见
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
@@ -94,7 +94,7 @@ TEMPLATE_TITLES = {
     "plan": "交易计划·进出场风控", "earnings": "财报前瞻",
     "portfolio": "组合配置优化", "review": "交易复盘改进", "regime": "市场形态识别",
     "sentiment": "量价舆情动量·48h", "feedscan": "全市场快讯情绪扫描",
-    "newsnow": "NewsNow热榜聚合·7源",
+    "newsnow": "NewsNow热榜聚合·10源",
     "equity": "机构级个股投研",
     "initiate": "首次覆盖·公司研究",
     "earnings_preview": "财报前瞻·Skill",
@@ -983,7 +983,7 @@ class SentPack:
     errors: list[str] = field(default_factory=list)
     momentum: dict = field(default_factory=dict)
     agg: dict = field(default_factory=dict)
-    scan: object | None = None   # 十四平台股票扫描结果（stock_news_scan.ScanPack）
+    scan: object | None = None   # 十七平台股票扫描结果（stock_news_scan.ScanPack）
 
 
 def _src_agg(items: list[SentItem]) -> dict:
@@ -1033,14 +1033,14 @@ def collect_sentiment(topic: str, code: str | None, hours: int,
         except Exception as e:  # noqa: BLE001
             pack.momentum = {"ok": False, "score": 0.0,
                              "label": "获取失败", "detail": str(e)[:100]}
-    # ---------- 十四平台扫描：输入股票代码 → 窗口内相关新闻 + 有关板块 ----------
+    # ---------- 十七平台扫描：输入股票代码 → 窗口内相关新闻 + 有关板块 ----------
     if code or q_topic:
         try:
             from stock_news_scan import scan_stock
             pack.scan = scan_stock(code or "", q_topic, hours=hours,
                                    timeout=min(timeout, 12))
         except Exception as e:  # noqa: BLE001 —— 扫描失败仅记数据缺口
-            pack.errors.append(f"十四平台扫描：{str(e)[:120]}")
+            pack.errors.append(f"十七平台扫描：{str(e)[:120]}")
     a = {"news": _src_agg(pack.items.get("Google新闻", [])),
          "social": _src_agg([i for k in ("YouTube·investtalk",)
                              for i in pack.items.get(k, [])])}
@@ -1102,7 +1102,7 @@ def sentiment_context(pack: SentPack) -> str:
     if getattr(pack, "scan", None):
         try:
             from stock_news_scan import scan_context
-            ctx.append("▼ 十四平台扫描：")
+            ctx.append("▼ 十七平台扫描：")
             ctx += ["  " + line for line in scan_context(pack.scan).splitlines()]
         except Exception:  # noqa: BLE001
             pass
@@ -1195,7 +1195,7 @@ def build_messages(template: str, topic: str, context: str,
             + RULES_TAIL)
     elif template == "newsnow":
         user = (
-            f"基于以下 NewsNow 热榜聚合数据（7源：知乎热榜/抖音热搜/微博实时热搜/虎扑热搜/AI hot/联合早报/香港01），"
+            f"基于以下 NewsNow 热榜聚合数据（10源：知乎热榜/抖音热搜/微博实时热搜/虎扑热搜/AI hot/联合早报/香港01/今日头条热榜/百度实时热点/B站热榜），"
             f"分析全网热点与对标的「{topic}」的潜在关联。\n\n{context}\n\n"
             "严格按此格式输出：\n\n"
             "## 热榜聚合分析\n\n"
@@ -3545,7 +3545,7 @@ def selftest() -> int:
           "| 量价舆情动量（48h） | 偏多 | 69% |" in
           gen_by_rule("阿里巴巴", "analysis", sent_pack=sample_sent))
 
-    log("③i NewsNow 7源接入（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01）")
+    log("③i NewsNow 10源接入（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01/今日头条/百度/B站）")
     if newsnow_mod is not None:
         try:
             # 离线样本自检
@@ -3555,16 +3555,18 @@ def selftest() -> int:
             check("NewsNow 离线解析", ret == 0)
             # 集成：collect 结构
             from newsnow_sources import collect_newsnow, render_newsnow_rule, TARGET_SOURCES
-            check("NewsNow TARGET 7源", len(TARGET_SOURCES) == 7 and "zhihu" in TARGET_SOURCES and "hk01" in TARGET_SOURCES)
+            check("NewsNow TARGET 10源", len(TARGET_SOURCES) == 10 and "zhihu" in TARGET_SOURCES
+                  and "hk01" in TARGET_SOURCES and "toutiao" in TARGET_SOURCES
+                  and "baidu" in TARGET_SOURCES and "bilibili" in TARGET_SOURCES)
             # 模拟 pack 渲染走 pixel 主题
             from newsnow_sources import NewsNowPack, HotItem
             demo_pack = NewsNowPack(items={
                 "知乎热榜": [HotItem(source="知乎热榜", id="1", title="阿里巴巴Q3财报超预期", url="https://zhihu.com/q/1", extra_info="100万热度")],
                 "微博实时热搜": [HotItem(source="微博实时热搜", id="a", title="+2.5% 阿里巴巴大涨", url="https://weibo.com/a", extra_info="热")],
                 "香港01": [HotItem(source="香港01", id="b", title="港股电商板块", url="https://hk01.com/b", extra_info="")],
-            }, agg={"total": 3, "sources_ok": 3, "sources_total": 7})
+            }, agg={"total": 3, "sources_ok": 3, "sources_total": 10})
             md_demo = render_newsnow_rule("阿里巴巴", demo_pack)
-            check("NewsNow 渲染含7源名", "知乎热榜" in md_demo and "香港01" in md_demo)
+            check("NewsNow 渲染含源名", "知乎热榜" in md_demo and "香港01" in md_demo)
             # pixel 主题渲染涨跌突出
             html_demo = themed_html("测试NewsNow", md_demo, "pixel")
             check("NewsNow+pixel 涨跌突出", "▲" in html_demo or "热" in html_demo or "11px" in html_demo)
@@ -3577,23 +3579,50 @@ def selftest() -> int:
     else:
         check("NewsNow 模块缺失（应存在 newsnow_sources.py）", False)
 
-    log("③j 量价舆情动量·十四平台扫描（156h 窗口 + 有关板块）")
+    log("③j 量价舆情动量·十七平台扫描（156h 窗口 + 有关板块）")
     try:
         from stock_news_scan import selftest_scan, demo_scan_pack, \
             DEFAULT_WINDOW_HOURS
         check("默认窗口为 156h", DEFAULT_WINDOW_HOURS == 156)
-        check("十四平台扫描自检通过", selftest_scan() == 0)
+        check("十七平台扫描自检通过", selftest_scan() == 0)
         sp = SentPack(hours=156, scan=demo_scan_pack())
         md = render_sentiment_appendix(sp)
-        check("情绪附录并入十四平台扫描",
-              "十四平台扫描" in md and "有关板块" in md)
+        check("情绪附录并入十七平台扫描",
+              "十七平台扫描" in md and "有关板块" in md)
         ctx = sentiment_context(sp)
-        check("AI 上下文并入十四平台扫描", "十四平台扫描" in ctx)
-        check("扫描聚合含平台计数", sp.scan.agg.get("platforms_total") == 14)
+        check("AI 上下文并入十七平台扫描", "十七平台扫描" in ctx)
+        check("扫描聚合含平台计数", sp.scan.agg.get("platforms_total") == 17)
     except Exception as e:  # noqa: BLE001
-        check(f"十四平台扫描集成异常: {e}", False)
+        check(f"十七平台扫描集成异常: {e}", False)
 
-    log("③k 标题：股票代码 + 中文名")
+    log("③k 数据源检查验证数据库（SQLite 落库）")
+    try:
+        import tempfile
+        from source_check_db import connect, run_checks, latest_report, \
+            render_report_md, source_history, validate_items
+        with tempfile.TemporaryDirectory() as td:
+            con = connect(os.path.join(td, "ck.db"))
+            run_id, results = run_checks(con, live=False)
+            check("校验库覆盖社媒热榜 10 源", len(results) == 10)
+            check("离线样本全部 ok 无 fail", run_id > 0
+                  and all(r.status == "ok" for r in results))
+            rep = latest_report(con)
+            check("运行台账落库汇总正确",
+                  bool(rep["run"]) and rep["run"]["total"] == 10
+                  and rep["run"]["fail"] == 0)
+            md_ck = render_report_md(rep)
+            check("校验报告含新增三源",
+                  all(x in md_ck for x in ("今日头条热榜", "百度实时热点", "B站热榜")))
+            check("单源历史按键可查",
+                  source_history(con, "toutiao")[0]["source_key"] == "toutiao")
+            con.close()
+        check("违例规则：空结果被拦截", validate_items([]) != [])
+    except ImportError:
+        check("检查验证数据库模块缺失（应存在 source_check_db.py）", False)
+    except Exception as e:  # noqa: BLE001
+        check(f"检查验证数据库集成异常: {e}", False)
+
+    log("③l 标题：股票代码 + 中文名")
     cn_q = [Quote(source="Yahoo财经", ok=True, name="Alibaba Group"),
             Quote(source="东方财富", ok=True, name="阿里巴巴"),
             Quote(source="腾讯财经", ok=True, name="阿里巴巴")]
@@ -3757,7 +3786,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         "monitor/noc=服务器大屏监视风格（零表格，文字+横排卡片流）"
                         "（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
-                   help="analysis/sentiment/feedscan/十四平台扫描的数据窗口小时数"
+                   help="analysis/sentiment/feedscan/十七平台扫描的数据窗口小时数"
                         "（默认 48，支持 24/48/72/156）")
     p.add_argument("--yt-channel", default="", dest="yt_channel",
                    help="YouTube 频道 handle（默认 @investtalk，或环境变量 YT_CHANNEL）")
@@ -3802,7 +3831,7 @@ def main(argv: list[str]) -> int:
     sent_pack, appendix_md, code4sent = None, "", None
     if template in ("sentiment", "analysis"):
         code4sent = normalize_hk_code(hk_code_raw) if hk_code_raw else None
-        scan_hint = "Google新闻/YouTube + 十四平台扫描"
+        scan_hint = "Google新闻/YouTube + 十七平台扫描"
         if template == "analysis":
             log(f"\n📡 正在采集新增因子「{SENTIMENT_FACTOR}」的数据"
                 f"（{args.hours}h：{scan_hint}）…")
@@ -3824,9 +3853,9 @@ def main(argv: list[str]) -> int:
             f"{sent_pack.agg.get('综合多头概率锚点', '—')}%")
         if getattr(sent_pack, "scan", None):
             sa = sent_pack.scan.agg
-            log(f"  🛰 十四平台扫描: 直接相关 {sa.get('n_direct', 0)} 条"
+            log(f"  🛰 十七平台扫描: 直接相关 {sa.get('n_direct', 0)} 条"
                 f" / 板块相关 {sa.get('n_sector', 0)} 条，命中 "
-                f"{sa.get('platforms_hit', 0)}/{sa.get('platforms_total', 14)} 平台")
+                f"{sa.get('platforms_hit', 0)}/{sa.get('platforms_total', 17)} 平台")
             if sent_pack.scan.dyn_sectors:
                 log(f"  🧭 有关板块: "
                     + "、".join(s for s, _ in sent_pack.scan.dyn_sectors[:6]))
@@ -3857,10 +3886,10 @@ def main(argv: list[str]) -> int:
         appendix_md = render_feed_appendix(feed_pack)
         user_context = feed_context(topic, feed_pack)
 
-    # ---------- 模块②c：NewsNow 7源热榜聚合（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01） ----------
+    # ---------- 模块②c：NewsNow 10源热榜聚合（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01/今日头条/百度/B站） ----------
     newsnow_pack = None
     if template == "newsnow":
-        log("\n🔥 正在采集 NewsNow 7源热榜（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01）…")
+        log("\n🔥 正在采集 NewsNow 10源热榜（知乎/抖音/微博/虎扑/AI hot/联合早报/香港01/今日头条/百度/B站）…")
         try:
             from newsnow_sources import collect_newsnow
             newsnow_pack = collect_newsnow(timeout=min(args.timeout, 15))
@@ -3868,7 +3897,7 @@ def main(argv: list[str]) -> int:
                 log(f"  ✅ {src_name}: {len(items)} 条")
             for e in newsnow_pack.errors:
                 log(f"  ⚠️  {e}")
-            log(f"  → 共 {newsnow_pack.agg.get('total',0)} 条 / {newsnow_pack.agg.get('sources_ok',0)}/7 源")
+            log(f"  → 共 {newsnow_pack.agg.get('total',0)} 条 / {newsnow_pack.agg.get('sources_ok',0)}/{newsnow_pack.agg.get('sources_total',10)} 源")
             # 构造上下文
             try:
                 from newsnow_sources import render_newsnow_appendix, newsnow_context
@@ -3974,8 +4003,8 @@ def main(argv: list[str]) -> int:
             sa = scan.agg
             extra_points["scan_hit"] = sa.get("platforms_hit")
             anchor_parts.append(
-                f"十四平台命中 {sa.get('platforms_hit', 0)}"
-                f"/{sa.get('platforms_total', 14)}")
+                f"十七平台命中 {sa.get('platforms_hit', 0)}"
+                f"/{sa.get('platforms_total', 17)}")
     if feed_pack is not None:
         anchor = feed_pack.agg.get("综合多头概率锚点")
         extra_points["feed_anchor"] = anchor
@@ -3985,7 +4014,7 @@ def main(argv: list[str]) -> int:
         extra_points["newsnow_total"] = newsnow_pack.agg.get("total")
         anchor_parts.append(
             f"热榜样本 {newsnow_pack.agg.get('total', 0)} 条"
-            f"/{newsnow_pack.agg.get('sources_ok', 0)}/7 源")
+            f"/{newsnow_pack.agg.get('sources_ok', 0)}/{newsnow_pack.agg.get('sources_total', 10)} 源")
     anchor_line = (" · ".join(anchor_parts)
                    or "无本地预聚合数据（本模板不含数据采集模块）")
 

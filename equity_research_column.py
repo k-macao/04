@@ -938,7 +938,7 @@ def generate_column(
         market_md = "> ⚠️ 实时行情暂不可用，价格相关结论请谨慎。"
         quote_error = "行情数据源失败"
 
-    # 最新功能：量价舆情 + 十四平台扫描注入第八章上下文
+    # 最新功能：量价舆情 + 十七平台扫描注入第八章上下文
     sent_pack = None
     if collect_news:
         sent_pack = sr.collect_latest_pack(
