@@ -42,7 +42,7 @@ Skill 资源目录：`equity_research/`（含 `SKILL.md`、`references/`、`indu
 
 ## 🧩 Skills Hub（2026-08-13 已更新）
 
-上一轮只把 `equity-research` 塞进了 `equity_research/`，**没有按 Agent Skills 标准安装，也没有接入 Anthropic 官方新技能**。现已补齐：
+补齐了 **Agent Skills 标准安装**，并接入 Anthropic 官方金融技能：
 
 | 来源 | Skills | 入口 |
 |---|---|---|
@@ -63,9 +63,8 @@ python server_dashboard.py 8080   # GET /api/skills · POST /api/skills
 
 ## 📦 功能特性（文件合并）
 
-## 📦 功能特性
-
 ### 1. 文件合并 (`merge.py`)
+
 - **文本文件合并** - 支持去重、添加标题、排序、自定义分隔符
 - **JSON 文件合并** - 支持深合并、列表拼接/去重策略
 - **CSV 文件合并** - 自动对齐不同表头、支持去重
@@ -74,6 +73,7 @@ python server_dashboard.py 8080   # GET /api/skills · POST /api/skills
 - **文件夹合并** - 合并多个文件夹，同名文件智能合并
 
 ### 2. 归并算法 (`merge_algorithms.py`)
+
 - **合并两个有序数组** - O(n+m)
 - **合并 K 个有序数组** - 最小堆实现 O(N log K)
 - **归并排序** - 稳定排序 O(n log n)
@@ -82,6 +82,7 @@ python server_dashboard.py 8080   # GET /api/skills · POST /api/skills
 ## 🚀 快速开始
 
 ### 安装
+
 ```bash
 # 无需外部依赖，纯 Python 实现
 git clone https://github.com/k-macao/04.git
@@ -91,6 +92,7 @@ cd 04
 ### 基本使用
 
 #### Python API
+
 ```python
 from merge import merge_text_files, merge_json_files, merge_csv_files, merge_files
 
@@ -112,6 +114,7 @@ merge_folders(["folder1", "folder2"], "merged_folder", conflict_strategy="merge"
 ```
 
 #### 合并算法
+
 ```python
 from merge_algorithms import merge_two_sorted, merge_k_sorted, merge_sort, merge_intervals
 
@@ -141,22 +144,34 @@ python merge.py folder dir1 dir2 -o merged_dir --conflict merge
 ```
 
 ## 📁 项目结构
+
 ```
 04/
-├── merge.py                # 核心文件合并工具
-├── merge_algorithms.py     # 归并算法实现
-├── test_merge.py           # 测试用例
-├── examples/               # 示例文件
-│   ├── file1.txt
-│   ├── file2.txt
-│   ├── data1.json
-│   ├── data2.json
-│   ├── a.csv
-│   └── b.csv
+├── merge.py                  # 核心文件合并工具
+├── merge_algorithms.py       # 归并算法实现
+├── test_merge.py             # 合并测试用例
+├── pushplus_deepseek.py      # 微信推送主流程（DeepSeek/OpenAI/rule + 多通道）
+├── stock_report.py           # 股票研报统一入口（港股/A股 + 九章投研 + Skills Hub）
+├── equity_research_column.py # 机构级个股投研独立栏目
+├── skills_hub.py             # Skills Hub 调度（equity + Anthropic 9 技能）
+├── hk_quote.py               # 免费港股/A股实时行情（三源核验）
+├── stock_news_scan.py        # 量价舆情动量 · 十四平台股票扫描
+├── newsnow_sources.py        # NewsNow 7 源采集
+├── extract_feeds.py          # 全市场快讯提取
+├── server_dashboard.py       # 大屏监控（行情 / 研报 / 投研栏目）
+├── server_monitor.html       # 大屏前端
+├── .github/workflows/
+│   ├── alibaba-push.yml      # 工作流：Manual Run - Alibaba PushPlus+DeepSeek
+│   └── stock-report.yml      # 工作流：Manual Run - Stock Report (HK/A-share)
+├── equity_research/          # 机构级投研 skill 资源（SKILL/references/industries/scripts）
+├── skills/                   # Skills Hub（catalog + NOTICE + skill 安装）
+├── .claude/skills/           # Claude Agent 可直接读取的 skill
+├── examples/                 # 示例文件 + 主题预览 HTML
 └── README.md
 ```
 
 ## 🧪 运行测试
+
 ```bash
 python test_merge.py
 python merge_algorithms.py
@@ -165,6 +180,7 @@ python merge_algorithms.py
 ## 🔧 高级特性
 
 ### 深合并示例
+
 ```python
 from merge import deep_merge_dicts
 
@@ -175,16 +191,26 @@ result = deep_merge_dicts(base, incoming)
 ```
 
 ### CSV 表头对齐
+
 输入:
 - a.csv: id,name,age
 - b.csv: id,name,city
 
 输出自动合并为: id,name,age,city，并补全缺失字段
 
-## 📲 微信推送 Workflow（PushPlus + DeepSeek）
+---
 
-仓库内置手动触发的工作流 **Manual Run - Alibaba PushPlus+DeepSeek**（`.github/workflows/r.yml`）：
-用 DeepSeek 生成内容，通过 PushPlus 推送到微信。
+## 📲 GitHub Actions 工作流（PushPlus + DeepSeek / 股票研报）
+
+仓库内置两个手动触发的工作流（`.github/workflows/`），共用一个 Secrets 配置：
+
+| Actions 名称 | 文件 | 入口脚本 | 默认模板 | 用途 |
+|---|---|---|---|---|
+| **Manual Run - Alibaba PushPlus+DeepSeek** | `alibaba-push.yml` | `pushplus_deepseek.py` | `analysis` | 主题/个股简报：DeepSeek 生成 + 微信多通道推送 |
+| **Manual Run - Stock Report (HK/A-share)** | `stock-report.yml` | `stock_report.py` | `equity` | 输入港股/A股代码 → 实时行情 → AI 研报/九章投研 → 推送 |
+
+> 两个工作流都附带最新通用能力：🧭 数据新鲜度看板 + 内容指纹、📊 港股/A股字符模拟走势图、
+> 🛰 十四平台扫描 + 量价舆情动量（窗口跟随 `--hours`）。
 
 ### 前置条件：配置 Secrets
 
@@ -193,21 +219,26 @@ result = deep_merge_dicts(base, incoming)
 | Secret 名称 | 何时必需 | 获取方式 |
 |---|---|---|
 | `PUSHPLUS_TOKEN` | 通道为 `pushplus`/`all` | [pushplus.plus](https://www.pushplus.plus) 登录后个人中心复制 token |
-| `DEEPSEEK_API_KEY` | AI 为 `deepseek` | [platform.deepseek.com](https://platform.deepseek.com) 创建 API Key |
+| `DEEPSEEK_API_KEY` | AI 为 `deepseek`/`auto`（无 Key 时 auto 自动降级 rule） | [platform.deepseek.com](https://platform.deepseek.com) 创建 API Key |
 | `WECOM_KEY` | 通道为 `wecom`/`all` | 企业微信群机器人 webhook 地址中 `key=` 后的部分 |
 | `SERVERCHAN_SENDKEY` | 通道为 `serverchan`/`all` | Server酱 Turbo 的 SendKey |
 | `OPENAI_API_KEY` | AI 为 `openai` | OpenAI 控制台（可选变量 `OPENAI_BASE_URL`） |
 
 ### 运行方式
 
-**Actions → Manual Run - Alibaba PushPlus+DeepSeek → Run workflow**：
+**Actions → 选择对应工作流 → Run workflow**：
 
 - `dry_run=false`：**真实推送**到微信（默认）
-- `dry_run=true`：只生成内容打印到日志，不推送（联调用）
+- `dry_run=true`：只生成内容打印到日志，不推送（联调用，建议首次先用它验证）
 - `channel`：pushplus / wecom / serverchan / console / all
-- `ai_provider`：deepseek / rule（固定模板，不耗 API）/ openai
-- `topic`：内容主题，留空默认"阿里巴巴(Alibaba) 每日简报"
-- `theme`：pushplus 推送的 HTML 主题（整体默认 **game** = 8-bit 像素游戏风：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE 游戏元素）；可选 `klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`default`（普通 Markdown）
+- `ai_provider`：
+  - Alibaba 工作流：deepseek / rule（固定模板，不耗 API）/ openai
+  - Stock Report 工作流：auto（有 DeepSeek Key 用 deepseek，否则 rule）/ deepseek / openai / rule
+- `template`（23 套，两个工作流下拉一致）：
+  - **12 套经典**：`analysis` `brief` `scan` `picker` `fusion` `plan` `earnings` `portfolio` `review` `regime` `sentiment` `feedscan`
+  - **NewsNow**：`newsnow`
+  - **Skills Hub 10 套**：`equity`（机构级九章投研）`initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas`
+- `theme`：pushplus 推送的 HTML 主题（默认 **game** = 8-bit 像素游戏风：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE 游戏元素）；可选 `klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`monitor`/`noc`（服务器大屏监视风格，零表格卡片流）、`default`（普通 Markdown）
 - `hours`：量价舆情动量/十四平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
 
 主题预览：`examples/theme_preview.html`（game/klein/pixel 三主题对比）与
@@ -215,13 +246,14 @@ result = deep_merge_dicts(base, incoming)
 
 ### 📊 推送自带字符模拟图（纯字符，无图片，微信直接可见）
 
-只要给了 `hk_code`（默认 `09988`），每次推送自动在正文顶部附一段**字符模拟走势图**：
+只要给了 `hk_code`（Alibaba 工作流默认 `09988`）或股票代码（Stock Report 工作流），每次推送自动在正文顶部附一段**字符模拟走势图**：
 
 1. **取数**：Yahoo Finance 日级 OHLC 为主源，东方财富日级数据兜底（均免 Key，取最近 60 个交易日）
 2. **渲染**：纯字符等宽模拟图（无图片依赖）——涨 `█` 跌 `▓` 影线 `│`，
    叠加 MA5 `·` / MA10 `×` / MA20 `+` 点位、成交量字符条 `▁▂▃▄▅▆▇█`、近 20 日 S1/R1 支撑压力位虚线 `─`
 3. **嵌入**：直接以 Markdown 代码块 ````text```` / HTML `<pre>` 嵌入推送正文（PushPlus HTML 主题、企微、Server酱、console 均可显示，无需 CDN 与图床）
 4. **示例**：
+
 ```text
 09988.HK 字符模拟走势（近 52 日 · YAHOO）
  17.20 ┤      █
@@ -238,8 +270,7 @@ S1 15.90 ── 支撑  ·  R1 17.40 ── 压力
 
 ### 分析框架与新增因子
 
-当前工作流提供 12 套模板。选择 `analysis` 时会逐行输出以下 7 个因子，新增的
-**量价舆情动量（48h）**不会再被合并到普通消息/情绪面：
+选择 `analysis` 时会逐行输出以下 7 个因子，新增的**量价舆情动量（48h）**不会再被合并到普通消息/情绪面：
 
 1. 基本面（业绩/订单/毛利率）
 2. 行业与政策面（平台经济监管/云计算/AI 等真实政策动态）
@@ -324,6 +355,43 @@ python stock_news_scan.py --selftest
 带可靠时间戳的条目严格按 156h 过滤；雪球/社媒热榜为实时快照、标记「实时」不参与过滤。
 任何单源失败只进「数据缺口」，不拉高命中数、不伪造数据。
 
+### 🩺 故障排查：Service Unavailable / Failed to resolve action download info
+
+> **TL;DR** 这不是代码问题，是 GitHub Actions Marketplace CDN 瞬时 503。等 2-3 分钟点 **Re-run failed jobs** 即可恢复。
+
+**现象**：Job 停在 **Set up job**，一个 Step 都没执行，日志出现：
+
+```
+Error: Service Unavailable
+Error: Failed to resolve action download info.
+```
+
+**根因**（2026-08-06 已诊断）：
+
+- **不是仓库代码错误**：本地 `--selftest` 全部通过、`--dry-run` 正常生成内容、workflow YAML 语法合法、所用 action tag 均存在。失败点全部在 `Set up job`（下载 action 阶段），而非 Python 代码。
+- **是 GitHub 基础设施瞬时故障**：当日最近 20 次运行前 17 次全部 success，仅故障窗口内的 3 次连续 failure；`marketplace.actions.githubusercontent.com` / runner 集群瞬时不可用。社区相同案例：[discussions/65974](https://github.com/orgs/community/discussions/65974)（runner 自动退避重试 29s + 11s 仍 503）、[discussions/166225](https://github.com/orgs/community/discussions/166225)。
+- `gh run rerun` 报 `cannot be rerun; its workflow file may be broken` 是 GitHub 对下载阶段失败 Run 的 API 限制，不等同于 YAML 真的 broken——改用网页 **Re-run failed jobs** 即可。
+- 为什么新 tag 更容易命中：`v6` 刚发布时 CDN 缓存不如 `v4/v5` 广，故障期未命中缓存概率更高。
+
+**已内置的加固**（两个 workflow 文件均已应用）：
+
+- 固定为最广泛缓存的 `actions/checkout@v4` + `actions/setup-python@v5`，并 **pin 到 commit SHA**（防 tag 解析抖动），保留 tag 便于可读；
+- **不要加 `cache: 'pip'`**：本仓库无 requirements.txt/pyproject.toml，会导致 Setup Python 步骤失败；
+- 最小权限（`contents: read`）、`timeout-minutes: 15`、`concurrency` 防并发覆盖。
+
+**立即恢复（不等加固）**：
+
+1. **Actions → 失败的 Run → Re-run failed jobs**（网页按钮，非 `gh run rerun` API）。
+2. 若仍 503，等 3-5 分钟重试；可查看 [githubstatus.com](https://www.githubstatus.com) 是否有 Actions incident。
+
+**验证清单**：
+
+- [ ] Re-run 一次失败的 Run，确认不再 503
+- [ ] Actions 用 `dry_run=true, channel=console, ai_provider=rule` 触发一次 dry-run，日志出现 `✅ 自检全部通过` / dry-run 完成
+- [ ] 切回 `dry_run=false` 真实推送一次
+
+---
+
 ## 📈 免费港股实时行情（`hk_quote.py` + 大屏 view 接入）
 
 大屏监视界面 `server_dashboard.py` 已接入免费港股实时行情，无任何 API Key：
@@ -406,13 +474,14 @@ curl -X POST http://localhost:8080/api/report \
 
 ## 📝 Git 合并演示
 
-本分支 `arena/019fc917-04` 已实现完整的合并功能，可通过 PR 合并到 main:
+本项目最初是一个文件合并工具，主分支为 `main`；新功能开发在 `arena/*` 分支完成，可随时通过 PR 合并：
 
 ```bash
 git checkout main
-git merge arena/019fc917-04
-# 或通过 GitHub PR 合并
+git pull
+# 通过 GitHub PR 将 arena 分支合并回 main（建议走 PR 评审流程）
 ```
 
 ## License
+
 MIT
