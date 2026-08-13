@@ -48,17 +48,61 @@ try:
 except Exception:
     hk_quote = None
 
+try:
+    import stock_report
+except Exception:
+    stock_report = None
+
 # ================================================================ 实时行情合并
+
+def _generic_profile(market: str, code: str) -> dict:
+    """未内置演示档案的标的（A 股 / 任意港股代码）→ 生成中性占位档案，行情由实时源覆盖。"""
+    label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+    factor_names = ["基本面", "行业与政策面", "技术面", "资金面", "消息与情绪面", "估值面", "量价舆情动量"]
+    factors = [{
+        "id": f"f{i}", "name": n, "dir": "中性", "is_up": True,
+        "prob": "—", "score": 0, "badge": "演示占位", "tag": "待AI",
+        "desc": "未内置演示档案，该因子为占位内容；点击「🧠 AI研报」基于实时行情生成正式分析。",
+    } for i, n in enumerate(factor_names)]
+    return {
+        "_generic": True,
+        "code": code,
+        "name": f"{label} {code}（实时行情 · 因子演示）",
+        "price": "—",
+        "currency": "CNY" if market != "hk" else "HKD",
+        "change": "—", "change_val": "—", "is_up": True,
+        "high": "—", "low": "—", "vol": "—",
+        "target": "—", "target_pct": "—",
+        "pe": "—", "pe_percentile": "—",
+        "sentiment_score": 0,
+        "confidence": "行情实时 · 因子演示占位",
+        "overall_direction": "—", "overall_prob": "—",
+        "summary": "该标的未内置演示档案：价格 / 估值来自免费数据源实时行情；七大因子与快讯为演示占位。点击上方「🧠 AI研报」可基于实时行情生成正式研报并推送到微信。",
+        "factors": factors,
+        "sectors": [],
+        "alerts": [],
+        "feeds": [],
+    }
+
 
 def get_stock_view(stock_code: str) -> dict:
     """
     取视图数据：优先内置演示档案（因子/快讯/预警），叠加免费数据源实时行情。
+    支持港股与 A 股（沪深）代码自动识别；未内置档案的标的生成中性占位档案。
     实时行情不可用时保留演示价格并明确标注数据缺口，绝不伪造。
     """
-    code = hk_quote.normalize_code(stock_code) if hk_quote else str(stock_code).zfill(5)
-    data = STOCKS.get(code, STOCKS["09988"])
-    data = json.loads(json.dumps(data, ensure_ascii=False))  # 深拷贝，避免污染档案
+    if hk_quote:
+        market, code, _em = hk_quote.detect_market(stock_code)
+    else:
+        market, code = "hk", str(stock_code).zfill(5)
 
+    if market == "hk" and code in STOCKS:
+        data = STOCKS[code]
+        data = json.loads(json.dumps(data, ensure_ascii=False))  # 深拷贝，避免污染档案
+    else:
+        data = _generic_profile(market, code)
+
+    data["market"] = market
     data["quote_live"] = False
     data["quote_source"] = "静态快照 (STATIC DEMO)"
     data["quote_source_key"] = None
@@ -70,7 +114,7 @@ def get_stock_view(stock_code: str) -> dict:
         data["quote_error"] = "hk_quote 模块加载失败"
         return data
 
-    q = hk_quote.fetch_quote(code)
+    q = hk_quote.fetch_quote(stock_code)
     if not q:
         return data
 
@@ -100,6 +144,12 @@ def get_stock_view(stock_code: str) -> dict:
         data["pe_live"] = False
     if q.get("name"):
         data["quote_name"] = q["name"]
+        # 未内置档案的标的：用实时行情里的真实名称替换占位名
+        if data.get("_generic") and market == "hk":
+            data["name"] = f"{q['name']}（实时行情）"
+        elif data.get("_generic"):
+            label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+            data["name"] = f"{label} {code} {q['name']}（实时行情）"
 
     data["quote_live"] = True
     data["quote_source"] = q.get("source_label") or q.get("source")
@@ -934,6 +984,131 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             font-weight: bold;
         }}
 
+        /* 🧠 AI 研报输入栏与结果面板 */
+        .report-input {{
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            min-width: 260px;
+            flex: 1 1 260px;
+            letter-spacing: 0.5px;
+        }}
+        .report-input:focus {{
+            outline: none;
+            border-color: var(--cyan);
+            box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+        }}
+        .report-select {{
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-main);
+            padding: 5px 8px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+        }}
+        .report-btn {{
+            background: rgba(0, 255, 157, 0.12);
+            border: 1px solid var(--green);
+            color: var(--green);
+            padding: 5px 12px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }}
+        .report-btn:hover {{
+            background: var(--green);
+            color: #000;
+            box-shadow: var(--glow-green);
+        }}
+        .report-btn:disabled {{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }}
+        .report-panel {{
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            box-shadow: var(--glow-cyan);
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }}
+        .report-panel .report-head {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-dim);
+        }}
+        .report-panel .report-title {{
+            color: var(--cyan);
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 1px;
+        }}
+        .report-panel .report-meta {{
+            color: var(--text-muted);
+            font-size: 10px;
+        }}
+        .report-panel .report-status {{
+            font-size: 11px;
+            padding: 2px 8px;
+            border: 1px solid;
+        }}
+        .report-body {{
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 640px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }}
+        .report-body table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin: 6px 0;
+        }}
+        .report-body th, .report-body td {{
+            border: 1px solid var(--border-dim);
+            padding: 4px 8px;
+            text-align: left;
+            color: var(--text-main);
+        }}
+        .report-body th {{
+            background: rgba(0, 240, 255, 0.08);
+            color: var(--cyan);
+            font-weight: bold;
+        }}
+        .report-body h1, .report-body h2, .report-body h3 {{
+            color: var(--cyan);
+            margin: 8px 0 4px;
+            letter-spacing: 0.5px;
+        }}
+        .report-body pre {{
+            background: #04060a;
+            border: 1px solid var(--border-dim);
+            padding: 8px;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            color: var(--green);
+            white-space: pre;
+            font-size: 11px;
+            line-height: 1.35;
+        }}
+        .report-body blockquote {{
+            border-left: 3px solid var(--amber);
+            padding-left: 10px;
+            color: var(--text-muted);
+            margin: 6px 0;
+        }}
+
         /* 横排集群节点状态流 */
         .node-stream {{
             display: flex;
@@ -1577,6 +1752,30 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <span style="margin-left:auto;color:var(--green);font-size:11px;">三源核验可信度: <strong>{data["confidence"]}</strong></span>
         </div>
 
+        <!-- 🧠 AI 研报输入栏：填入港股/A股代码 → 实时行情 + AI 分析 + 推送 -->
+        <div class="stock-selector-ribbon" id="report-bar">
+            <span class="selector-label">🧠 AI 研报:</span>
+            <input id="report-code-input" class="report-input" placeholder="输入港股/A股代码：09988 / 600519 / 000001.SZ" autocomplete="off" />
+            <select id="report-channel" class="report-select">
+                <option value="console">📺 预览（不推送）</option>
+                <option value="pushplus">📲 PushPlus 微信</option>
+                <option value="wecom">💬 企业微信</option>
+                <option value="serverchan">🔔 Server酱</option>
+                <option value="all">🌐 全部通道</option>
+            </select>
+            <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
+        </div>
+
+        <!-- 🧠 AI 研报结果面板（默认隐藏） -->
+        <div id="report-panel" class="report-panel" style="display:none;">
+            <div class="report-head">
+                <span class="report-title" id="report-title">🧠 AI 研报</span>
+                <span class="report-status" id="report-status" style="color:var(--green);border-color:var(--green);">生成中…</span>
+                <span class="report-meta" id="report-meta"></span>
+            </div>
+            <div class="report-body" id="report-body"></div>
+        </div>
+
         <!-- 🖥️ 横排服务器集群节点状态流 -->
         <div class="node-stream">
             {nodes_html}
@@ -1704,6 +1903,71 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 window.location.reload();
             }}, 300);
         }}
+
+        // —— 🧠 AI 研报：输入代码 → 实时行情 + AI 分析 + 推送 ——
+        async function genReport() {{
+            const input = document.getElementById('report-code-input');
+            const code = (input ? input.value : '').trim();
+            const panel = document.getElementById('report-panel');
+            const body = document.getElementById('report-body');
+            const title = document.getElementById('report-title');
+            const meta = document.getElementById('report-meta');
+            const status = document.getElementById('report-status');
+            const btn = document.getElementById('report-btn');
+            const channel = (document.getElementById('report-channel') || {{}}).value || 'console';
+            if (!code) {{
+                if (input) {{ input.style.borderColor = 'var(--red)'; input.focus(); }}
+                appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
+                return;
+            }}
+            if (input) input.style.borderColor = 'var(--border-dim)';
+            if (panel) panel.style.display = 'block';
+            if (title) title.textContent = '🧠 AI 研报 · ' + code;
+            if (meta) meta.textContent = '实时行情 → AI 分析 → ' + channel;
+            if (status) {{ status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }}
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在获取实时行情并调用 AI 生成研报…（约数秒到数十秒）</div>';
+            if (btn) btn.disabled = true;
+            playBeep(1040, 'triangle', 0.08);
+            appendLog('REPORT.GEN', 'QUERY', code + ' → 实时行情 + AI 研报 + ' + channel);
+            try {{
+                const resp = await fetch('/api/report', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ code: code, channel: channel, dry_run: channel === 'console', theme: 'monitor' }})
+                }});
+                const r = await resp.json();
+                if (!r || !r.ok) {{
+                    if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                    if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + ((r && r.error) || '未知错误') + '</div>';
+                    appendLog('REPORT.GEN', 'ERR', (r && r.error) || '未知错误');
+                    return;
+                }}
+                if (meta) meta.textContent = (r.market_label || r.market || '') + ' ' + r.code + (r.name ? ' ' + r.name : '') + ' · AI: ' + r.provider + ' · ' + (r.gen_note || '');
+                const pushed = Object.entries(r.push || {{}}).map(([k, v]) => k + ': ' + v).join('　');
+                if (status) {{
+                    status.textContent = r.dry_run ? '预览（未推送）' : '已推送';
+                    status.style.color = 'var(--green)';
+                    status.style.borderColor = 'var(--green)';
+                }}
+                if (body) body.innerHTML = r.report_html || ('<pre>' + (r.report_md || '') + '</pre>');
+                if (meta) meta.textContent += ' · ' + pushed;
+                appendLog('REPORT.GEN', 'OK', r.code + ' 研报完成（AI: ' + r.provider + '）' + (r.dry_run ? '' : ' · 推送: ' + pushed));
+            }} catch (e) {{
+                if (status) {{ status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }}
+                if (body) body.innerHTML = '<div style="color:var(--red);">❌ 请求失败: ' + e.message + '</div>';
+                appendLog('REPORT.GEN', 'ERR', '请求失败: ' + e.message);
+            }} finally {{
+                if (btn) btn.disabled = false;
+            }}
+        }}
+
+        // 回车触发研报生成
+        (function() {{
+            const input = document.getElementById('report-code-input');
+            if (input) input.addEventListener('keydown', function(e) {{
+                if (e.key === 'Enter') genReport();
+            }});
+        }})();
 
         // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
         const STOCK_CODE = '{stock_code}';
@@ -2051,6 +2315,32 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     return html
 
 
+# ================================================================ AI 研报接口
+
+def _api_report(params: dict) -> dict:
+    """执行「实时行情 → AI 研报 → 推送」，返回结构化 JSON（前端渲染用）。"""
+    code = str(params.get("code") or "").strip()
+    if not code:
+        return {"ok": False, "error": "缺少股票代码（请填入港股/A股代码）"}
+    if stock_report is None:
+        return {"ok": False, "error": "stock_report 模块加载失败"}
+    channel = str(params.get("channel") or "console")
+    if channel not in ("console", "pushplus", "wecom", "serverchan", "all"):
+        channel = "console"
+    template = str(params.get("template") or "analysis")
+    ai_provider = str(params.get("ai_provider") or "") or None
+    dry_run = bool(params.get("dry_run", True))
+    theme = str(params.get("theme") or "monitor")
+    try:
+        r = stock_report.run_report(
+            code, channel=channel, ai_provider=ai_provider, template=template,
+            dry_run=dry_run, theme=theme)
+        r["ok"] = True
+        return r
+    except Exception as e:            # noqa: BLE001
+        return {"ok": False, "error": f"{e.__class__.__name__}: {e}"}
+
+
 # ================================================================ HTTP 服务处理
 
 class MonitorHandler(http.server.BaseHTTPRequestHandler):
@@ -2132,6 +2422,34 @@ class MonitorHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"Not Found")
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+
+        if path != "/api/report":
+            self.end_headers()
+            self.wfile.write(json.dumps(
+                {"ok": False, "error": "Not Found"}, ensure_ascii=False).encode("utf-8"))
+            return
+
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            params = json.loads(raw.decode("utf-8") or "{}")
+            if not isinstance(params, dict):
+                params = {}
+        except json.JSONDecodeError:
+            params = {}
+
+        payload = _api_report(params)
+        self.end_headers()
+        self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
 
 def run_server(port: int = 8080):

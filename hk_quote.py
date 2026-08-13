@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-hk_quote.py — 免费港股实时行情采集（无需 API Key，纯标准库）
+hk_quote.py — 免费港股/A股实时行情采集（无需 API Key，纯标准库）
 
 ============================================================
  免费港股数据源对比测试（2026-08-07 实测，代码 00700 / 09988）
@@ -22,11 +22,12 @@ hk_quote.py — 免费港股实时行情采集（无需 API Key，纯标准库�
        ③ Yahoo 仅作参考/交叉核验，不参与默认链路。
 
 用法：
-  python hk_quote.py 00700              # 打印单只股票标准化行情 JSON
-  python hk_quote.py 09988 --json       # 输出 JSON
+  python hk_quote.py 00700              # 港股：打印单只股票标准化行情 JSON
+  python hk_quote.py 600519             # 沪A：贵州茅台实时行情（CNY）
+  python hk_quote.py 000001.SZ --json   # 深A：平安银行 JSON
   python hk_quote.py --selftest         # 三源对比测试（判定哪个好）
   python hk_quote.py --selftest 00700 09988 03690
-  python hk_quote.py --fixture-test     # 离线解析自检（内置真实抓包样本）
+  python hk_quote.py --fixture-test     # 离线解析自检（内置真实抓包样本，含 A 股）
 """
 
 from __future__ import annotations
@@ -83,6 +84,10 @@ FIXTURES = {
     "tencent_09988": 'v_hk09988="100~阿里巴巴-W~09988~123.800~124.400~125.300~58259425.0~0~0~123.800~0~0~0~0~0~0~0~0~0~123.800~0~0~0~0~0~0~0~0~0~58259425.0~2026/08/07 16:08:24~-0.600~-0.48~125.800~121.600~123.800~58259425.0~7185130922.040~0~20.23~~0~0~3.38~23740.5321~23740.5321~BABA-W~0.83~185.173~88.650~0.47~-10.37~0~0~0~0~0~19.79~1.98~0.30~100~-12.68~5.81~GP~9.76~5.35~12.55~12.34~-6.41~19176520254.00~19176520254.00~20.23~1.029~123.330~-22.32~HKD~1~50";',
     "eastmoney_00700": '{"rc":0,"rt":4,"svr":177622162,"lt":2,"full":1,"dlmkts":"8,10,128","dsc":"0","data":{"f43":478800,"f44":483200,"f45":475400,"f46":479000,"f47":16319939,"f48":7803757312.0,"f50":57,"f57":"00700","f58":"腾讯控股","f60":479200,"f92":139.9781389,"f107":116,"f114":0,"f115":0,"f116":4348807144693.2,"f117":4348807144693.2,"f162":0,"f164":1654,"f165":506,"f167":342,"f168":18,"f169":-400,"f170":-8,"f171":163}}',
     "yahoo_00700": '{"chart":{"result":[{"meta":{"currency":"HKD","symbol":"0700.HK","exchangeName":"HKG","fullExchangeName":"HKSE","instrumentType":"EQUITY","firstTradeDate":1087349400,"regularMarketTime":1786090091,"hasPrePostMarketData":false,"gmtoffset":28800,"timezone":"HKT","exchangeTimezoneName":"Asia/Hong_Kong","regularMarketPrice":478.8,"fiftyTwoWeekHigh":683.0,"fiftyTwoWeekLow":411.0,"regularMarketDayHigh":483.2,"regularMarketDayLow":475.4,"regularMarketVolume":16320039,"longName":"Tencent Holdings Limited","shortName":"TENCENT","chartPreviousClose":475.2,"priceHint":3},"timestamp":[1785720600,1785807000,1785893400,1785979800,1786066200],"indicators":{"quote":[{"high":[491.0,494.79998779296875,497.79998779296875,491.0,483.20001220703125],"open":[482.0,491.0,493.3999938964844,491.0,479.0],"low":[480.6000061035156,480.79998779296875,482.20001220703125,479.0,475.3999938964844],"volume":[38649910,24860019,25662478,21801977,16320039],"close":[490.3999938964844,487.6000061035156,492.20001220703125,479.20001220703125,478.79998779296875]}]}}],"error":null}}',
+    # —— A 股样本（与腾讯/东财港股共用同一套字段布局 / 独立 JSON）——
+    "tencent_sh600519": 'v_sh600519="1~贵州茅台~600519~1720.000~1715.000~1716.500~2345678.0~0~0~1720.000~0~0~0~0~0~0~0~0~0~1720.000~0~0~0~0~0~0~0~0~0~2345678.0~2026/08/07 15:00:03~5.000~0.29~1725.500~1705.000~1720.000~2345678.0~4034567890.000~0~25.60~~0~0~1.20~21613.00~21613.00~KWEICHOW~75.00~1862.000~1245.000~0.55~-8.20~0~0~0~0~0~11.20~8.90~0.25~100~-12.30~0.60~GP~20.59~11.53~10.17~4.04~5.95~1256197800.00~1256197800.00~25.60~1.020~1721.300~-18.50~CNY~1~100";',
+    "tencent_sz000001": 'v_sz000001="51~平安银行~000001~11.900~11.800~11.850~120345678.0~0~0~11.900~0~0~0~0~0~0~0~0~0~11.900~0~0~0~0~0~0~0~0~0~120345678.0~2026/08/07 15:00:03~0.100~0.85~11.950~11.750~11.900~120345678.0~1430000000.000~0~5.50~~0~0~1.70~2310.00~2310.00~PINGAN~1.45~13.500~9.800~0.30~-6.10~0~0~0~0~0~6.20~0.55~0.63~100~-8.90~0.40~GP~20.59~11.53~10.17~4.04~5.95~19405900000.00~19405900000.00~5.50~0.850~11.890~-15.30~CNY~1~100";',
+    "eastmoney_sz000001": '{"rc":0,"rt":4,"svr":177622162,"lt":2,"full":1,"data":{"f43":1190,"f44":1195,"f45":1175,"f46":1185,"f47":120345678,"f48":14300000000.0,"f57":"000001","f58":"平安银行","f60":1180,"f107":0,"f116":231000000000.0,"f117":231000000000.0,"f162":550,"f167":55,"f168":63,"f169":10,"f170":85,"f171":170}}',
 }
 
 # ================================================================ 工具函数
@@ -114,6 +119,29 @@ def normalize_code(code: str) -> str:
     s = s.replace("HK", "")
     s = re.sub(r"[^0-9]", "", s)
     return s.zfill(5)
+
+
+def detect_market(raw: str) -> tuple[str, str, str]:
+    """识别市场与统一代码，返回 ``(market, code, em_secid)``。
+
+    market ∈ {"hk", "sh", "sz"}；
+    code 为纯数字（港股 5 位 / A 股 6 位）；
+    em_secid 为东方财富 secid（116.xxxxx / 1.xxxxxx / 0.xxxxxx）。
+
+    规则：
+      - 显式 ``.SH`` / ``sh`` 前缀，或 6 位数字且首位为 6/9 → 上交所 (sh)
+      - 显式 ``.SZ`` / ``sz`` 前缀，或 6 位数字且首位为 0/1/2/3 → 深交所 (sz)
+      - 其余（含 ``.HK``、5 位数字）→ 港股 (hk)
+    """
+    s = str(raw).strip().upper()
+    digits = re.sub(r"[^0-9]", "", s)
+    # A 股：6 位代码，靠首数字 + 显式前缀区分沪深
+    if "SH" in s or (len(digits) == 6 and digits[0] in "69"):
+        return "sh", digits[-6:], f"1.{digits[-6:]}"
+    if "SZ" in s or (len(digits) == 6 and digits[0] in "0123"):
+        return "sz", digits[-6:], f"0.{digits[-6:]}"
+    # 港股：5 位代码
+    return "hk", digits[-5:].zfill(5), f"116.{digits[-5:].zfill(5)}"
 
 
 def _fnum(parts, idx, scale=1.0):
@@ -149,9 +177,12 @@ def _fmt_amount(hkd: float | None) -> str:
 
 # ================================================================ 各源解析
 
-def parse_tencent(text: str, code: str) -> dict | None:
-    """解析 qt.gtimg.cn 的 v_hkXXXXX="..." 管道串"""
-    m = re.search(r'v_hk\d{5}="([^"]*)"', text)
+def _parse_tencent(text: str, code: str, market: str) -> dict | None:
+    """解析 qt.gtimg.cn 的统一管道串（港股 v_hkXXXXX / A股 v_shXXXXXX / v_szXXXXXX）。
+
+    腾讯财经对港股与 A 股使用同一套字段布局（~ 分隔），仅前缀与币种不同。
+    """
+    m = re.search(r'v_[A-Za-z]{0,3}\d{4,6}="([^"]*)"', text)
     if not m:
         return None
     p = m.group(1).split("~")
@@ -168,8 +199,10 @@ def parse_tencent(text: str, code: str) -> dict | None:
     if pct is None and prev:
         pct = (price - prev) / prev * 100.0
     mcap = _fnum(p, 44)
-    fcap = _fnum(p, 43)
+    fcap = _fnum(p, 45) if market != "hk" else _fnum(p, 43)
+    cur = p[75].strip() if len(p) > 75 and p[75].strip() else ("HKD" if market == "hk" else "CNY")
     return {
+        "market": market,
         "code": code,
         "name": p[1].strip() or None,
         "price": round(price, 3),
@@ -191,11 +224,16 @@ def parse_tencent(text: str, code: str) -> dict | None:
         "low_52w": _fnum(p, 49),
         "total_shares": _fnum(p, 69),
         "eps": _fnum(p, 47),
-        "currency": p[75].strip() if len(p) > 75 and p[75].strip() else "HKD",
+        "currency": cur,
         "time": p[30].strip() or None,
         "source": "tencent",
         "source_label": SOURCES["tencent"]["label"],
     }
+
+
+def parse_tencent(text: str, code: str) -> dict | None:
+    """港股专用：解析 qt.gtimg.cn 的 v_hkXXXXX="..." 管道串（保持向后兼容）。"""
+    return _parse_tencent(text, code, "hk")
 
 
 def parse_eastmoney(obj: dict, code: str) -> dict | None:
@@ -321,6 +359,85 @@ def fetch_yahoo(code: str) -> dict:
     raise last_err
 
 
+# ================================================================ A 股（沪深）解析与抓取
+
+EM_A_FIELDS = ("f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,"
+               "f116,f117,f162,f167,f168,f169,f170,f171")
+
+EM_A_PRICE_SCALE = 100          # 东财 A 股价格为实际价格×100（2 位小数）
+
+
+def parse_eastmoney_a(obj: dict, code: str, market: str) -> dict | None:
+    """解析东方财富 A 股 push2 JSON（价格 ×100，带 PE/PB 字段）。"""
+    d = obj.get("data") or {}
+    if not d or not d.get("f43"):
+        return None
+    price = d["f43"] / EM_A_PRICE_SCALE
+    chg = d.get("f169")
+    pct = d.get("f170")
+
+    def _scaled(key, scale=EM_A_PRICE_SCALE, nd=3):
+        v = d.get(key)
+        return round(v / scale, nd) if v else None
+
+    return {
+        "market": market,
+        "code": code,
+        "name": d.get("f58") or None,
+        "price": round(price, 3),
+        "prev_close": _scaled("f60"),
+        "open": _scaled("f46"),
+        "high": _scaled("f44"),
+        "low": _scaled("f45"),
+        "change": round(chg / EM_A_PRICE_SCALE, 3) if chg is not None else None,
+        "change_pct": round(pct / 100.0, 3) if pct is not None else None,
+        "volume": d.get("f47"),
+        "amount": d.get("f48"),
+        "pe": round(d.get("f162") / 100.0, 2) if d.get("f162") else None,
+        "pb": round(d.get("f167") / 100.0, 2) if d.get("f167") else None,
+        "turnover_rate": round(d.get("f168") / 100.0, 2) if d.get("f168") else None,
+        "amplitude": round(d.get("f171") / 100.0, 2) if d.get("f171") else None,
+        "market_cap": d.get("f116"),
+        "float_cap": d.get("f117"),
+        "high_52w": None,
+        "low_52w": None,
+        "currency": "CNY",
+        "time": None,
+        "source": "eastmoney",
+        "source_label": SOURCES["eastmoney"]["label"],
+    }
+
+
+def fetch_tencent_a(market: str, code: str) -> dict:
+    sym = f"{market}{code}"                  # sh600519 / sz000001
+    url = f"https://qt.gtimg.cn/q={sym}"
+    text, _ = _http_get(url, "gbk")
+    q = _parse_tencent(text, code, market)
+    if q is None:
+        raise ValueError(f"腾讯财经响应无法解析: {text[:120]!r}")
+    return q
+
+
+def fetch_eastmoney_a(market: str, code: str) -> dict:
+    secid = f"{1 if market == 'sh' else 0}.{code}"
+    url = ("https://push2.eastmoney.com/api/qt/stock/get"
+           f"?secid={secid}&fields={EM_A_FIELDS}")
+    last_err = None
+    for host in EASTMONEY_HOSTS:             # 主 host 偶发 502，换备 host 重试
+        u = url.replace("push2.eastmoney.com", host)
+        try:
+            text, _ = _http_get(u, "utf-8",
+                                headers={"Referer": "https://quote.eastmoney.com/"})
+            obj = json.loads(text)
+            q = parse_eastmoney_a(obj, code, market)
+            if q is None:
+                raise ValueError(f"东方财富无数据: {text[:120]!r}")
+            return q
+        except Exception as e:               # noqa: BLE001
+            last_err = e
+    raise last_err
+
+
 # ================================================================ 带缓存的主入口
 
 _cache: dict[str, tuple[float, dict | None]] = {}
@@ -331,27 +448,33 @@ def fetch_quote(code: str, chain: tuple | list | None = None,
                 use_cache: bool = True, ttl: float = CACHE_TTL) -> dict | None:
     """
     按链路依次尝试各数据源，返回标准化行情 dict；全部失败返回 None。
-    chain 默认 ("tencent", "eastmoney")。
+    支持港股（5 位）与 A 股（沪深 6 位）自动识别。
+    chain 默认 ("tencent", "eastmoney")；A 股无 Yahoo 源，自动剔除。
     """
-    code = normalize_code(code)
+    market, code, _em_secid = detect_market(code)
     if not code:
         return None
     chain = tuple(chain or DEFAULT_CHAIN)
+    if market != "hk":
+        chain = tuple(s for s in chain if s != "yahoo")
     now = time.monotonic()
+    cache_key = f"{market}:{code}"
 
     if NO_LIVE:
         return None
 
     if use_cache:
         with _lock:
-            hit = _cache.get(code)
+            hit = _cache.get(cache_key)
         if hit and hit[0] > now:
             q = hit[1]
             return dict(q) if q else None
 
     fetchers = {
-        "tencent": fetch_tencent,
-        "eastmoney": fetch_eastmoney,
+        "tencent": (lambda: fetch_tencent(code)) if market == "hk"
+                   else (lambda: fetch_tencent_a(market, code)),
+        "eastmoney": (lambda: fetch_eastmoney(code)) if market == "hk"
+                     else (lambda: fetch_eastmoney_a(market, code)),
         "yahoo": fetch_yahoo,
     }
     quote = None
@@ -360,8 +483,9 @@ def fetch_quote(code: str, chain: tuple | list | None = None,
         if not fn:
             continue
         try:
-            quote = fn(code)
+            quote = fn()
             quote["fetched_at"] = now_str()
+            quote["market"] = market
             break
         except Exception as e:            # noqa: BLE001
             quote = None
@@ -370,7 +494,7 @@ def fetch_quote(code: str, chain: tuple | list | None = None,
 
     with _lock:
         ttl_now = (now + (CACHE_TTL if quote else NEG_CACHE_TTL))
-        _cache[code] = (ttl_now, quote)
+        _cache[cache_key] = (ttl_now, quote)
     if quote:
         quote = dict(quote)
         quote["error"] = None
@@ -466,11 +590,27 @@ def fixture_test() -> int:
           "market_cap": 4348807144693.2}),
         ("yahoo_00700", lambda t, c: parse_yahoo(json.loads(t), c),
          {"price": 478.8, "high": 483.2, "volume": 16320039, "currency": "HKD"}),
+        # —— A 股（沪深）——
+        ("tencent_sh600519",
+         lambda t, c: _parse_tencent(t, c, "sh"),
+         {"price": 1720.0, "pe": 25.6, "currency": "CNY", "high": 1725.5,
+          "low": 1705.0, "change_pct": 0.29, "amplitude": 1.2, "pb": 8.9,
+          "turnover_rate": 0.25, "name": "贵州茅台",
+          "market_cap": 21613.0 * 1e8}),
+        ("tencent_sz000001",
+         lambda t, c: _parse_tencent(t, c, "sz"),
+         {"price": 11.9, "pe": 5.5, "currency": "CNY", "change_pct": 0.85,
+          "name": "平安银行"}),
+        ("eastmoney_sz000001",
+         lambda t, c: parse_eastmoney_a(json.loads(t), c, "sz"),
+         {"price": 11.9, "pe": 5.5, "pb": 0.55, "turnover_rate": 0.63,
+          "amplitude": 1.7, "currency": "CNY", "name": "平安银行",
+          "market_cap": 231000000000.0}),
     ]
     ok_all = True
     for name, parser, expect in checks:
         try:
-            q = parser(FIXTURES[name], normalize_code(name.split("_")[1]))
+            q = parser(FIXTURES[name], detect_market(name.split("_")[-1])[1])
             miss = []
             for k, v in expect.items():
                 got = q.get(k) if q else None
@@ -504,25 +644,26 @@ def main(argv: list[str] | None = None) -> int:
 
     as_json = "--json" in argv
     arg = next((a for a in argv if not a.startswith("--")), "00700")
-    code = normalize_code(arg)
-    quote = fetch_quote(code)
+    quote = fetch_quote(arg)
     if quote is None:
-        print(f"❌ 无法获取 {code} 行情（网络受限或所有数据源失败），请用 --selftest 查看明细", file=sys.stderr)
+        print(f"❌ 无法获取 {arg} 行情（网络受限或所有数据源失败），请用 --selftest 查看明细", file=sys.stderr)
         return 1
     if as_json:
         print(json.dumps(quote, ensure_ascii=False, indent=2))
         return 0
 
-    print(f"代码       {quote['code']} {quote['name'] or ''}")
+    cur = "元" if quote.get("currency") == "CNY" else "港元"
+    mkt = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(quote.get("market"), "")
+    print(f"代码       {quote['code']} {quote['name'] or ''}（{mkt}）")
     print(f"数据源     {quote['source_label']}（{quote['source']}）")
     print(f"现价       {quote['price']:.3f} {quote['currency']}  "
           f"涨跌 {quote['change']:+.3f} ({quote['change_pct']:+.2f}%)")
     print(f"今开/昨收  {quote.get('open'):.3f} / {quote.get('prev_close'):.3f}")
     print(f"最高/最低  {quote.get('high'):.3f} / {quote.get('low'):.3f}")
-    print(f"成交量     {_fmt_vol(quote.get('volume'))} 股   成交额 {_fmt_amount(quote.get('amount'))} 港元")
+    print(f"成交量     {_fmt_vol(quote.get('volume'))} 股   成交额 {_fmt_amount(quote.get('amount'))} {cur}")
     print(f"市盈率     {'%.2f' % quote['pe'] if quote.get('pe') else '—'}    "
           f"市净率 {quote.get('pb') or '—'}   换手率 {quote.get('turnover_rate') or '—'}%   振幅 {quote.get('amplitude') or '—'}%")
-    print(f"总市值     {_fmt_amount(quote.get('market_cap'))} 港元   52周 {quote.get('high_52w') or '—'}/{quote.get('low_52w') or '—'}")
+    print(f"总市值     {_fmt_amount(quote.get('market_cap'))} {cur}   52周 {quote.get('high_52w') or '—'}/{quote.get('low_52w') or '—'}")
     print(f"行情时间   {quote.get('time') or quote.get('fetched_at')}（源时间/抓取时间）")
     return 0
 
