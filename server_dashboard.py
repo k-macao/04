@@ -12,7 +12,7 @@ server_dashboard.py — 服务器大屏监视风格（NOC Telemetry Wallboard）
    - 深度文字研判解读、重点摘要、预警风控文字。
    - 横排核心量化指标带（现价/高低/成交量/预测目标/可信度）。
    - 横排七大因子多空矩阵卡片流（基本面/政策/技术/资金/情绪/估值/量价动量）。
-   - 横排十四平台实时情报雷达流（财经7源 + 社媒7源）。
+   - 横排十七平台实时情报雷达流（财经7源 + 社媒10源）。
    - 横排关联板块与动态标签流（电商/云计算/AI/跨境出海等）。
    - 横排服务器集群节点状态流（HK-01 / SH-02 / SG-03 / AI-04 / DB-05）。
    - 横排预警与监控项清单。
@@ -67,7 +67,7 @@ except Exception:
 
 def _generic_profile(market: str, code: str) -> dict:
     """未内置演示档案的标的（A 股 / 任意港股代码）→ 生成中性占位档案，行情由实时源覆盖。"""
-    label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+    label = {"hk": "港股", "sh": "沪A", "sz": "深A", "us": "美股"}.get(market, market)
     factor_names = ["基本面", "行业与政策面", "技术面", "资金面", "消息与情绪面", "估值面", "量价舆情动量"]
     factors = [{
         "id": f"f{i}", "name": n, "dir": "中性", "is_up": True,
@@ -79,7 +79,7 @@ def _generic_profile(market: str, code: str) -> dict:
         "code": code,
         "name": f"{label} {code}（实时行情 · 因子演示）",
         "price": "—",
-        "currency": "CNY" if market != "hk" else "HKD",
+        "currency": "HKD" if market == "hk" else "USD" if market == "us" else "CNY",
         "change": "—", "change_val": "—", "is_up": True,
         "high": "—", "low": "—", "vol": "—",
         "target": "—", "target_pct": "—",
@@ -158,7 +158,7 @@ def get_stock_view(stock_code: str) -> dict:
         if data.get("_generic") and market == "hk":
             data["name"] = f"{q['name']}（实时行情）"
         elif data.get("_generic"):
-            label = {"hk": "港股", "sh": "沪A", "sz": "深A"}.get(market, market)
+            label = {"hk": "港股", "sh": "沪A", "sz": "深A", "us": "美股"}.get(market, market)
             data["name"] = f"{label} {code} {q['name']}（实时行情）"
 
     data["quote_live"] = True
@@ -530,7 +530,7 @@ def get_cluster_status() -> dict:
             },
             {
                 "id": "TS-Database-05",
-                "role": "十四源时序与情绪数据库",
+                "role": "十七源时序与情绪数据库",
                 "status": "SYNCED",
                 "ping": "1ms",
                 "load": "19%",
@@ -746,7 +746,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     </div>
     """ for a in data["alerts"])
 
-    # 6. 横排十四平台实时情报雷达流（财经7源 + 社媒7源）
+    # 6. 横排十七平台实时情报雷达流（财经7源 + 社媒10源）
     feeds_html = "".join(f"""
     <div class="feed-card">
         <div class="feed-top">
@@ -1765,7 +1765,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
 
         .alert-body {{ color: var(--text-muted); }}
 
-        /* 横排十四平台实时情报雷达流 (卡片横排流) */
+        /* 横排十七平台实时情报雷达流 (卡片横排流) */
         .feeds-matrix-horiz {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -1969,7 +1969,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
         <!-- 🧠 AI 研报输入栏：填入港股/A股代码 → 实时行情 + AI 分析 + 推送 -->
         <div class="stock-selector-ribbon" id="report-bar">
             <span class="selector-label">🧠 AI 研报:</span>
-            <input id="report-code-input" class="report-input" placeholder="输入港股/A股代码：09988 / 600519 / 000001.SZ" autocomplete="off" />
+            <input id="report-code-input" class="report-input" placeholder="输入港股/A股/美股代码：09988 / 600519 / 000001.SZ / NVDA" autocomplete="off" />
             <select id="report-channel" class="report-select">
                 <option value="console">📺 预览（不推送）</option>
                 <option value="pushplus">📲 PushPlus 微信</option>
@@ -2097,7 +2097,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             <div class="skill-grid" id="skill-grid"></div>
             <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
                 <span class="selector-label">🧩 跑 Skill:</span>
-                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519" autocomplete="off" value="{stock_code}" />
+                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519 / NVDA" autocomplete="off" value="{stock_code}" />
                 <select id="skill-pick" class="report-select">
                     <option value="morning_note">🌅 晨会纪要</option>
                     <option value="initiate">📑 首次覆盖</option>
@@ -2176,10 +2176,10 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             {alerts_html}
         </div>
 
-        <!-- 🌐 横排十四平台实时情报雷达流 (财经7源 + 社媒7源) -->
+        <!-- 🌐 横排十七平台实时情报雷达流 (财经7源 + 社媒10源) -->
         <div class="section-header">
-            <span>🌐 十四平台实时情报雷达流 (14-PLATFORM INTELLIGENCE RADAR)</span>
-            <span class="section-tag">财经7源 + 社媒7源 · 156H 窗口过滤 · 横排卡片流</span>
+            <span>🌐 十七平台实时情报雷达流 (17-PLATFORM INTELLIGENCE RADAR)</span>
+            <span class="section-tag">财经7源 + 社媒10源 · 156H 窗口过滤 · 横排卡片流</span>
         </div>
         <div class="feeds-matrix-horiz">
             {feeds_html}
