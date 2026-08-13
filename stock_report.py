@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+stock_report.py — 输入港股 / A 股代码 → 实时行情 + AI 研报 + 多通道推送
+
+复用既有模块，不重复造轮子：
+  hk_quote            —— 实时行情（港股 + A 股，腾讯财经 / 东方财富，免 Key）
+  pushplus_deepseek   —— AI 分析（DeepSeek / OpenAI / rule 规则模板）+ 多通道推送
+                        （PushPlus / 企业微信 / Server酱 / 控制台）
+
+支持代码写法（自动识别市场）：
+  港股  09988 / 9988.HK / hk00700
+  沪A  600519 / 600519.SH / sh600519
+  深A  000001 / 000001.SZ / sz000001
+
+用法：
+  python stock_report.py 600519                        # 沪A 贵州茅台（打印研报，不推送）
+  python stock_report.py sz000001 --template analysis  # 深A 平安银行
+  python stock_report.py 09988 --ai-provider deepseek --channel pushplus --push
+  python stock_report.py 600519 --channel all --push   # 三通道推送
+  python stock_report.py --selftest                    # 离线自检（不联网）
+  python stock_report.py --check-only                  # 只检查 Secrets
+
+Secrets（keyless 行情无需配置）：
+  DEEPSEEK_API_KEY（AI=deepseek）/ OPENAI_API_KEY（AI=openai）
+  PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY（对应推送通道）
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+
+import hk_quote
+import pushplus_deepseek as pp
+
+# 市场中文名映射（展示用）
+MARKET_LABELS = {"hk": "港股", "sh": "沪A", "sz": "深A"}
+MARKET_FULL = {"hk": "香港交易所", "sh": "上海证券交易所", "sz": "深圳证券交易所"}
+MARKET_TICKER = {"hk": "HK", "sh": "SH", "sz": "SZ"}
+
+VERSION = "1.0-report-2026-08-13"
+
+
+# ================================================================ 工具
+
+def _fmt_vol(shares) -> str:
+    if shares is None:
+        return "—"
+    if shares >= 1e8:
+        return f"{shares / 1e8:.2f}亿"
+    if shares >= 1e4:
+        return f"{shares / 1e4:.2f}万"
+    return f"{shares:.0f}"
+
+
+def _fmt_amount(v) -> str:
+    if v is None:
+        return "—"
+    if v >= 1e12:
+        return f"{v / 1e12:.2f}万亿"
+    if v >= 1e8:
+        return f"{v / 1e8:.2f}亿"
+    if v >= 1e4:
+        return f"{v / 1e4:.2f}万"
+    return f"{v:.0f}"
+
+
+def quote_to_context(market: str, code: str, q: dict) -> str:
+    """把标准化行情 dict 转成注入 AI 的文本上下文。"""
+    label = MARKET_LABELS.get(market, market)
+    cur = q.get("currency") or ("CNY" if market != "hk" else "HKD")
+    lines = [
+        f"标的：{code} {q.get('name') or ''}（{label} · {MARKET_FULL.get(market, '')}）",
+        f"最新价 {q['price']:.3f} {cur}"
+        + (f"（{q.get('change_pct'):+.2f}%，涨跌 {q.get('change'):+.3f}）"
+           if q.get('change_pct') is not None else ""),
+    ]
+    if q.get("open") or q.get("prev_close"):
+        lines.append(f"今开 {q.get('open') or '—'} / 昨收 {q.get('prev_close') or '—'}")
+    if q.get("high") or q.get("low"):
+        lines.append(f"最高 {q.get('high') or '—'} / 最低 {q.get('low') or '—'}")
+    lines.append(
+        f"市盈率(PE) {q.get('pe') or '—'} · 市净率(PB) {q.get('pb') or '—'} · "
+        f"换手率 {q.get('turnover_rate') or '—'}% · 振幅 {q.get('amplitude') or '—'}%")
+    if q.get("market_cap") or q.get("float_cap"):
+        lines.append(f"总市值约 {_fmt_amount(q.get('market_cap'))} {cur} · "
+                     f"流通市值约 {_fmt_amount(q.get('float_cap'))} {cur}")
+    if q.get("high_52w") or q.get("low_52w"):
+        lines.append(f"52周区间 {q.get('high_52w') or '—'} / {q.get('low_52w') or '—'}")
+    lines.append(f"成交量 {_fmt_vol(q.get('volume'))} 股 · 成交额约 {_fmt_amount(q.get('amount'))} {cur}")
+    lines.append(f"数据源：{q.get('source_label')}（{q.get('source')}）"
+                 f" · 行情时间 {q.get('time') or q.get('fetched_at') or '—'}")
+    return "\n".join(lines)
+
+
+def quote_to_md(market: str, code: str, q: dict) -> str:
+    """把标准化行情 dict 转成研报正文顶部的行情核验块（Markdown）。"""
+    label = MARKET_LABELS.get(market, market)
+    cur = q.get("currency") or ("CNY" if market != "hk" else "HKD")
+    chg = (f"{q.get('change_pct'):+.2f}%" if q.get('change_pct') is not None else "—")
+    lines = [
+        "---",
+        f"📊 **实时行情（{MARKET_TICKER.get(market, market)} {code} · {label}）**",
+        "",
+        f"| 项目 | 数值 | 项目 | 数值 |",
+        f"|---|---|---|---|",
+        f"| 最新价 | **{q['price']:.3f} {cur}** | 涨跌幅 | {chg} |",
+        f"| 今开 / 昨收 | {q.get('open') or '—'} / {q.get('prev_close') or '—'} | 最高 / 最低 | {q.get('high') or '—'} / {q.get('low') or '—'} |",
+        f"| PE / PB | {q.get('pe') or '—'} / {q.get('pb') or '—'} | 换手 / 振幅 | {q.get('turnover_rate') or '—'}% / {q.get('amplitude') or '—'}% |",
+        f"| 总市值 | {_fmt_amount(q.get('market_cap'))} {cur} | 流通市值 | {_fmt_amount(q.get('float_cap'))} {cur} |",
+        f"| 成交量 | {_fmt_vol(q.get('volume'))} 股 | 成交额 | {_fmt_amount(q.get('amount'))} {cur} |",
+        "",
+        f"> 数据源：{q.get('source_label')}（{q.get('source')}，免 Key）· "
+        f"行情时间 {q.get('time') or q.get('fetched_at') or '—'}",
+    ]
+    return "\n".join(lines)
+
+
+# ================================================================ 核心：行情 → AI 研报 → 推送
+
+def run_report(raw_code: str, *, channel: str = "console",
+               ai_provider: str | None = None, template: str = "analysis",
+               dry_run: bool = True, theme: str = "game",
+               push_timeout: int = 30, no_chart: bool = False,
+               risk: str = "mid") -> dict:
+    """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。"""
+    raw_code = (raw_code or "").strip()
+    if not raw_code:
+        raise ValueError("股票代码不能为空")
+
+    market, code, _em_secid = hk_quote.detect_market(raw_code)
+    label = MARKET_LABELS.get(market, market)
+    ticker = MARKET_TICKER.get(market, "")
+
+    # ---- ① 实时行情（失败不抛，记录数据缺口）----
+    quote = hk_quote.fetch_quote(raw_code)
+    name = (quote or {}).get("name") or ""
+    topic = f"{ticker}{code}" + (f" {name}" if name else "")
+
+    if quote:
+        context = quote_to_context(market, code, quote)
+        market_md = quote_to_md(market, code, quote)
+        quote_error = None
+    else:
+        context = (f"标的：{topic}（{label}）。\n"
+                   f"注意：实时行情暂不可用（网络受限或数据源失败），"
+                   f"凡涉及具体点位/估值的地方请标注 *（推断）。")
+        market_md = (f"> ⚠️ 实时行情暂不可用（数据源：腾讯财经/东方财富均失败），"
+                     f"以下研报基于模型既有知识推断，价格相关结论请谨慎参考。")
+        quote_error = "行情数据源失败，研报基于模型知识推断"
+
+    # ---- ② AI / rule 生成研报 ----
+    provider = ai_provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    messages = pp.build_messages(template, topic, context, risk)
+    if provider == "rule":
+        report_md = pp.gen_by_rule(topic, template, sent_pack=None)
+        gen_note = "rule 规则模板（未调用大模型）"
+    else:
+        key_env = "DEEPSEEK_API_KEY" if provider == "deepseek" else "OPENAI_API_KEY"
+        key = pp.env(key_env)
+        if not key:
+            report_md = pp.gen_by_rule(topic, template, sent_pack=None)
+            gen_note = f"缺少 {key_env}，已降级为 rule 规则模板"
+        else:
+            if provider == "deepseek":
+                model = "deepseek-chat"
+                url = pp.DEEPSEEK_URL
+            else:
+                model = "gpt-4o-mini"
+                base = pp.env("OPENAI_BASE_URL") or pp.DEFAULT_OPENAI_BASE_URL
+                url = f"{base.rstrip('/')}/chat/completions"
+            report_md = pp.chat_completion(
+                url, key, model, messages,
+                pp.TEMPLATE_MAX_TOKENS.get(template, 3000), push_timeout)
+            gen_note = f"{provider}（{model}）"
+
+    # ---- ③ 组装研报正文（品牌头 + 行情块 + 研报 + 品牌尾）----
+    body = report_md.rstrip()
+    if market_md:
+        body += "\n\n" + market_md
+    content = pp.add_branding(body)
+
+    now = pp.datetime.now(pp.CST).strftime("%m-%d %H:%M")
+    title = (f"{pp.BRAND_TITLE}·{topic}"
+             f"·{pp.TEMPLATE_TITLES.get(template, template)}（{now}）")
+
+    # ---- ④ 推送 ----
+    targets = pp.ALL_CHANNELS if channel == "all" else [channel]
+    push_results: dict[str, str] = {}
+    if dry_run:
+        push_results = {ch: "dry-run（未真实推送）" for ch in targets}
+    else:
+        for ch in targets:
+            try:
+                if ch == "pushplus":
+                    push_results[ch] = pp.push_pushplus(title, content, push_timeout, theme=theme)
+                else:
+                    push_results[ch] = pp.PUSH_FUNCS[ch](title, content, push_timeout)
+            except pp.PushError as e:
+                push_results[ch] = f"失败：{e}"
+
+    return {
+        "market": market,
+        "market_label": label,
+        "code": code,
+        "name": name,
+        "quote": quote,
+        "quote_error": quote_error,
+        "provider": provider,
+        "gen_note": gen_note,
+        "template": template,
+        "title": title,
+        "report_md": content,
+        "report_html": pp.md_to_html(content, theme_name=theme),
+        "theme": theme,
+        "dry_run": dry_run,
+        "push": push_results,
+    }
+
+
+# ================================================================ 离线自检
+
+def selftest() -> int:
+    fails = 0
+
+    def check(name, cond):
+        nonlocal fails
+        print(f"  {'✅' if cond else '❌'} {name}")
+        if not cond:
+            fails += 1
+
+    print("① 市场识别 detect_market")
+    cases = [
+        ("09988", "hk", "09988"),
+        ("9988.HK", "hk", "09988"),
+        ("hk00700", "hk", "00700"),
+        ("600519", "sh", "600519"),
+        ("600519.SH", "sh", "600519"),
+        ("sh600519", "sh", "600519"),
+        ("688981", "sh", "688981"),
+        ("000001", "sz", "000001"),
+        ("000001.SZ", "sz", "000001"),
+        ("sz000001", "sz", "000001"),
+        ("300750", "sz", "300750"),
+    ]
+    for raw, want_m, want_c in cases:
+        m, c, _ = hk_quote.detect_market(raw)
+        check(f"{raw!r} → {m}/{c}", m == want_m and c == want_c)
+
+    print("② 行情上下文（离线 fixture）")
+    q = hk_quote._parse_tencent(hk_quote.FIXTURES["tencent_sh600519"], "600519", "sh")
+    ctx = quote_to_context("sh", "600519", q)
+    check("沪A 上下文含价格/PE/币种", ("1720.000" in ctx and "25.6" in ctx and "CNY" in ctx))
+    md = quote_to_md("sh", "600519", q)
+    check("沪A 行情块含价格与源", ("1720.000" in md and "腾讯财经" in md))
+    q2 = hk_quote._parse_tencent(hk_quote.FIXTURES["tencent_00700"], "00700", "hk")
+    check("港股上下文币种 HKD", "HKD" in quote_to_context("hk", "00700", q2))
+
+    print("③ 研报组装（rule 离线）")
+    r = run_report("600519", channel="console", ai_provider="rule", dry_run=True)
+    check("返回结构完整", r["market"] == "sh" and r["code"] == "600519"
+          and r["provider"] == "rule" and "report_md" in r and "report_html" in r)
+    check("品牌头尾齐全", pp.BRAND_TITLE in r["report_md"]
+          and pp.BRAND_DISCLAIMER in r["report_md"]
+          and r["report_md"].rstrip().endswith(pp.BRAND_SLOGAN))
+    check("研报含行情核验块", "实时行情" in r["report_md"])
+    check("HTML 渲染非空", "<div" in r["report_html"] or "<pre" in r["report_html"])
+    check("console dry-run 标记", "dry-run" in r["push"]["console"])
+
+    r2 = run_report("sz000001", channel="console", ai_provider="rule", dry_run=True)
+    check("深A 识别与研报", r2["market"] == "sz" and r2["code"] == "000001"
+          and r2["name"] == ""           # 离线无行情时名称为空
+          and "SZ000001" in r2["title"] and r2["quote_error"] is not None)
+
+    print("④ 空代码与非法输入")
+    try:
+        run_report("")
+        check("空代码抛异常", False)
+    except ValueError:
+        check("空代码抛异常", True)
+
+    print("⑤ AI 消息构造（离线）")
+    msgs = pp.build_messages("analysis", "SH600519 贵州茅台", "示例背景", "mid")
+    check("analysis 消息可构造", bool(msgs[1]["content"]) and "因子" in msgs[1]["content"])
+
+    print(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
+    return 1 if fails else 0
+
+
+def _check_only(channel: str, provider: str) -> int:
+    print("🔎 Secrets 检查（只显示是否配置，不打印内容）：")
+    provider = provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    names = pp.required_secrets(channel, provider)
+    missing = [n for n in names if not pp.env(n)]
+    for n in names:
+        print(f"  {'✅' if n not in missing else '❌'} {n} {'已配置' if n not in missing else '缺失'}")
+    if not names:
+        print("  （所选 通道+AI 组合无需 Secret，行情数据免 Key）")
+    return 0 if not missing else 1
+
+
+# ================================================================ CLI
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="输入港股/A股代码 → 实时行情 + AI 研报 + 多通道推送",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("code", nargs="?", default="",
+                   help="股票代码（港股 09988 / A股 600519 / 000001.SZ 等）")
+    p.add_argument("--channel", default="console", choices=["pushplus", "wecom", "serverchan", "console", "all"])
+    p.add_argument("--ai-provider", default="", choices=["", "deepseek", "openai", "rule"],
+                   dest="ai_provider", help="AI 提供方（留空自动：有 Key 用 deepseek，否则 rule）")
+    p.add_argument("--template", default="analysis", choices=pp.TEMPLATES,
+                   help="分析框架：" + "/".join(pp.TEMPLATES))
+    p.add_argument("--risk", default="mid", choices=pp.RISKS, help="风险偏好（portfolio 模板）")
+    p.add_argument("--theme", default="game", choices=["game", "klein", "pixel", "monitor", "noc", "default"])
+    p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
+    p.add_argument("--no-chart", action="store_true", dest="no_chart")
+    p.add_argument("--timeout", type=int, default=30)
+    p.add_argument("--json", action="store_true", help="以 JSON 输出结果")
+    p.add_argument("--selftest", action="store_true", help="离线自检")
+    p.add_argument("--check-only", action="store_true", dest="check_only", help="只检查 Secrets")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(list(sys.argv[1:] if argv is None else argv))
+    if args.selftest:
+        return selftest()
+    if args.check_only:
+        return _check_only(args.channel, args.ai_provider)
+
+    if not args.code:
+        print("❌ 请提供股票代码，例如：python stock_report.py 600519", file=sys.stderr)
+        return 1
+
+    provider = args.ai_provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    try:
+        result = run_report(
+            args.code, channel=args.channel, ai_provider=provider or None,
+            template=args.template, dry_run=not args.push, theme=args.theme,
+            push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk)
+    except ValueError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return 0
+
+    print("# " + result["title"])
+    print(result["report_md"])
+    print("\n===== 推送结果 =====")
+    for ch, r in result["push"].items():
+        ok = not str(r).startswith("失败")
+        print(f"  {'✅' if ok else '❌'} {ch}: {r}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

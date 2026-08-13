@@ -24,6 +24,66 @@ class TestNormalize(unittest.TestCase):
             self.assertEqual(hk_quote.normalize_code(raw), want, raw)
 
 
+class TestDetectMarket(unittest.TestCase):
+    def test_market_detection(self):
+        """港股 5 位 / A 股 6 位自动识别（含显式前缀写法）"""
+        cases = {
+            "09988": ("hk", "09988"),
+            "9988.HK": ("hk", "09988"),
+            "hk00700": ("hk", "00700"),
+            "600519": ("sh", "600519"),
+            "600519.SH": ("sh", "600519"),
+            "sh600519": ("sh", "600519"),
+            "688981": ("sh", "688981"),
+            "000001": ("sz", "000001"),
+            "000001.SZ": ("sz", "000001"),
+            "sz000001": ("sz", "000001"),
+            "300750": ("sz", "300750"),
+        }
+        for raw, (want_m, want_c) in cases.items():
+            m, c, _ = hk_quote.detect_market(raw)
+            self.assertEqual((m, c), (want_m, want_c), raw)
+
+    def test_market_em_secid(self):
+        self.assertEqual(hk_quote.detect_market("00700")[2], "116.00700")
+        self.assertEqual(hk_quote.detect_market("600519")[2], "1.600519")
+        self.assertEqual(hk_quote.detect_market("000001")[2], "0.000001")
+
+
+class TestAShareParsersOffline(unittest.TestCase):
+    def test_tencent_sh600519(self):
+        q = hk_quote._parse_tencent(hk_quote.FIXTURES["tencent_sh600519"], "600519", "sh")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["market"], "sh")
+        self.assertEqual(q["price"], 1720.0)
+        self.assertEqual(q["pe"], 25.6)
+        self.assertEqual(q["pb"], 8.9)
+        self.assertEqual(q["currency"], "CNY")
+        self.assertEqual(q["name"], "贵州茅台")
+        self.assertEqual(q["change_pct"], 0.29)
+        self.assertEqual(q["high"], 1725.5)
+        self.assertEqual(q["low"], 1705.0)
+        self.assertEqual(q["turnover_rate"], 0.25)
+
+    def test_tencent_sz000001(self):
+        q = hk_quote._parse_tencent(hk_quote.FIXTURES["tencent_sz000001"], "000001", "sz")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["market"], "sz")
+        self.assertEqual(q["price"], 11.9)
+        self.assertEqual(q["currency"], "CNY")
+        self.assertEqual(q["name"], "平安银行")
+
+    def test_eastmoney_sz000001(self):
+        q = hk_quote.parse_eastmoney_a(
+            json.loads(hk_quote.FIXTURES["eastmoney_sz000001"]), "000001", "sz")
+        self.assertIsNotNone(q)
+        self.assertEqual(q["price"], 11.9)
+        self.assertEqual(q["pe"], 5.5)       # 东财 A 股接口带 PE（区别于港股）
+        self.assertEqual(q["pb"], 0.55)
+        self.assertEqual(q["turnover_rate"], 0.63)
+        self.assertEqual(q["currency"], "CNY")
+
+
 class TestParsersOffline(unittest.TestCase):
     def test_tencent_00700(self):
         q = hk_quote.parse_tencent(hk_quote.FIXTURES["tencent_00700"], "00700")
@@ -126,6 +186,32 @@ class TestTradeViewIntegration(unittest.TestCase):
         self.assertIn("tradeview-char-canvas", html)
         self.assertIn("tradeview-vol-canvas", html)
         self.assertTrue("generateDefaultChartBars" in html or "generateDefaultKlineBars" in html)
+
+
+class TestAIReportIntegration(unittest.TestCase):
+    def test_report_endpoint_payload(self):
+        """测试 AI 研报接口 _api_report 离线（rule 降级）返回完整结构"""
+        import server_dashboard
+        r = server_dashboard._api_report({"code": "600519", "channel": "console", "dry_run": True})
+        self.assertTrue(r.get("ok"))
+        self.assertEqual(r["market"], "sh")
+        self.assertEqual(r["code"], "600519")
+        self.assertIn("report_md", r)
+        self.assertIn("report_html", r)
+        self.assertIn("push", r)
+
+    def test_report_endpoint_missing_code(self):
+        import server_dashboard
+        r = server_dashboard._api_report({})
+        self.assertFalse(r.get("ok"))
+        self.assertIn("缺少股票代码", r.get("error", ""))
+
+    def test_generic_profile_for_ashare(self):
+        import server_dashboard
+        v = server_dashboard.get_stock_view("600519")
+        self.assertEqual(v.get("market"), "sh")
+        self.assertEqual(v.get("code"), "600519")
+        self.assertIn("factors", v)
 
 
 if __name__ == "__main__":

@@ -243,6 +243,131 @@
             font-weight: bold;
         }
 
+        /* 🧠 AI 研报输入栏与结果面板 */
+        .report-input {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            min-width: 260px;
+            flex: 1 1 260px;
+            letter-spacing: 0.5px;
+        }
+        .report-input:focus {
+            outline: none;
+            border-color: var(--cyan);
+            box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+        }
+        .report-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            color: var(--text-main);
+            padding: 5px 8px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+        }
+        .report-btn {
+            background: rgba(0, 255, 157, 0.12);
+            border: 1px solid var(--green);
+            color: var(--green);
+            padding: 5px 12px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .report-btn:hover {
+            background: var(--green);
+            color: #000;
+            box-shadow: var(--glow-green);
+        }
+        .report-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .report-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-glow);
+            box-shadow: var(--glow-cyan);
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }
+        .report-panel .report-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-dim);
+        }
+        .report-panel .report-title {
+            color: var(--cyan);
+            font-weight: bold;
+            font-size: 13px;
+            letter-spacing: 1px;
+        }
+        .report-panel .report-meta {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        .report-panel .report-status {
+            font-size: 11px;
+            padding: 2px 8px;
+            border: 1px solid;
+        }
+        .report-body {
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 640px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .report-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 6px 0;
+        }
+        .report-body th, .report-body td {
+            border: 1px solid var(--border-dim);
+            padding: 4px 8px;
+            text-align: left;
+            color: var(--text-main);
+        }
+        .report-body th {
+            background: rgba(0, 240, 255, 0.08);
+            color: var(--cyan);
+            font-weight: bold;
+        }
+        .report-body h1, .report-body h2, .report-body h3 {
+            color: var(--cyan);
+            margin: 8px 0 4px;
+            letter-spacing: 0.5px;
+        }
+        .report-body pre {
+            background: #04060a;
+            border: 1px solid var(--border-dim);
+            padding: 8px;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            color: var(--green);
+            white-space: pre;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+        .report-body blockquote {
+            border-left: 3px solid var(--amber);
+            padding-left: 10px;
+            color: var(--text-muted);
+            margin: 6px 0;
+        }
+
         /* 横排集群节点状态流 */
         .node-stream {
             display: flex;
@@ -850,11 +975,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-07 19:26:37 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-13 12:19:03 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-07 11:26:37 UTC</span>
+                    <span id="utc-clock">2026-08-13 04:19:03 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -874,7 +999,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-07 19:26:37 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-13 12:19:03 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -884,6 +1009,30 @@
             <button class="stock-btn " onclick="switchStock('00700')">00700 腾讯控股 (Tencent)</button>
             <button class="stock-btn " onclick="switchStock('03690')">03690 美团 (Meituan)</button>
             <span style="margin-left:auto;color:var(--green);font-size:11px;">三源核验可信度: <strong>99.4% (三源核验一致)</strong></span>
+        </div>
+
+        <!-- 🧠 AI 研报输入栏：填入港股/A股代码 → 实时行情 + AI 分析 + 推送 -->
+        <div class="stock-selector-ribbon" id="report-bar">
+            <span class="selector-label">🧠 AI 研报:</span>
+            <input id="report-code-input" class="report-input" placeholder="输入港股/A股代码：09988 / 600519 / 000001.SZ" autocomplete="off" />
+            <select id="report-channel" class="report-select">
+                <option value="console">📺 预览（不推送）</option>
+                <option value="pushplus">📲 PushPlus 微信</option>
+                <option value="wecom">💬 企业微信</option>
+                <option value="serverchan">🔔 Server酱</option>
+                <option value="all">🌐 全部通道</option>
+            </select>
+            <button class="report-btn" id="report-btn" onclick="genReport()">⚡ 生成研报并推送</button>
+        </div>
+
+        <!-- 🧠 AI 研报结果面板（默认隐藏） -->
+        <div id="report-panel" class="report-panel" style="display:none;">
+            <div class="report-head">
+                <span class="report-title" id="report-title">🧠 AI 研报</span>
+                <span class="report-status" id="report-status" style="color:var(--green);border-color:var(--green);">生成中…</span>
+                <span class="report-meta" id="report-meta"></span>
+            </div>
+            <div class="report-body" id="report-body"></div>
         </div>
 
         <!-- 🖥️ 横排服务器集群节点状态流 -->
@@ -1505,6 +1654,71 @@
                 window.location.reload();
             }, 300);
         }
+
+        // —— 🧠 AI 研报：输入代码 → 实时行情 + AI 分析 + 推送 ——
+        async function genReport() {
+            const input = document.getElementById('report-code-input');
+            const code = (input ? input.value : '').trim();
+            const panel = document.getElementById('report-panel');
+            const body = document.getElementById('report-body');
+            const title = document.getElementById('report-title');
+            const meta = document.getElementById('report-meta');
+            const status = document.getElementById('report-status');
+            const btn = document.getElementById('report-btn');
+            const channel = (document.getElementById('report-channel') || {}).value || 'console';
+            if (!code) {
+                if (input) { input.style.borderColor = 'var(--red)'; input.focus(); }
+                appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
+                return;
+            }
+            if (input) input.style.borderColor = 'var(--border-dim)';
+            if (panel) panel.style.display = 'block';
+            if (title) title.textContent = '🧠 AI 研报 · ' + code;
+            if (meta) meta.textContent = '实时行情 → AI 分析 → ' + channel;
+            if (status) { status.textContent = '生成中…'; status.style.color = 'var(--amber)'; status.style.borderColor = 'var(--amber)'; }
+            if (body) body.innerHTML = '<div style="color:var(--text-muted);">⏳ 正在获取实时行情并调用 AI 生成研报…（约数秒到数十秒）</div>';
+            if (btn) btn.disabled = true;
+            playBeep(1040, 'triangle', 0.08);
+            appendLog('REPORT.GEN', 'QUERY', code + ' → 实时行情 + AI 研报 + ' + channel);
+            try {
+                const resp = await fetch('/api/report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code, channel: channel, dry_run: channel === 'console', theme: 'monitor' })
+                });
+                const r = await resp.json();
+                if (!r || !r.ok) {
+                    if (status) { status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }
+                    if (body) body.innerHTML = '<div style="color:var(--red);">❌ ' + ((r && r.error) || '未知错误') + '</div>';
+                    appendLog('REPORT.GEN', 'ERR', (r && r.error) || '未知错误');
+                    return;
+                }
+                if (meta) meta.textContent = (r.market_label || r.market || '') + ' ' + r.code + (r.name ? ' ' + r.name : '') + ' · AI: ' + r.provider + ' · ' + (r.gen_note || '');
+                const pushed = Object.entries(r.push || {}).map(([k, v]) => k + ': ' + v).join('　');
+                if (status) {
+                    status.textContent = r.dry_run ? '预览（未推送）' : '已推送';
+                    status.style.color = 'var(--green)';
+                    status.style.borderColor = 'var(--green)';
+                }
+                if (body) body.innerHTML = r.report_html || ('<pre>' + (r.report_md || '') + '</pre>');
+                if (meta) meta.textContent += ' · ' + pushed;
+                appendLog('REPORT.GEN', 'OK', r.code + ' 研报完成（AI: ' + r.provider + '）' + (r.dry_run ? '' : ' · 推送: ' + pushed));
+            } catch (e) {
+                if (status) { status.textContent = '失败'; status.style.color = 'var(--red)'; status.style.borderColor = 'var(--red)'; }
+                if (body) body.innerHTML = '<div style="color:var(--red);">❌ 请求失败: ' + e.message + '</div>';
+                appendLog('REPORT.GEN', 'ERR', '请求失败: ' + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        // 回车触发研报生成
+        (function() {
+            const input = document.getElementById('report-code-input');
+            if (input) input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') genReport();
+            });
+        })();
 
         // —— 实时行情轮询：拉取 /api/quote 更新价格卡片，不整页刷新 ——
         const STOCK_CODE = '09988';

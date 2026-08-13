@@ -282,6 +282,66 @@ python server_dashboard.py          # 启动大屏（8080，自动接入实时�
 
 环境变量：`HK_QUOTE_CHAIN=tencent,eastmoney,yahoo`（链路）、`HK_QUOTE_TIMEOUT=3.5`（秒）、`HK_QUOTE_NO_LIVE=1`（强制静态演示）。
 
+### A 股实时行情（沪深，免 Key）
+
+`hk_quote.py` 现已同时支持 **港股（5 位）与 A 股（6 位）**，自动识别市场：
+
+| 代码写法 | 识别结果 |
+|---|---|
+| `09988` / `9988.HK` / `hk00700` | 港股 |
+| `600519` / `600519.SH` / `sh600519` | 沪A（上交所，6 位且首位 6/9） |
+| `000001` / `000001.SZ` / `sz000001` | 深A（深交所，6 位且首位 0/1/2/3） |
+
+- **A 股数据源**：腾讯财经 `qt.gtimg.cn/q=sh600519` / `sz000001`（字段最全，含 PE/PB/换手/振幅/总市值）；东方财富 `push2.eastmoney.com`（`secid=1.600519` / `0.000001`，价格 ×100，**带 PE/PB**，区别于港股接口无 PE）。
+- **币种自动标注**：港股 `HKD`，A 股 `CNY`；CLI 打印自动切换「港元/元」。
+
+```bash
+python hk_quote.py 600519            # 沪A 贵州茅台实时行情（CNY）
+python hk_quote.py 000001.SZ --json  # 深A 平安银行 JSON
+python hk_quote.py --fixture-test    # 离线解析自检（含 A 股真实抓包样本）
+python test_hk_quote.py              # 单元测试（含 A 股解析与市场识别）
+```
+
+## 🧠 股票研报生成与推送（`stock_report.py` + 大屏输入框）
+
+新增**「填入港股 / A 股代码 → 实时查询行情 → AI 分析出研报 → 推送」**的一站式能力，
+复用仓库内已有的 `hk_quote`（实时行情）与 `pushplus_deepseek`（DeepSeek/OpenAI/rule 分析 + 多通道推送）。
+
+### 命令行
+
+```bash
+python stock_report.py 600519                     # 沪A 贵州茅台：打印研报（预览，不推送）
+python stock_report.py sz000001 --template analysis
+python stock_report.py 09988 --ai-provider deepseek --channel pushplus --push
+python stock_report.py 600519.SH --channel all --push   # 三通道真实推送
+python stock_report.py --selftest                 # 离线自检（市场识别 + 研报组装）
+python stock_report.py --check-only               # 只检查 Secrets
+```
+
+- **AI 提供方**：`--ai-provider` 留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。
+- **通道**：console（预览）/ pushplus / wecom / serverchan / all；默认 `--dry-run` 只打印，加 `--push` 才真实推送。
+- **主题**：`--theme game/klein/pixel/monitor`（推送 HTML 主题，同 `pushplus_deepseek.py`）。
+
+### 大屏输入框（`server_dashboard.py`）
+
+大屏顶部新增 **🧠 AI 研报输入栏**：填入任意港股/A 股代码（如 `09988` / `600519` / `000001.SZ`），
+选择推送通道后点「⚡ 生成研报并推送」，前端调用后端 **`POST /api/report`**：
+
+1. 后端实时取行情（`hk_quote`，港股+A 股，失败自动标注数据缺口、绝不伪造）；
+2. 用模块内模型（DeepSeek，未配 Key 自动降级 rule）按 `analysis` 模板生成多空因子研报；
+3. 组装品牌头尾 + 实时行情核验块，按所选通道推送；
+4. 前端在大屏内嵌面板直接渲染研报（`monitor` 主题 HTML，零表格卡片风）。
+
+```bash
+python server_dashboard.py            # 启动大屏（8080），打开后在顶部输入框填代码即可
+curl -X POST http://localhost:8080/api/report \
+     -H 'Content-Type: application/json' \
+     -d '{"code":"600519","channel":"console","dry_run":true}'
+```
+
+> 未内置演示档案的标的（A 股 / 任意港股代码）在大屏会生成**中性占位档案**：价格/估值来自实时行情，
+> 七大因子与快讯标注为演示占位，正式分析以「🧠 AI 研报」输出为准。
+
 ## 📝 Git 合并演示
 
 本分支 `arena/019fc917-04` 已实现完整的合并功能，可通过 PR 合并到 main:
