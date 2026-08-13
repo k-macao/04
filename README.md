@@ -238,7 +238,8 @@ result = deep_merge_dicts(base, incoming)
   - **12 套经典**：`analysis` `brief` `scan` `picker` `fusion` `plan` `earnings` `portfolio` `review` `regime` `sentiment` `feedscan`
   - **NewsNow**：`newsnow`
   - **Skills Hub 10 套**：`equity`（机构级九章投研）`initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas`
-- `theme`：HTML 推送主题。**全站统一默认 `game`**（8-bit 复古游戏风：深夜蓝游戏屏 + 像素星点 + 金色粗框 + 硬黑像素阴影 + ♥HP血条/★LV/SCORE/PRESS START），`pushplus_deepseek.py`、`stock_report.py`、`equity_research_column.py`、`server_dashboard.py` 大屏保持一致；其余主题仅作对照保留：`klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`monitor`/`noc`（服务器大屏监视风格，零表格卡片流）、`default`（普通 Markdown）
+- `theme`：HTML 推送主题。Actions 工作流与大屏研报栏默认 **`monitor`**（服务器大屏监视风格：深空暗底 + 荧光青绿 + 零表格卡片流）；可选 `game`（8-bit 复古游戏风：深夜蓝游戏屏 + 像素星点 + 金色粗框 + ♥HP血条/★LV/SCORE/PRESS START）、`noc`（同 monitor 零表格变体）、`klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`default`（普通 Markdown）。`pushplus_deepseek.py`、`stock_report.py`、`equity_research_column.py`、`server_dashboard.py` 大屏入口均接受同一组主题名
+- **长报告不再丢样式**：单篇主题 HTML 超过微信软上限（≈48KB）时，PushPlus 通道自动按章节/表格行**切分为多篇（最多 4 篇，标题带 1/N 序号，表格续篇自动补表头）**依次推送，每篇都是完整主题 HTML；仅当单块实在无法切分时才退回纯 Markdown（旧行为是一超限就退回，推送页完全没有风格）
 - `hours`：量价舆情动量/十四平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
 
 主题预览：`examples/theme_preview.html`（game/klein/pixel/monitor 四主题对比）与
@@ -451,7 +452,7 @@ python stock_report.py --check-only               # 只检查 Secrets
 
 - **AI 提供方**：`--ai-provider auto`（默认，Actions 下拉同名）或留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。也可显式指定 `deepseek` / `openai` / `rule`。
 - **通道**：console（预览）/ pushplus / wecom / serverchan / all；默认 `--dry-run` 只打印，加 `--push` 才真实推送。
-- **主题**：`--theme game`（默认，8-bit 复古游戏风，全站统一）/`klein`/`pixel`/`monitor`（推送 HTML 主题，同 `pushplus_deepseek.py`）。
+- **主题**：`--theme monitor`（服务器大屏监视风）/`game`（8-bit 复古游戏风）/`klein`/`pixel`/`noc`（推送 HTML 主题，同 `pushplus_deepseek.py`；超微信软上限自动分篇推送，保留样式）。
 - **最新功能一律附带**（不再只在旧的 `pushplus_deepseek.py` 主流程里）：🧭 数据新鲜度看板与内容指纹、📊 港股/A股字符模拟走势图、🛰 十四平台扫描 + 量价舆情动量（`--hours 24/48/72/156`）。Actions 工作流默认模板已切到 `equity`（机构级九章投研）。
 
 ### 大屏输入框（`server_dashboard.py`）
@@ -461,8 +462,8 @@ python stock_report.py --check-only               # 只检查 Secrets
 
 1. 后端实时取行情（`hk_quote`，港股+A 股，失败自动标注数据缺口、绝不伪造）；
 2. 用模块内模型（DeepSeek，未配 Key 自动降级 rule）按 `analysis` 模板生成多空因子研报；
-3. 组装品牌头尾 + 实时行情核验块，按所选通道推送；
-4. 前端在大屏内嵌面板直接渲染研报（`game` 主题 HTML，8-bit 复古游戏风，与大屏同风格）。
+3. 组装品牌头尾 + 实时行情核验块，按所选通道推送（PushPlus 超微信软上限自动分篇，每篇均带主题样式）；
+4. 前端在大屏内嵌面板直接渲染研报，风格由研报栏的「🖥 风格」下拉决定（默认 `monitor`，可切 `game`/`noc`/`klein`/`pixel`）。
 
 ```bash
 python server_dashboard.py            # 启动大屏（8080），打开后在顶部输入框填代码即可
