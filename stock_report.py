@@ -17,7 +17,7 @@ stock_report.py — 输入港股 / A 股代码 → 实时行情 + AI 研报 + �
   python stock_report.py 600519                        # 沪A 贵州茅台（打印研报，不推送）
   python stock_report.py sz000001 --template analysis  # 深A 平安银行
   python stock_report.py 09988 --ai-provider deepseek --channel pushplus --push
-  python stock_report.py 600519 --channel all --push   # 三通道推送
+  python stock_report.py 600519 --ai-provider auto --channel all --push
   python stock_report.py --selftest                    # 离线自检（不联网）
   python stock_report.py --check-only                  # 只检查 Secrets
 
@@ -40,7 +40,18 @@ MARKET_LABELS = {"hk": "港股", "sh": "沪A", "sz": "深A"}
 MARKET_FULL = {"hk": "香港交易所", "sh": "上海证券交易所", "sz": "深圳证券交易所"}
 MARKET_TICKER = {"hk": "HK", "sh": "SH", "sz": "SZ"}
 
-VERSION = "1.0-report-2026-08-13"
+VERSION = "1.0.1-report-2026-08-13"
+
+# CLI / Actions 可选值。auto（及空串）= 有 DEEPSEEK_API_KEY 走 deepseek，否则 rule。
+AI_PROVIDERS = ("", "auto", "deepseek", "openai", "rule")
+
+
+def resolve_ai_provider(ai_provider: str | None) -> str:
+    """把 auto / 空串解析成实际提供方，其它值原样返回。"""
+    p = (ai_provider or "").strip().lower()
+    if p in ("", "auto"):
+        return "deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule"
+    return p
 
 
 # ================================================================ 工具
@@ -152,7 +163,7 @@ def run_report(raw_code: str, *, channel: str = "console",
         quote_error = "行情数据源失败，研报基于模型知识推断"
 
     # ---- ② AI / rule 生成研报 ----
-    provider = ai_provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    provider = resolve_ai_provider(ai_provider)
     messages = pp.build_messages(template, topic, context, risk)
     if provider == "rule":
         report_md = pp.gen_by_rule(topic, template, sent_pack=None)
@@ -285,13 +296,25 @@ def selftest() -> int:
     msgs = pp.build_messages("analysis", "SH600519 贵州茅台", "示例背景", "mid")
     check("analysis 消息可构造", bool(msgs[1]["content"]) and "因子" in msgs[1]["content"])
 
+    print("⑥ --ai-provider auto 合法且等价于空串")
+    args_auto = parse_args(["600519", "--ai-provider", "auto"])
+    check("argparse 接受 auto", args_auto.ai_provider == "auto")
+    args_empty = parse_args(["600519"])
+    check("默认即为 auto", args_empty.ai_provider == "auto")
+    check("auto 解析为 rule（无 Key）或 deepseek",
+          resolve_ai_provider("auto") in ("rule", "deepseek")
+          and resolve_ai_provider("") == resolve_ai_provider("auto")
+          and resolve_ai_provider(None) == resolve_ai_provider("auto"))
+    r_auto = run_report("600519", channel="console", ai_provider="auto", dry_run=True)
+    check("run_report(auto) 落到具体提供方", r_auto["provider"] in ("rule", "deepseek"))
+
     print(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
 
 
 def _check_only(channel: str, provider: str) -> int:
     print("🔎 Secrets 检查（只显示是否配置，不打印内容）：")
-    provider = provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    provider = resolve_ai_provider(provider)
     names = pp.required_secrets(channel, provider)
     missing = [n for n in names if not pp.env(n)]
     for n in names:
@@ -310,8 +333,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("code", nargs="?", default="",
                    help="股票代码（港股 09988 / A股 600519 / 000001.SZ 等）")
     p.add_argument("--channel", default="console", choices=["pushplus", "wecom", "serverchan", "console", "all"])
-    p.add_argument("--ai-provider", default="", choices=["", "deepseek", "openai", "rule"],
-                   dest="ai_provider", help="AI 提供方（留空自动：有 Key 用 deepseek，否则 rule）")
+    p.add_argument("--ai-provider", default="auto", choices=list(AI_PROVIDERS),
+                   dest="ai_provider",
+                   help="AI 提供方（auto=自动：有 DEEPSEEK_API_KEY 用 deepseek，否则 rule）")
     p.add_argument("--template", default="analysis", choices=pp.TEMPLATES,
                    help="分析框架：" + "/".join(pp.TEMPLATES))
     p.add_argument("--risk", default="mid", choices=pp.RISKS, help="风险偏好（portfolio 模板）")
@@ -336,10 +360,10 @@ def main(argv: list[str] | None = None) -> int:
         print("❌ 请提供股票代码，例如：python stock_report.py 600519", file=sys.stderr)
         return 1
 
-    provider = args.ai_provider or ("deepseek" if pp.env("DEEPSEEK_API_KEY") else "rule")
+    provider = resolve_ai_provider(args.ai_provider)
     try:
         result = run_report(
-            args.code, channel=args.channel, ai_provider=provider or None,
+            args.code, channel=args.channel, ai_provider=provider,
             template=args.template, dry_run=not args.push, theme=args.theme,
             push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk)
     except ValueError as e:
