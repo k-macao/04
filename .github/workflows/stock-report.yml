@@ -1,0 +1,53 @@
+# 手动复制版（股票研报 · 港股/A股）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
+# 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml
+# （或另存为任意文件名，如 stock_report.yml），再到 Actions 页面手动 Run workflow。
+# 匹配 stock_report.py v1.1.0-latest-2026-08-13：
+#   输入港股/A股代码 → 实时行情（免 Key）→ 最新功能（新鲜度看板 + 字符模拟图 + 十四平台扫描）
+#   → AI 研报 / 机构级九章投研 → 多通道推送。
+# Manual Run - Stock Report (HK/A-share)
+#
+# 匹配 stock_report.py：
+#   输入港股/A股代码 → 实时行情（免 Key）→ 最新功能（新鲜度看板 + 字符模拟图 + 十四平台扫描）
+#   → AI 研报 / 机构级九章投研 / Skills Hub → 多通道推送。
+# 要点：
+#   - 默认 template=equity（机构级个股投研独立栏目）；也可选 analysis 等旧模板，同样附带最新功能；
+#   - 默认 template=equity（机构级个股投研独立栏目）；也可选 analysis 等经典模板 / Skills Hub 模板；
+#   - 行情数据源（腾讯财经/东方财富）免 Key，无需配置任何行情 Secret；
+#   - ai_provider=auto 时：配了 DEEPSEEK_API_KEY 走 DeepSeek，否则自动降级 rule 规则模板（不耗 API）；
+#   - 需真实推送时按所选通道配置对应 Secret（PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY）；
+#   - 本工作流不写图片回仓库，permissions.contents 仅需 read；
+#   - hours 控制量价舆情 / 十四平台扫描窗口（24/48/72/156）；
+#   - actions/cache 持久化 output/push_state.json，供新鲜度看板跨运行对比；
+#   - --ai-provider 直接传 inputs.ai_provider（含 auto）。
+#   - 加固：actions 固定 v4/v5 并 pin 到 commit SHA；若遇 Service Unavailable，
+#     见 README「故障排查」章节（Marketplace CDN 瞬时 503，Re-run 即可）。
+
+name: Manual Run - Stock Report (HK/A-share)
+
+        required: true
+        default: '09988'
+      template:
+        description: '研报分析框架（默认 equity=机构级个股投研；analysis 等也会附带新鲜度/字符图/十四平台）'
+        description: '研报分析框架（默认 equity=机构级个股投研；analysis 等经典模板同样附带最新功能）'
+        required: true
+        default: 'equity'
+        type: choice
+          --mode "${{ inputs.mode }}"
+          --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
+
+      - name: Real push (真实推送到微信)
+        if: ${{ inputs.dry_run == 'false' }}
+          --mode "${{ inputs.mode }}"
+          --risk "${{ inputs.risk }}"
+          --theme "${{ inputs.theme }}"
+          --hours "${{ inputs.hours }}"
+          --push
+
+      - name: Save push state (供下次新鲜度对比)
+        if: ${{ success() && hashFiles('output/push_state.json') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
