@@ -318,7 +318,7 @@ python stock_report.py --selftest                 # 离线自检（市场识别 
 python stock_report.py --check-only               # 只检查 Secrets
 ```
 
-- **AI 提供方**：`--ai-provider` 留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。
+- **AI 提供方**：`--ai-provider auto`（默认，Actions 下拉同名）或留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。也可显式指定 `deepseek` / `openai` / `rule`。
 - **通道**：console（预览）/ pushplus / wecom / serverchan / all；默认 `--dry-run` 只打印，加 `--push` 才真实推送。
 - **主题**：`--theme game/klein/pixel/monitor`（推送 HTML 主题，同 `pushplus_deepseek.py`）。
 
