@@ -766,6 +766,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>章鱼 AI · 服务器大屏监视中心 (8-BIT RETRO ARCADE WALLBOARD)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <style>
         :root {{
             /* —— 8-bit 复古游戏风（与 pushplus game 主题统一）——
@@ -786,7 +788,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             --text-main: #e9eaf5;          /* 正文米白 */
             --text-muted: #8a90bc;         /* 辅助蓝灰 */
             --text-dim: #5b6090;
-            --font-mono: 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
+            --font-pixel: 'Press Start 2P', 'Courier New', monospace;
+            --font-mono: 'VT323', 'Courier New', 'Consolas', 'JetBrains Mono', monospace;
             /* 硬黑像素阴影：所有发光改用 4px 偏移纯黑块 */
             --glow-cyan: 4px 4px 0 rgba(0, 0, 0, 0.9);
             --glow-green: 4px 4px 0 rgba(0, 0, 0, 0.9);
@@ -803,8 +806,9 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             background-color: var(--bg-deep);
             color: var(--text-main);
             font-family: var(--font-mono);
-            font-size: 13px;
-            line-height: 1.5;
+            font-size: 18px;
+            line-height: 1.45;
+            image-rendering: pixelated;
             min-height: 100vh;
             padding: 12px;
             position: relative;
@@ -1895,6 +1899,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             color: var(--text-dim);
             font-size: 10px;
         }}
+        @keyframes blink-insert {{ 50% {{ opacity: 0; }} }}
+        .press-start {{ animation: blink-insert 1.1s steps(1) infinite; font-family: var(--font-pixel); font-size: 9px; }}
     </style>
 </head>
 <body>
@@ -2185,7 +2191,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <span style="color:var(--cyan);">▞▚</span> GAME.LOG · 8-BIT RETRO WALLBOARD ·
                 <span style="color:var(--green);">♥ {game_hp}</span>/100 ·
                 <span style="color:var(--cyan);">★</span> LV.{game_lv:02d}
-                <span style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
+                <span class="press-start" style="float:right;">PRESS START <span style="color:var(--cyan);">▮</span></span>
             </div>
             <div class="footer-brand">章鱼 AI 全景调研平台 · OCTOPUS AI LABS</div>
             <div class="footer-author">作者：章鱼 ai 调研团队</div>
@@ -3144,3 +3150,4 @@ if __name__ == "__main__":
     if "--export-only" in sys.argv:
         sys.exit(0)
     run_server(port)
+t)
