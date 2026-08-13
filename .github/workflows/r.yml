@@ -1,16 +1,19 @@
 # 手动复制版（股票研报 · 港股/A股）：此文件位于仓库根目录，不会被 GitHub Actions 执行。
 # 请将本文件完整内容复制并覆盖到 .github/workflows/r.yml
 # （或另存为任意文件名，如 stock_report.yml），再到 Actions 页面手动 Run workflow。
-# 匹配 stock_report.py v1.0.1-report-2026-08-13：输入港股/A股代码 → 实时行情（免 Key）→ AI 研报 → 多通道推送。
+# 匹配 stock_report.py v1.1.0-latest-2026-08-13：
+#   输入港股/A股代码 → 实时行情（免 Key）→ 最新功能（新鲜度看板 + 字符模拟图 + 十四平台扫描）
+#   → AI 研报 / 机构级九章投研 → 多通道推送。
 #
 # 要点：
+#   - 默认 template=equity（机构级个股投研独立栏目）；也可选 analysis 等旧模板，同样附带最新功能；
 #   - 行情数据源（腾讯财经/东方财富）免 Key，无需配置任何行情 Secret；
 #   - ai_provider=auto 时：配了 DEEPSEEK_API_KEY 走 DeepSeek，否则自动降级 rule 规则模板（不耗 API）；
 #   - 需真实推送时按所选通道配置对应 Secret（PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY）；
-#   - 本工作流不写图片回仓库，permissions.contents 仅需 read。
+#   - 本工作流不写图片回仓库，permissions.contents 仅需 read；
+#   - hours 控制量价舆情 / 十四平台扫描窗口（24/48/72/156）；
+#   - actions/cache 持久化 output/push_state.json，供新鲜度看板跨运行对比；
 #   - --ai-provider 直接传 inputs.ai_provider（含 auto）。
-#     不要写 `cond && '' || x`：GHA 里空串是假值，auto 会被原样传下去，
-#     旧版 argparse 不认 auto 就会 exit 2。现版 stock_report.py 已正式接受 auto。
 
 name: Manual Run - Stock Report (HK/A-share)
 
@@ -22,11 +25,11 @@ on:
         required: true
         default: '09988'
       template:
-        description: '研报分析框架（equity=机构级个股投研独立栏目，基于 equity-research-skill 九章深度）'
+        description: '研报分析框架（默认 equity=机构级个股投研；analysis 等也会附带新鲜度/字符图/十四平台）'
         required: true
-        default: 'analysis'
+        default: 'equity'
         type: choice
-        options: [analysis, equity, brief, fusion, plan, picker, scan, earnings, portfolio, review, regime, sentiment, feedscan, newsnow]
+        options: [equity, analysis, initiate, morning_note, earnings_preview, earnings_update, model_update, thesis, catalysts, sector, ideas, brief, fusion, plan, picker, scan, earnings, portfolio, review, regime, sentiment, feedscan, newsnow]
       mode:
         description: 'equity 栏目模式（仅 template=equity 生效：full=完整九章 / earnings=财报九章）'
         required: true
@@ -57,6 +60,12 @@ on:
         default: 'game'
         type: choice
         options: [game, klein, pixel, monitor, noc, default]
+      hours:
+        description: '数据窗口小时数（量价舆情动量 / 十四平台扫描，支持 24/48/72/156）'
+        required: true
+        default: '48'
+        type: choice
+        options: ['24', '48', '72', '156']
       risk:
         description: '风险偏好档位（仅 portfolio 模板使用）'
         required: true
@@ -93,6 +102,13 @@ jobs:
         uses: actions/setup-python@v5  # pin: a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
+
+      - name: Restore push state (跨运行新鲜度对比)
+        uses: actions/cache/restore@v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
+          restore-keys: push-state-
 
       # 直接把 auto / deepseek / openai / rule 传给 CLI。
       # stock_report.py 已把 auto 当作「有 DEEPSEEK_API_KEY 用 deepseek，否则 rule」。
