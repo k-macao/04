@@ -1994,7 +1994,8 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                 <option value="earnings">财报前瞻</option>
             </select>
             <select id="report-theme" class="report-select" title="推送风格（PushPlus HTML 主题，微信详情页可见）">
-                <option value="monitor" selected>🖥 风格 MONITOR 服务器大屏</option>
+                <option value="guizang" selected>✦ 风格 GUIZANG 电子杂志长页</option>
+                <option value="monitor">🖥 风格 MONITOR 服务器大屏</option>
                 <option value="game">🎮 风格 GAME 8-bit 像素游戏</option>
                 <option value="noc">🛰 风格 NOC 零表格监视</option>
                 <option value="klein">📰 风格 KLEIN 复古纸面</option>
@@ -2293,7 +2294,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {{}}).value || 'console';
             const template = (document.getElementById('report-template') || {{}}).value || 'analysis';
-            const theme = (document.getElementById('report-theme') || {{}}).value || 'monitor';
+            const theme = (document.getElementById('report-theme') || {{}}).value || 'guizang';
             if (!code) {{
                 if (input) {{ input.style.borderColor = 'var(--red)'; input.focus(); }}
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -2400,7 +2401,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         code: code, mode: mode, channel: channel,
-                        dry_run: channel === 'console', theme: 'monitor'
+                        dry_run: channel === 'console', theme: 'guizang'
                     }})
                 }});
                 const r = await resp.json();
@@ -2515,7 +2516,7 @@ def render_server_monitor_html(stock_code: str = "09988") -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         code: code, skill: skill, channel: channel,
-                        dry_run: channel === 'console', theme: 'monitor'
+                        dry_run: channel === 'console', theme: 'guizang'
                     }})
                 }});
                 const r = await resp.json();
@@ -2908,7 +2909,7 @@ def _api_report(params: dict) -> dict:
     template = str(params.get("template") or "analysis")
     ai_provider = str(params.get("ai_provider") or "") or None
     dry_run = bool(params.get("dry_run", True))
-    theme = str(params.get("theme") or "monitor")
+    theme = str(params.get("theme") or "guizang")
     mode = str(params.get("mode") or "full")
     industry = str(params.get("industry") or "").strip() or None
     try:
@@ -2936,7 +2937,7 @@ def _api_skills_run(params: dict) -> dict:
         channel = "console"
     ai_provider = str(params.get("ai_provider") or "") or None
     dry_run = bool(params.get("dry_run", True))
-    theme = str(params.get("theme") or "monitor")
+    theme = str(params.get("theme") or "guizang")
     try:
         r = skills_hub_mod.run_skill(
             code, skill=skill, ai_provider=ai_provider, channel=channel,
@@ -2963,7 +2964,7 @@ def _api_equity_column(params: dict) -> dict:
         mode = "full"
     ai_provider = str(params.get("ai_provider") or "") or None
     dry_run = bool(params.get("dry_run", True))
-    theme = str(params.get("theme") or "monitor")
+    theme = str(params.get("theme") or "guizang")
     industry = str(params.get("industry") or "").strip() or None
     try:
         r = equity_col.generate_column(

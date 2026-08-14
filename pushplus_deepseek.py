@@ -1524,10 +1524,46 @@ def print_secret_report(channel: str, provider: str) -> bool:
 #
 # PushPlus template=html 时走该渲染器。微信/PushPlus 详情页对 <style> 标签
 # 支持不稳定，全部使用内联样式。
-# game 主题：8-bit 像素游戏风（整体默认）- 深夜蓝游戏屏/金色粗框/硬黑像素阴影/
+# guizang 主题：参考 Guizang PPT Skill Style A 的「电子杂志 × 电子墨水」语言，
+#               适配为手机端竖版长页面：暖纸底、墨黑 Hero、衬线标题、等宽元信息、
+#               发丝线与大留白；不照搬横向翻页/WebGL 运行时。
+# game 主题：8-bit 像素游戏风 - 深夜蓝游戏屏/金色粗框/硬黑像素阴影/
 #            HP血条/SCORE/LEVEL 游戏元素/金币高亮/涨跌突出
 # klein 主题：游戏复古像素风 - 米黄纸底/黑细框/像素图标/涨跌突出
 # pixel 主题：复古监控风 - 暗色服务器大屏/细线框/等宽细字/涨跌突出/REC摄像头元素
+
+GUIZANG = {
+    # ---- 电子杂志 × 电子墨水：墨水经典（Monocle 默认）竖版长页面 ----
+    "bg": "#0A0A0B",            # 长页面外框 / Hero 墨黑
+    "page_bg": "#F1EFEA",       # 暖米白电子纸
+    "paper_tint": "#E8E5DE",    # 轻微层级底色
+    "card_bg": "#F1EFEA",       # 内容与纸张同色：不做浮动卡片
+    "hbg": "#0A0A0B",
+    "hfg": "#F1EFEA",
+    "fg": "#0A0A0B",
+    "muted": "#6F6B64",
+    "border": "#0A0A0B",
+    "hairline": "#C7C2B9",
+    "accent": "#0A0A0B",
+    "accent_fg": "#F1EFEA",
+    "up": "#176B45",
+    "down": "#A63D32",
+    "up_bg": "#DFE9E2",
+    "down_bg": "#EEDFDA",
+    "code_bg": "#18181A",
+    "code_fg": "#F1EFEA",
+    "size": "14px",
+    "size_title": "16px",
+    "size_h1": "34px",
+    "size_h2": "27px",
+    "size_h3": "20px",
+    "line": "1.82",
+    "font": "'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif",
+    "font_serif": "'Noto Serif SC','Songti SC','STSong','SimSun',Georgia,serif",
+    "font_en": "Georgia,'Times New Roman',serif",
+    "font_mono": "'IBM Plex Mono','SFMono-Regular',Consolas,'Courier New',monospace",
+    "editorial": True,
+}
 
 KLEIN = {
     # ---- 游戏复古像素风：米黄纸底 + 白卡片 + 黑细框 + 像素字体/图标 ----
@@ -1581,7 +1617,7 @@ PIXEL = {
 }
 
 GAME = {
-    # ---- 8-bit 像素游戏风（整体默认）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 ----
+    # ---- 8-bit 像素游戏风（兼容保留）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影 ----
     #      标题栏=游戏菜单金条 / 状态栏=HP血条+LV等级 / 底部=SCORE+PRESS START
     "bg": "#0B0E2A",            # 游戏背景（深夜蓝）
     "card_bg": "#16193B",       # 游戏面板底（靛蓝）
@@ -1642,6 +1678,7 @@ MONITOR = {
 }
 
 THEMES = {
+    "guizang": GUIZANG,
     "game": GAME,
     "klein": KLEIN,
     "pixel": PIXEL,
@@ -1694,16 +1731,29 @@ def _inline_md(s: str, theme_name: str = "game") -> str:
     # 图片优先于链接：![alt](url) → <img>（微信/PushPlus html 主题直接显示）
     # referrerpolicy="no-referrer"：微信内置浏览器对第三方图床常做防盗链拦截，
     # 不发送 Referer 可显著提高外链图片（jsDelivr 等 CDN）在微信内的加载成功率。
+    if theme.get("editorial"):
+        img_style = (
+            f'max-width:100%;width:100%;height:auto;display:block;margin:18px 0 8px;'
+            f'border-top:1px solid {theme["border"]};'
+            f'border-bottom:1px solid {theme["border"]};border-radius:0;')
+    else:
+        img_style = (
+            'max-width:100%;display:block;margin:6px 0;'
+            'border:1px solid rgba(128,128,160,0.45);border-radius:2px;')
     s = re.sub(
         r"!\[([^\]]*)\]\(([^)\s]+)\)",
-        r'<img src="\2" alt="\1" referrerpolicy="no-referrer" '
-        r'style="max-width:100%;display:block;'
-        r'margin:6px 0;border:1px solid rgba(128,128,160,0.45);'
-        r'border-radius:2px;">',
+        rf'<img src="\2" alt="\1" referrerpolicy="no-referrer" style="{img_style}">',
         s)
-    s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+    if theme.get("editorial"):
+        s = re.sub(
+            r"\*\*([^*]+)\*\*",
+            rf'<strong style="font-family:{theme["font_serif"]};font-weight:700;">\1</strong>',
+            s)
+    else:
+        s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
-               rf'<a href="\2" style="color:{theme["fg"]};text-decoration:underline;">\1</a>', s)
+               rf'<a href="\2" style="color:{theme["fg"]};text-decoration:underline;'
+               rf'text-underline-offset:3px;">\1</a>', s)
     return s
 
 
@@ -1738,6 +1788,92 @@ def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
     ev_i = col("依据")
     prob_label = head[prob_i] if prob_i is not None else "多头概率"
     known = {i for i in (0, dir_i, prob_i, ev_i) if i is not None}
+
+    # 电子杂志主题：把因子卡改造成竖向 editorial rowline。无阴影、无浮卡，
+    # 依靠衬线标题、等宽元数据、发丝线和留白建立层级。
+    if theme.get("editorial"):
+        cards: list[str] = []
+        for row_no, r in enumerate(body, 1):
+            if not r or not r[0]:
+                continue
+
+            def cell(i) -> str:
+                return r[i] if (i is not None and 0 <= i < len(r)) else ""
+
+            name = r[0]
+            direction = cell(dir_i)
+            prob_raw = cell(prob_i)
+            evidence = cell(ev_i)
+            extras = [(h, r[idx]) for idx, h in enumerate(head)
+                      if idx not in known and idx < len(r) and r[idx]]
+            m_prob = re.search(r"(\d{1,3})\s*%", prob_raw)
+            p_val = max(0, min(100, int(m_prob.group(1)))) if m_prob else None
+            if direction:
+                is_up = _contains_up(direction)
+                is_down = (not is_up) and _contains_down(direction)
+                badge_text = direction
+            elif p_val is not None:
+                is_up, is_down = p_val > 50, p_val < 50
+                badge_text = "偏多" if is_up else ("偏空" if is_down else "中性")
+            else:
+                joined = " ".join(r)
+                is_up = _contains_up(joined)
+                is_down = (not is_up) and _contains_down(joined)
+                badge_text = "偏多" if is_up else ("偏空" if is_down else "中性")
+            edge = theme["up"] if is_up else (
+                theme["down"] if is_down else theme["muted"])
+            arrow = "▲" if is_up else ("▼" if is_down else "●")
+            badge_html = (
+                f'<span style="display:inline-block;color:{edge};border:1px solid {edge};'
+                f'padding:2px 7px;font-family:{theme["font_mono"]};font-size:10px;'
+                f'letter-spacing:.08em;white-space:nowrap;">{arrow} '
+                f'{_inline_md(badge_text, theme_name)}</span>')
+            prob_html = ""
+            if prob_raw:
+                width = p_val if p_val is not None else 0
+                prob_html = (
+                    f'<div style="margin-top:13px;display:flex;align-items:center;gap:9px;">'
+                    f'<span style="font-family:{theme["font_mono"]};font-size:9px;'
+                    f'letter-spacing:.14em;color:{theme["muted"]};text-transform:uppercase;">'
+                    f'{prob_label}</span>'
+                    f'<span style="font-family:{theme["font_en"]};font-size:25px;'
+                    f'font-weight:700;line-height:1;color:{edge};">'
+                    f'{_inline_md(prob_raw, theme_name)}</span>'
+                    f'<span style="height:2px;flex:1;background:{theme["hairline"]};">'
+                    f'<span style="display:block;width:{width}%;height:2px;background:{edge};">'
+                    f'</span></span></div>')
+            extras_html = "".join(
+                f'<div style="margin-top:7px;font-family:{theme["font"]};font-size:12px;'
+                f'color:{theme["muted"]};"><span style="font-family:{theme["font_mono"]};'
+                f'font-size:9px;letter-spacing:.12em;text-transform:uppercase;">'
+                f'{_inline_md(h, theme_name)}</span> · '
+                f'<span style="color:{theme["fg"]};">{_inline_md(v, theme_name)}</span></div>'
+                for h, v in extras)
+            evidence_html = ""
+            if evidence:
+                evidence_html = (
+                    f'<div style="margin-top:11px;color:{theme["muted"]};'
+                    f'font-family:{theme["font"]};font-size:{theme["size"]};'
+                    f'line-height:{theme["line"]};">'
+                    f'<span style="font-family:{theme["font_mono"]};font-size:9px;'
+                    f'letter-spacing:.14em;color:{theme["fg"]};">EVIDENCE</span><br>'
+                    f'{_inline_md(evidence, theme_name)}</div>')
+            cards.append(
+                f'<div style="border-top:1px solid {theme["hairline"]};'
+                f'padding:18px 0 20px;">'
+                f'<div style="display:flex;align-items:flex-start;gap:12px;">'
+                f'<span style="font-family:{theme["font_en"]};font-style:italic;'
+                f'font-size:13px;color:{theme["muted"]};padding-top:3px;">{row_no:02d}</span>'
+                f'<span style="flex:1;font-family:{theme["font_serif"]};font-size:20px;'
+                f'font-weight:700;line-height:1.35;color:{theme["fg"]};">'
+                f'{_inline_md(name, theme_name)}</span>{badge_html}</div>'
+                f'{prob_html}{extras_html}{evidence_html}</div>')
+        return (
+            f'<div style="margin:20px 0 26px;border-bottom:1px solid {theme["hairline"]};">'
+            f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;'
+            f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.16em;'
+            f'color:{theme["muted"]};"><span>FACTOR MATRIX</span>'
+            f'<span>{len(cards):02d} SIGNALS</span></div>{"".join(cards)}</div>')
 
     # 卡片阴影：monitor 用辉光，game/pixel 用硬偏移像素阴影，klein 用黑框硬阴影
     if theme.get("glow"):
@@ -1873,6 +2009,48 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
     # 因子分析表（因子/方向/多头概率/依据）→ 卡片式内容展示，不再渲染表格
     if head and head[0] == "因子":
         return _render_factor_cards(rows, theme_name)
+
+    if theme.get("editorial"):
+        # 电子杂志竖版页：宽表在手机端会横向溢出，因此改成 rowline。
+        # 首列是衬线关键词，其余列用「等宽标签 / 正文值」逐项展开。
+        row_items: list[str] = []
+        for row_no, r in enumerate(body, 1):
+            if not r:
+                continue
+            joined = " ".join(r)
+            is_up = _contains_up(joined)
+            is_down = (not is_up) and _contains_down(joined)
+            signal = theme["up"] if is_up else (
+                theme["down"] if is_down else theme["fg"])
+            name = _inline_md(r[0], theme_name) if r else ""
+            details = []
+            for idx, value in enumerate(r[1:], 1):
+                if not value:
+                    continue
+                label = head[idx] if idx < len(head) else f"COL {idx + 1}"
+                details.append(
+                    f'<div style="margin-top:7px;display:grid;grid-template-columns:88px 1fr;'
+                    f'gap:9px;align-items:start;">'
+                    f'<span style="font-family:{theme["font_mono"]};font-size:9px;'
+                    f'letter-spacing:.12em;text-transform:uppercase;color:{theme["muted"]};">'
+                    f'{_inline_md(label, theme_name)}</span>'
+                    f'<span style="font-family:{theme["font"]};font-size:13px;'
+                    f'line-height:1.65;color:{signal};overflow-wrap:anywhere;">'
+                    f'{_inline_md(value, theme_name)}</span></div>')
+            row_items.append(
+                f'<div style="padding:17px 0 19px;border-top:1px solid {theme["hairline"]};">'
+                f'<div style="display:flex;gap:12px;align-items:baseline;">'
+                f'<span style="font-family:{theme["font_en"]};font-style:italic;'
+                f'font-size:12px;color:{theme["muted"]};">{row_no:02d}</span>'
+                f'<span style="font-family:{theme["font_serif"]};font-size:18px;'
+                f'font-weight:700;line-height:1.4;color:{signal};">{name}</span></div>'
+                f'{"".join(details)}</div>')
+        labels = " · ".join(_inline_md(x, theme_name) for x in head)
+        return (
+            f'<div style="margin:19px 0 27px;border-bottom:1px solid {theme["hairline"]};">'
+            f'<div style="padding:0 0 9px;font-family:{theme["font_mono"]};font-size:9px;'
+            f'letter-spacing:.12em;color:{theme["muted"]};text-transform:uppercase;">'
+            f'DATA ROWS · {labels}</div>{"".join(row_items)}</div>')
 
     if theme.get("table_free") or theme_name in ("monitor", "noc"):
         # 服务器大屏监视风格：零表格（NO TABLES），文字 + 列表横排
@@ -2039,11 +2217,12 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
 
 
 def md_to_html(md: str, theme_name: str = "game") -> str:
-    """轻量 Markdown→HTML，支持 game/klein/pixel 三主题，全内联样式。"""
+    """轻量 Markdown→HTML；所有主题使用内联样式，兼容 PushPlus/微信详情页。"""
     theme = _get_theme(theme_name)
     html: list[str] = []
     lines = md.split("\n")
     i = 0
+    heading_no = 0
     while i < len(lines):
         line = lines[i].rstrip()
         s = line.strip()
@@ -2063,11 +2242,16 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             code_text = "\n".join(code_lines)
             # 转义以防止 HTML 注入，保留字符图原样
             esc = code_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            code_bg = theme.get("code_bg", theme["card_bg"])
+            code_fg = theme.get("code_fg", theme["fg"])
+            code_font = theme.get("font_mono", theme["font"])
+            code_margin = "18px 0 24px" if theme.get("editorial") else "6px 0"
+            code_padding = "16px 14px" if theme.get("editorial") else "8px"
             html.append(
-                f'<pre style="background:{theme["card_bg"]};border:1px solid {theme["border"]};'
-                f'padding:8px;overflow-x:auto;font-family:{theme["font"]};'
-                f'font-size:{theme["size"]};line-height:1.35;white-space:pre;'
-                f'color:{theme["fg"]};margin:6px 0;">{esc}</pre>'
+                f'<pre style="background:{code_bg};border:1px solid {theme["border"]};'
+                f'padding:{code_padding};overflow-x:auto;font-family:{code_font};'
+                f'font-size:{theme["size"]};line-height:1.45;white-space:pre;'
+                f'color:{code_fg};margin:{code_margin};">{esc}</pre>'
             )
             continue
 
@@ -2081,7 +2265,14 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             continue
 
         if re.match(r"^-{3,}$", s):  # 分隔线
-            if theme_name == "game":
+            if theme.get("editorial"):
+                html.append(
+                    f'<div style="margin:32px 0 30px;display:flex;align-items:center;gap:10px;">'
+                    f'<span style="width:24px;height:1px;background:{theme["border"]};"></span>'
+                    f'<span style="font-family:{theme["font_en"]};font-size:13px;'
+                    f'font-style:italic;color:{theme["muted"]};">§</span>'
+                    f'<span style="height:1px;flex:1;background:{theme["hairline"]};"></span></div>')
+            elif theme_name == "game":
                 # 游戏风：金色 2px 实线（像素分割线）
                 html.append(
                     f'<hr style="border:none;border-top:2px solid {theme["border"]};'
@@ -2098,13 +2289,28 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             i += 1
             continue
 
-        if s.startswith("#"):  # 标题 - 像素图标
+        if s.startswith("#"):  # 标题
             h = len(s) - len(s.lstrip("#"))
             txt = s.lstrip("#").strip()
             fs = {"1": theme["size_h1"], "2": theme["size_h2"]}.get(
                 str(h), theme["size_h3"]
             )
-            if theme_name in ("pixel", "klein", "game"):
+            heading_no += 1
+            if theme.get("editorial"):
+                kicker = "OPENING" if h == 1 else f"SECTION · {heading_no:02d}"
+                top_rule = "" if h == 1 else (
+                    f'border-top:1px solid {theme["border"]};padding-top:22px;')
+                margin = "8px 0 24px" if h == 1 else "34px 0 17px"
+                html.append(
+                    f'<div style="{top_rule}margin:{margin};">'
+                    f'<div style="font-family:{theme["font_mono"]};font-size:9px;'
+                    f'letter-spacing:.22em;text-transform:uppercase;color:{theme["muted"]};'
+                    f'margin-bottom:9px;">{kicker}</div>'
+                    f'<div style="font-family:{theme["font_serif"]};font-size:{fs};'
+                    f'font-weight:700;color:{theme["fg"]};line-height:1.28;'
+                    f'letter-spacing:-.02em;overflow-wrap:anywhere;">'
+                    f'{_inline_md(txt, theme_name)}</div></div>')
+            elif theme_name in ("pixel", "klein", "game"):
                 if theme_name == "game":
                     icon_map = {1: "◆", 2: "►", 3: "·"}
                     lb = "3px"  # 游戏风粗左线
@@ -2133,12 +2339,25 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             i += 1
             continue
 
-        if s.startswith(">"):  # 引用块 - 细线框
+        if s.startswith(">"):  # 引用块
             qs = []
             while i < len(lines) and lines[i].strip().startswith(">"):
                 qs.append(lines[i].strip().lstrip(">").strip())
                 i += 1
-            if theme_name in ("pixel", "klein", "game"):
+            if theme.get("editorial"):
+                html.append(
+                    f'<div style="margin:26px 0 28px;padding:19px 0 20px;'
+                    f'border-top:1px solid {theme["border"]};'
+                    f'border-bottom:1px solid {theme["hairline"]};">'
+                    f'<div style="font-family:{theme["font_en"]};font-size:28px;'
+                    f'font-style:italic;line-height:.8;color:{theme["muted"]};">“</div>'
+                    f'<div style="font-family:{theme["font_serif"]};font-size:19px;'
+                    f'line-height:1.75;color:{theme["fg"]};">'
+                    + "<br>".join(_inline_md(q, theme_name) for q in qs)
+                    + f'</div><div style="margin-top:11px;font-family:{theme["font_mono"]};'
+                      f'font-size:9px;letter-spacing:.18em;color:{theme["muted"]};">'
+                      f'EDITORIAL NOTE</div></div>')
+            elif theme_name in ("pixel", "klein", "game"):
                 # game 游戏风：金色 3px 左线（任务/提示框）；pixel 细线 1px
                 lb = "3px" if theme_name in ("klein", "game") else "1px"
                 lb_color = theme["accent"] if theme_name == "game" else theme["border"]
@@ -2161,12 +2380,25 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                 )
             continue
 
-        if re.match(r"^[-*]\s+", s):  # 无序列表 - 像素图标方块
+        if re.match(r"^[-*]\s+", s):  # 无序列表
             items = []
             while i < len(lines) and re.match(r"^[-*]\s+", lines[i].strip()):
                 items.append(re.sub(r"^[-*]\s+", "", lines[i].strip()))
                 i += 1
-            if theme_name in ("pixel", "klein", "game"):
+            if theme.get("editorial"):
+                lis = "".join(
+                    f'<li style="list-style:none;display:flex;gap:11px;align-items:flex-start;'
+                    f'padding:10px 0;border-top:1px solid {theme["hairline"]};">'
+                    f'<span style="font-family:{theme["font_en"]};font-style:italic;'
+                    f'color:{theme["muted"]};">—</span>'
+                    f'<span style="flex:1;">{_inline_md(x, theme_name)}</span></li>'
+                    for x in items)
+                html.append(
+                    f'<ul style="margin:17px 0 24px;padding:0;border-bottom:1px solid '
+                    f'{theme["hairline"]};color:{theme["fg"]};font-family:{theme["font"]};'
+                    f'font-size:{theme["size"]};line-height:{theme["line"]};list-style:none;">'
+                    f'{lis}</ul>')
+            elif theme_name in ("pixel", "klein", "game"):
                 # game/pixel 用金币/琥珀方块；klein 游戏复古用黑方块
                 mk = theme["accent"] if theme_name in ("pixel", "game") else theme["border"]
                 lis = "".join(
@@ -2197,15 +2429,29 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
             while i < len(lines) and re.match(r"^\d+\.\s+", lines[i].strip()):
                 items.append(re.sub(r"^\d+\.\s+", "", lines[i].strip()))
                 i += 1
-            lis = "".join(
-                f'<li style="margin:2px 0;">{_inline_md(x, theme_name)}</li>'
-                for x in items
-            )
-            html.append(
-                f'<ol style="margin:4px 0;padding-left:18px;'
-                f'color:{theme["fg"]};font-family:{theme.get("font")};'
-                f'font-size:{theme["size"]};">{lis}</ol>'
-            )
+            if theme.get("editorial"):
+                lis = "".join(
+                    f'<li style="list-style:none;display:grid;grid-template-columns:34px 1fr;'
+                    f'gap:10px;padding:12px 0;border-top:1px solid {theme["hairline"]};">'
+                    f'<span style="font-family:{theme["font_en"]};font-size:18px;'
+                    f'font-style:italic;color:{theme["muted"]};">{idx:02d}</span>'
+                    f'<span>{_inline_md(x, theme_name)}</span></li>'
+                    for idx, x in enumerate(items, 1))
+                html.append(
+                    f'<ol style="margin:18px 0 25px;padding:0;border-bottom:1px solid '
+                    f'{theme["hairline"]};color:{theme["fg"]};font-family:{theme["font"]};'
+                    f'font-size:{theme["size"]};line-height:{theme["line"]};list-style:none;">'
+                    f'{lis}</ol>')
+            else:
+                lis = "".join(
+                    f'<li style="margin:2px 0;">{_inline_md(x, theme_name)}</li>'
+                    for x in items
+                )
+                html.append(
+                    f'<ol style="margin:4px 0;padding-left:18px;'
+                    f'color:{theme["fg"]};font-family:{theme.get("font")};'
+                    f'font-size:{theme["size"]};">{lis}</ol>'
+                )
             continue
 
         # 普通段落
@@ -2222,10 +2468,11 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                 break
             para.append(nxt)
             i += 1
+        para_margin = "11px 0 16px" if theme.get("editorial") else "4px 0"
         html.append(
-            f'<div style="margin:4px 0;color:{theme["fg"]};'
+            f'<div style="margin:{para_margin};color:{theme["fg"]};'
             f'font-size:{theme["size"]};line-height:{theme["line"]};'
-            f'font-family:{theme.get("font", KLEIN["font"])};">'
+            f'font-family:{theme.get("font", KLEIN["font"])};overflow-wrap:anywhere;">'
             + "<br>".join(_inline_md(p, theme_name) for p in para)
             + "</div>"
         )
@@ -2236,8 +2483,61 @@ def themed_html(title: str, content_md: str, theme_name: str = "game") -> str:
     theme = _get_theme(theme_name)
     body = md_to_html(content_md, theme_name)
     safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if theme_name == "guizang":
+        # Guizang PPT Skill Style A 的竖版长页适配：横向 slide/chrome 被重新解释为
+        # 连续文章的 Hero / section / rowline。全内联，保证 PushPlus 详情页不依赖 CSS/JS。
+        stamp = datetime.now(CST).strftime("%Y.%m.%d · %H:%M CST")
+        issue = datetime.now(CST).strftime("%Y%m%d")
+        return (
+            f'<div style="width:100%;margin:0;background:{theme["bg"]};padding:12px 0;'
+            f'color:{theme["fg"]};font-family:{theme["font"]};box-sizing:border-box;">'
+            f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
+            f'overflow:hidden;box-sizing:border-box;">'
+            # 墨黑 Hero：等宽页眉 + 衬线主标题 + 巨型幽灵字
+            f'<div style="position:relative;overflow:hidden;background:{theme["bg"]};'
+            f'color:{theme["hfg"]};padding:22px 20px 32px;">'
+            f'<div style="position:absolute;right:-10px;bottom:-30px;font-family:{theme["font_en"]};'
+            f'font-size:108px;font-weight:700;line-height:1;opacity:.06;">04</div>'
+            f'<div style="position:relative;display:flex;justify-content:space-between;gap:12px;'
+            f'padding-bottom:12px;border-bottom:1px solid {theme["muted"]};'
+            f'font-family:{theme["font_mono"]};font-size:9px;line-height:1.5;'
+            f'letter-spacing:.16em;text-transform:uppercase;opacity:.82;">'
+            f'<span>OCTOPUS AI<br>MARKET INTELLIGENCE</span>'
+            f'<span style="text-align:right;">ISSUE {issue}<br>VERTICAL EDITION</span></div>'
+            f'<div style="position:relative;margin-top:27px;font-family:{theme["font_mono"]};'
+            f'font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.65;">'
+            f'RESEARCH NOTE · ELECTRONIC INK</div>'
+            f'<div style="position:relative;margin-top:10px;font-family:{theme["font_serif"]};'
+            f'font-size:34px;font-weight:700;line-height:1.24;letter-spacing:-.025em;'
+            f'overflow-wrap:anywhere;">{safe_title}</div>'
+            f'<div style="position:relative;margin-top:18px;max-width:560px;font-family:{theme["font"]};'
+            f'font-size:12px;line-height:1.75;opacity:.72;">'
+            f'全景视野，把实时行情、证据与判断编排成一份可连续阅读的研究长页。</div>'
+            f'<div style="position:relative;margin-top:25px;display:flex;align-items:center;gap:10px;'
+            f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.13em;opacity:.62;">'
+            f'<span style="width:28px;height:1px;background:{theme["hfg"]};"></span>'
+            f'<span>{stamp}</span></div></div>'
+            # 正文：暖纸、窄栏、长页；rowline 与 section 由 md_to_html 生成
+            f'<div style="background:{theme["page_bg"]};padding:28px 20px 48px;'
+            f'font-family:{theme["font"]};font-size:{theme["size"]};'
+            f'line-height:{theme["line"]};overflow-wrap:anywhere;">'
+            f'<div style="display:flex;justify-content:space-between;gap:12px;'
+            f'padding-bottom:10px;margin-bottom:24px;border-bottom:1px solid {theme["border"]};'
+            f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.15em;'
+            f'color:{theme["muted"]};text-transform:uppercase;">'
+            f'<span>LONGFORM / 01</span><span>READ ↓</span></div>{body}</div>'
+            # 杂志页脚
+            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:20px;">'
+            f'<div style="height:1px;background:{theme["muted"]};margin-bottom:14px;"></div>'
+            f'<div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-end;">'
+            f'<div style="font-family:{theme["font_serif"]};font-size:17px;line-height:1.45;">'
+            f'章鱼 AI<br><span style="font-family:{theme["font"]};font-size:10px;opacity:.62;">'
+            f'全景分析 · 多模型协同</span></div>'
+            f'<div style="font-family:{theme["font_mono"]};font-size:9px;line-height:1.65;'
+            f'letter-spacing:.12em;text-align:right;opacity:.62;">END OF NOTE<br>04 / FIN</div>'
+            f'</div></div></div></div>')
     if theme_name == "game":
-        # 8-bit 像素游戏风（整体默认）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影
+        # 8-bit 像素游戏风（兼容保留）：深夜蓝游戏屏 + 金色粗框 + 硬黑像素阴影
         # 标题栏=游戏菜单金条 / 状态栏=♥HP血条+★LV等级 / 底部=SCORE+PRESS START
         stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         # 由标题生成稳定的游戏数值（SCORE/HP/LV），同一标题每次渲染一致
@@ -2799,7 +3099,7 @@ def push_pushplus(title: str, content: str, timeout: int,
     notes: list[str] = [note] if note else []
     # 待发送队列：(标题, 内容, template)
     sends: list[tuple[str, str, str]] = []
-    # 主题：game / klein / pixel / monitor / noc 均为 html 模板，其余走 markdown
+    # 主题：guizang / game / klein / pixel / monitor / noc 均为 html 模板，其余走 markdown
     if theme in THEMES:
         html = themed_html(title, content, theme_name=theme)
         html_bytes = _utf8_len(html)
@@ -3414,7 +3714,7 @@ def selftest() -> int:
     check("围栏代码块超限不可切，交回上层退回 markdown",
           split_md_for_html("t", fence_md, "game") is None)
 
-    log("③f game 主题渲染（8-bit 像素游戏风·整体默认）")
+    log("③f game 主题渲染（8-bit 像素游戏风·兼容主题）")
     gh = md_to_html("## 标题\n\n| 板块 | 概率 |\n|---|---|\n| 云计算 | 65% |\n\n"
                     "- **要点**一\n> 备注：推断\n\n---\n\n1. 有序项")
     check("game 表格+金色粗框", "<table" in gh and GAME["border"] in gh
@@ -3468,7 +3768,27 @@ def selftest() -> int:
     check("pixel 摄像头元素(●REC+CAM-01+UTC戳)", "● REC" in pfull and "CAM-01" in pfull and "UTC" in pfull)
     check("pixel CRT扫描线+面板网格", PIXEL["scan"] in pfull and PIXEL["grid"] in pfull)
 
-    log("③f-3 因子分析表 → 卡片式内容展示（因子/方向/多头概率/依据）")
+    log("③f-3 guizang 主题渲染（电子杂志×电子墨水·竖版长页面）")
+    gzm = ("# 市场正在重估什么\n\n**核心判断**：先看证据，再谈方向。\n\n"
+           "## 信号矩阵\n\n| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
+           "| 基本面 | 偏多 | 65% | 云业务增长提速 |\n"
+           "| 技术面 | 偏空 | 42% | 短线仍在均线下方 |\n\n"
+           "> 关键不是猜涨跌，而是确认信号是否持续。\n\n"
+           "| 指标 | 当前值 | 观察 |\n|---|---|---|\n| 价格 | 16.80 | 支撑 15.90 |\n")
+    gz_body = md_to_html(gzm, "guizang")
+    gz_full = themed_html("章鱼 AI · 阿里巴巴 · 研究简报", gzm, "guizang")
+    check("guizang 衬线标题+等宽元信息", GUIZANG["font_serif"] in gz_body
+          and GUIZANG["font_mono"] in gz_body and "SECTION" in gz_body)
+    check("guizang 表格手机端转竖向 rowline", "<table" not in gz_body
+          and "DATA ROWS" in gz_body and "FACTOR MATRIX" in gz_body)
+    check("guizang 墨黑 Hero+暖纸长页", GUIZANG["bg"] in gz_full
+          and GUIZANG["page_bg"] in gz_full and "VERTICAL EDITION" in gz_full
+          and "LONGFORM / 01" in gz_full)
+    check("guizang 无浮卡阴影、保留编辑引用", "box-shadow" not in gz_full
+          and "EDITORIAL NOTE" in gz_full and "END OF NOTE" in gz_full)
+    check("guizang 标题与正文 HTML 转义", "&lt;" in md_to_html("# a<b>c", "guizang"))
+
+    log("③f-4 因子分析表 → 卡片式内容展示（因子/方向/多头概率/依据）")
     fmd = ("| 因子 | 方向 | 多头概率 | 依据 |\n|---|---|---|---|\n"
            "| 基本面 | 偏多 | 65% | 云计算营收增长提速 |\n"
            "| 技术面 | 偏空 | 42% | 跌破 20 日均线 |\n"
@@ -3492,6 +3812,10 @@ def selftest() -> int:
     fm2 = md_to_html(fmd, "monitor")
     check("monitor 因子卡片保持零表格", "<table" not in fm2
           and MONITOR["card_bg"] in fm2 and "▲ 偏多" in fm2)
+    fgz = md_to_html(fmd, "guizang")
+    check("guizang 因子矩阵为杂志 rowline", "<table" not in fgz
+          and "FACTOR MATRIX" in fgz and GUIZANG["font_serif"] in fgz
+          and "box-shadow" not in fgz)
     fq = md_to_html("| 因子 | 概率 |\n|---|---|\n| 基本面 | 65% |\n| 技术面 | 42% |")
     check("无方向列按概率 50% 上下推导徽章", "▲ 偏多" in fq and "▼ 偏空" in fq)
     fz = md_to_html("| 因子 | 方向 | 概率 | 依据 | 备注 |\n|---|---|---|---|---|\n"
@@ -3513,7 +3837,7 @@ def selftest() -> int:
         src = open(__file__, encoding="utf-8").read()
         theme_zone = src.split("模块④b")[1].split("模块⑤")[0]
         # 移除所有主题常量定义（避免颜色被误判为硬编码）
-        theme_zone = re.sub(r"(GAME|KLEIN|PIXEL|MONITOR|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
+        theme_zone = re.sub(r"(GUIZANG|GAME|KLEIN|PIXEL|MONITOR|THEMES)\s*=\s*\{.*?\n\}", "", theme_zone, flags=re.S)
         # 注释行不参与扫描（文档里允许出现色值说明）
         theme_zone = "\n".join(l for l in theme_zone.splitlines()
                                if not l.lstrip().startswith("#"))
@@ -3785,11 +4109,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="港股代码（如 09988），接入三源核验行情（或环境变量 HK_CODE）")
     p.add_argument("--risk", default="mid", choices=RISKS,
                    help="portfolio 模板的风险偏好档位")
-    p.add_argument("--theme", default="", choices=["", "default", "game", "klein", "pixel", "monitor", "noc"],
-                   help="pushplus 通道主题（整体默认 game=8-bit像素游戏风：深夜蓝屏+金色粗框+"
-                        "HP血条+SCORE/LV）；klein=米黄纸底黑细框；pixel=暗色监控大屏；"
-                        "monitor/noc=服务器大屏监视风格（零表格，文字+横排卡片流）"
-                        "（或环境变量 THEME）")
+    p.add_argument("--theme", default="", choices=["", "default", "guizang", "game", "klein", "pixel", "monitor", "noc"],
+                   help="pushplus 通道主题（默认 guizang=电子杂志×电子墨水竖版长页：暖纸+"
+                        "衬线标题+等宽元信息+发丝线）；game=8-bit像素游戏；"
+                        "klein=米黄纸底黑细框；pixel=暗色监控大屏；monitor/noc=服务器大屏"
+                        "监视风格（零表格，文字+横排卡片流）（或环境变量 THEME）")
     p.add_argument("--hours", type=int, default=48,
                    help="analysis/sentiment/feedscan/十七平台扫描的数据窗口小时数"
                         "（默认 48，支持 24/48/72/156）")
@@ -3817,7 +4141,7 @@ def main(argv: list[str]) -> int:
     user_context = args.context or env("CONTEXT")
     hk_code_raw = args.hk_code or env("HK_CODE")
     risk = args.risk or env("RISK") or "mid"
-    theme = args.theme or env("THEME") or "game"
+    theme = args.theme or env("THEME") or "guizang"
     targets = ALL_CHANNELS if channel == "all" else [channel]
 
     log("=" * 60)

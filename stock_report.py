@@ -295,7 +295,7 @@ def wrap_with_latest_features(
 
 def run_report(raw_code: str, *, channel: str = "console",
                ai_provider: str | None = None, template: str = "analysis",
-               dry_run: bool = True, theme: str = "game",
+               dry_run: bool = True, theme: str = "guizang",
                push_timeout: int = 30, no_chart: bool = False,
                risk: str = "mid", mode: str = "full",
                industry: str | None = None, hours: int = 48,
@@ -444,7 +444,8 @@ def run_report(raw_code: str, *, channel: str = "console",
         "template": template,
         "title": title,
         "report_md": content,
-        "report_html": pp.md_to_html(content, theme_name=theme),
+        # 与 PushPlus 实际详情页使用同一完整外壳，仪表盘预览不再只显示裸正文。
+        "report_html": pp.themed_html(title, content, theme_name=theme),
         "theme": theme,
         "dry_run": dry_run,
         "push": push_results,
@@ -631,7 +632,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--industry", default="",
                    help="equity 栏目行业附录 slug（默认自动猜测）")
     p.add_argument("--risk", default="mid", choices=pp.RISKS, help="风险偏好（portfolio 模板）")
-    p.add_argument("--theme", default="game", choices=["game", "klein", "pixel", "monitor", "noc", "default"])
+    p.add_argument("--theme", default="guizang",
+                   choices=["guizang", "game", "klein", "pixel", "monitor", "noc", "default"],
+                   help="PushPlus 视觉主题（默认 guizang：电子杂志×电子墨水竖版长页）")
     p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
     p.add_argument("--no-chart", action="store_true", dest="no_chart")
     p.add_argument("--hours", type=int, default=48,

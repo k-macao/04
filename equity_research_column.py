@@ -896,7 +896,7 @@ def generate_column(
     ai_provider: str | None = None,
     channel: str = "console",
     dry_run: bool = True,
-    theme: str = "game",          # 全站统一 8-bit 复古游戏风
+    theme: str = "guizang",      # 默认电子杂志 × 电子墨水竖版长页面
     industry: str | None = None,
     timeout: int = 90,
     run_check: bool = True,
@@ -1074,7 +1074,8 @@ def generate_column(
         "industry": industry,
         "title": title,
         "report_md": content,
-        "report_html": pp.md_to_html(content, theme_name=theme),
+        # 与 PushPlus 实际详情页使用同一完整外壳，仪表盘预览所见即所得。
+        "report_html": pp.themed_html(title, content, theme_name=theme),
         "theme": theme,
         "dry_run": dry_run,
         "push": push_results,
@@ -1227,8 +1228,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--industry", default="", help="行业附录 slug（默认自动猜测）")
     p.add_argument("--ai-provider", default="auto", dest="ai_provider")
     p.add_argument("--channel", default="console")
-    p.add_argument("--theme", default="game",
-                   choices=["game", "klein", "pixel", "monitor", "noc", "default"])
+    p.add_argument("--theme", default="guizang",
+                   choices=["guizang", "game", "klein", "pixel", "monitor", "noc", "default"],
+                   help="PushPlus 视觉主题（默认 guizang：电子杂志×电子墨水竖版长页）")
     p.add_argument("--push", action="store_true")
     p.add_argument("--timeout", type=int, default=90)
     p.add_argument("--hours", type=int, default=48)
