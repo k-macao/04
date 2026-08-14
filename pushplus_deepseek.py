@@ -1558,11 +1558,14 @@ GUIZANG = {
     "size_h2": "27px",
     "size_h3": "20px",
     "line": "1.82",
-    "font": "'Noto Sans SC','PingFang SC','Microsoft YaHei',Arial,sans-serif",
-    "font_serif": "'Noto Serif SC','Songti SC','STSong','SimSun',Georgia,serif",
+    "font": "'Noto Sans SC','PingFang SC',sans-serif",
+    "font_serif": "'Noto Serif SC','Songti SC',Georgia,serif",
     "font_en": "Georgia,'Times New Roman',serif",
-    "font_mono": "'IBM Plex Mono','SFMono-Regular',Consolas,'Courier New',monospace",
+    "font_mono": "'IBM Plex Mono',Consolas,'Courier New',monospace",
     "editorial": True,
+    # 分篇推送时第 2 篇起使用紧凑续篇壳（省略巨幅 Hero），
+    # 让长报告在 48KB 软上限内能装下更多正文（见 themed_html continuation）。
+    "continuation": True,
 }
 
 KLEIN = {
@@ -2029,13 +2032,12 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
                     continue
                 label = head[idx] if idx < len(head) else f"COL {idx + 1}"
                 details.append(
-                    f'<div style="margin-top:7px;display:grid;grid-template-columns:88px 1fr;'
-                    f'gap:9px;align-items:start;">'
+                    f'<div style="margin-top:6px;display:grid;grid-template-columns:88px 1fr;'
+                    f'gap:9px;">'
                     f'<span style="font-family:{theme["font_mono"]};font-size:9px;'
-                    f'letter-spacing:.12em;text-transform:uppercase;color:{theme["muted"]};">'
+                    f'letter-spacing:.12em;color:{theme["muted"]};">'
                     f'{_inline_md(label, theme_name)}</span>'
-                    f'<span style="font-family:{theme["font"]};font-size:13px;'
-                    f'line-height:1.65;color:{signal};overflow-wrap:anywhere;">'
+                    f'<span style="font-size:13px;line-height:1.65;color:{signal};">'
                     f'{_inline_md(value, theme_name)}</span></div>')
             row_items.append(
                 f'<div style="padding:17px 0 19px;border-top:1px solid {theme["hairline"]};">'
@@ -2479,10 +2481,52 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
     return "".join(html)
 
 
-def themed_html(title: str, content_md: str, theme_name: str = "game") -> str:
+def themed_html(title: str, content_md: str, theme_name: str = "game",
+                *, continuation: bool = False, part_no: int = 1,
+                part_count: int = 1) -> str:
     theme = _get_theme(theme_name)
     body = md_to_html(content_md, theme_name)
     safe_title = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    if continuation and theme.get("continuation"):
+        # 分篇推送的续篇壳（guizang）：省略 108px 幽灵字巨幅 Hero 与杂志大页脚，
+        # 改用一行等宽页眉 + 小号衬线标题 + 一行页脚，视觉仍属同一杂志长页。
+        # 目的：把每篇的「壳」从 ~4KB 压到 ~1.3KB，让长研报在微信软上限内
+        # 用更少的篇数装下，避免整篇退回纯 markdown（推送页丢失主题风格）。
+        part_label = f"PART {part_no}/{part_count}" if part_count > 1 else "CONTINUED"
+        return (
+            f'<div style="width:100%;margin:0;background:{theme["bg"]};padding:12px 0;'
+            f'color:{theme["fg"]};font-family:{theme["font"]};box-sizing:border-box;">'
+            f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
+            f'overflow:hidden;box-sizing:border-box;">'
+            # 紧凑页眉：等宽杂志眉线 + 小号衬线标题
+            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px 16px;">'
+            f'<div style="display:flex;justify-content:space-between;gap:12px;'
+            f'padding-bottom:10px;border-bottom:1px solid {theme["muted"]};'
+            f'font-family:{theme["font_mono"]};font-size:9px;line-height:1.5;'
+            f'letter-spacing:.16em;text-transform:uppercase;opacity:.82;">'
+            f'<span>OCTOPUS AI<br>MARKET INTELLIGENCE</span>'
+            f'<span style="text-align:right;">{part_label}<br>VERTICAL EDITION</span></div>'
+            f'<div style="margin-top:11px;font-family:{theme["font_serif"]};font-size:17px;'
+            f'font-weight:700;line-height:1.32;letter-spacing:-.015em;'
+            f'overflow-wrap:anywhere;">{safe_title}</div></div>'
+            # 正文：与首篇同版式
+            f'<div style="background:{theme["page_bg"]};padding:22px 20px 40px;'
+            f'font-family:{theme["font"]};font-size:{theme["size"]};'
+            f'line-height:{theme["line"]};overflow-wrap:anywhere;">'
+            f'<div style="display:flex;justify-content:space-between;gap:12px;'
+            f'padding-bottom:10px;margin-bottom:22px;border-bottom:1px solid {theme["border"]};'
+            f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.15em;'
+            f'color:{theme["muted"]};text-transform:uppercase;">'
+            f'<span>LONGFORM / {part_no:02d}</span><span>READ ↓</span></div>{body}</div>'
+            # 紧凑页脚
+            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px;">'
+            f'<div style="height:1px;background:{theme["muted"]};margin-bottom:10px;"></div>'
+            f'<div style="display:flex;justify-content:space-between;gap:14px;'
+            f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.12em;'
+            f'opacity:.62;">'
+            f'<span>章鱼 AI · 全景分析</span>'
+            f'<span style="text-align:right;">END {part_label}<br>04 / FIN</span></div>'
+            f'</div></div></div>')
     if theme_name == "guizang":
         # Guizang PPT Skill Style A 的竖版长页适配：横向 slide/chrome 被重新解释为
         # 连续文章的 Hero / section / rowline。全内联，保证 PushPlus 详情页不依赖 CSS/JS。
@@ -2991,8 +3035,9 @@ def fit_for_channel(channel: str, content: str,
 WECHAT_HTML_SOFT_LIMIT = 48_000
 
 # 单篇 HTML 超软上限时的最大分篇数；超过该篇数才退回 markdown。
-# （研报越长 style 内联膨胀越厉害，九章级报告常见 2-3 篇；上限防止刷屏）
-WECHAT_HTML_MAX_PARTS = 4
+# （研报越长 style 内联膨胀越厉害，九章级长报告常见 3-6 篇；guizang 续篇壳
+#   可显著压缩每篇开销，8 篇可覆盖绝大多数真实报告；上限继续防止极端刷屏）
+WECHAT_HTML_MAX_PARTS = 8
 
 
 def _md_blocks(md: str) -> list[str]:
@@ -3016,12 +3061,14 @@ def _md_blocks(md: str) -> list[str]:
     return blocks
 
 
-def _html_fits(title: str, md: str, theme_name: str, limit: int) -> bool:
-    return _utf8_len(themed_html(title, md, theme_name=theme_name)) <= limit
+def _html_fits(title: str, md: str, theme_name: str, limit: int,
+               continuation: bool = False) -> bool:
+    return _utf8_len(themed_html(title, md, theme_name=theme_name,
+                                 continuation=continuation)) <= limit
 
 
 def _split_block_lines(title: str, block: str, theme_name: str,
-                       limit: int) -> list[str] | None:
+                       limit: int, continuation: bool = False) -> list[str] | None:
     """单个块（如长表格/长列表）超限时的兜底：按行贪心装填。
 
     表格块（``|`` 开头且第二行为分隔行）续篇自动补表头+分隔行，
@@ -3035,17 +3082,99 @@ def _split_block_lines(title: str, block: str, theme_name: str,
     parts: list[str] = []
     cur: list[str] = list(header)
     for ln in lines:
-        if _html_fits(title, "\n".join(cur + [ln]), theme_name, limit):
+        if _html_fits(title, "\n".join(cur + [ln]), theme_name, limit,
+                      continuation):
             cur.append(ln)
             continue
         if len(cur) > len(header):
             parts.append("\n".join(cur))
         cur = header + [ln]
-        if not _html_fits(title, "\n".join(cur), theme_name, limit):
+        if not _html_fits(title, "\n".join(cur), theme_name, limit,
+                          continuation):
             return None
     if len(cur) > len(header):
         parts.append("\n".join(cur))
     return parts or None
+
+
+def _greedy_split_parts(title: str, md: str, theme_name: str,
+                        limit: int) -> list[str] | None:
+    """贪心把 md 按块装进若干篇（每篇 themed_html ≤ limit）；无法切分返回 None。
+
+    第 2 篇起按「紧凑续篇壳」测量（仅支持 continuation 的主题生效），
+    与 push_pushplus 实际投递的外壳一致。返回的篇数不受 max_parts 限制，
+    由调用方判断是否超限。
+    """
+    theme = _get_theme(theme_name)
+    has_cont = bool(theme.get("continuation"))
+    if _html_fits(title, md, theme_name, limit):
+        return [md]
+    parts: list[str] = []
+    cur = ""
+    continuation = False  # 第 2 篇起使用紧凑续篇壳
+    for block in _md_blocks(md):
+        trial = f"{cur}\n\n{block}" if cur else block
+        if _html_fits(title, trial, theme_name, limit, continuation):
+            cur = trial
+            continue
+        if cur:
+            parts.append(cur)
+            cur = ""
+            continuation = has_cont
+        if _html_fits(title, block, theme_name, limit, continuation):
+            cur = block
+            continue
+        if block.lstrip().startswith("```"):
+            return None  # 围栏代码块不可切分
+        sub = _split_block_lines(title, block, theme_name, limit, continuation)
+        if not sub:
+            return None
+        parts.extend(sub[:-1])
+        cur = sub[-1]
+        continuation = has_cont
+    if cur:
+        parts.append(cur)
+    if len(parts) < 2:
+        return None
+    return parts
+
+
+def _trim_tail_to_fit(title: str, md: str, theme_name: str, limit: int,
+                      max_parts: int) -> list[str] | None:
+    """max_parts 装不下时的最后手段：从尾部裁掉最可弃的块，保住主题风格。
+
+    优先裁掉品牌尾注之后的块（如一致性检查器输出），仍不够再从尾注前
+    的尾部逐块裁（平台附录等），并插入一行可见提示；品牌尾注始终保留。
+    真正无法干净裁剪时返回 None（由调用方退回 markdown）。
+    """
+    blocks = _md_blocks(md)
+    if len(blocks) < 3:
+        return None
+    footer_idx = None
+    for i in range(len(blocks) - 1, -1, -1):
+        if "作者：" in blocks[i]:
+            footer_idx = i
+            break
+    note = ("\n\n> ⚠️ 篇幅超限：微信投递有单篇长度上限，"
+            "部分尾部附录已省略；完整报告见 GitHub Actions 运行日志。")
+    if footer_idx is None:
+        # 无品牌尾注：直接从尾部逐块裁，任何块都允许裁掉
+        for cut in range(1, len(blocks)):
+            trial = "\n\n".join(blocks[: len(blocks) - cut]) + note
+            out = _greedy_split_parts(title, trial, theme_name, limit)
+            if out is not None and 1 <= len(out) <= max_parts:
+                return out
+        return None
+    if footer_idx == 0:
+        return None
+    kept = blocks[: footer_idx + 1]  # 尾注之后的块（检查器等）全部裁掉
+    while len(kept) > 2:
+        trial = "\n\n".join(kept) + note
+        out = _greedy_split_parts(title, trial, theme_name, limit)
+        if out is not None and 1 <= len(out) <= max_parts:
+            return out
+        kept.pop(len(kept) - 2)  # 裁掉尾注之前的最后一块
+    return None
 
 
 def split_md_for_html(title: str, md: str, theme_name: str,
@@ -3055,38 +3184,18 @@ def split_md_for_html(title: str, md: str, theme_name: str,
 
     超微信软上限时不再整篇退回纯 markdown（推送页会完全丢掉主题风格），
     而是按块（必要时按行）切成多篇带样式的 HTML 依次推送。
-    围栏代码块不可切分、所需篇数超过 max_parts 时返回 None，由调用方退回
+    围栏代码块不可切分时返回 None；超过 max_parts 时先尝试裁掉尾部
+    最可弃的附录块（带可见提示），仍不行才返回 None 由调用方退回
     markdown 投递（与旧行为一致）。
     """
-    if _html_fits(title, md, theme_name, limit):
-        return [md]
-    parts: list[str] = []
-    cur = ""
-    for block in _md_blocks(md):
-        trial = f"{cur}\n\n{block}" if cur else block
-        if _html_fits(title, trial, theme_name, limit):
-            cur = trial
-            continue
-        if cur:
-            parts.append(cur)
-            cur = ""
-        if _html_fits(title, block, theme_name, limit):
-            cur = block
-            continue
-        if block.lstrip().startswith("```"):
-            return None  # 围栏代码块不可切分
-        sub = _split_block_lines(title, block, theme_name, limit)
-        if not sub:
-            return None
-        parts.extend(sub[:-1])
-        cur = sub[-1]
-        if len(parts) >= max_parts:
-            return None
-    if cur:
-        parts.append(cur)
-    if not 1 < len(parts) <= max_parts:
+    parts = _greedy_split_parts(title, md, theme_name, limit)
+    if parts is None:
         return None
-    return parts
+    if len(parts) == 1:
+        return parts  # 整篇一页即可装下（含裁尾后只剩单篇的情形）
+    if len(parts) <= max_parts:
+        return parts
+    return _trim_tail_to_fit(title, md, theme_name, limit, max_parts)
 
 
 def push_pushplus(title: str, content: str, timeout: int,
@@ -3117,7 +3226,10 @@ def push_pushplus(title: str, content: str, timeout: int,
                 for idx, part in enumerate(parts, 1):
                     ptitle = f"{title}（{idx}/{len(parts)}）"[:200]
                     sends.append((ptitle,
-                                  themed_html(ptitle, part, theme_name=theme),
+                                  themed_html(ptitle, part, theme_name=theme,
+                                              continuation=(idx > 1),
+                                              part_no=idx,
+                                              part_count=len(parts)),
                                   "html"))
             else:
                 # 无法干净切分（如单个围栏块超限）才退回 markdown，
@@ -3693,8 +3805,54 @@ def selftest() -> int:
           <= WECHAT_HTML_MAX_PARTS)
     check("每篇 HTML 均低于软上限",
           parts is not None and all(
-              _utf8_len(themed_html("超长标题", p, theme_name="game"))
-              <= WECHAT_HTML_SOFT_LIMIT for p in (parts or [])))
+              _utf8_len(themed_html("超长标题", p, theme_name="game",
+                                    continuation=(i > 0),
+                                    part_no=i + 1, part_count=len(parts)))
+              <= WECHAT_HTML_SOFT_LIMIT
+              for i, p in enumerate(parts or [])))
+
+    log("③e2-1 guizang 表格长报告带样式分篇（不再整篇退回 markdown）")
+    gz_sec = lambda i: (f"## 第{i}章\n\n本章要点：数据与判断相互印证，避免只给结论。\n\n"
+                        "| 指标 | 数值 | 趋势 | 判断 |\n|---|---|---|---|\n"
+                        + "\n".join(f"| 变量{j} | {40 + j} | 上行 | 偏多 |"
+                                    for j in range(12)))
+    gz_md = "\n\n".join(gz_sec(i) for i in range(4))
+    gz_parts = split_md_for_html("长标题", gz_md, "guizang")
+    check("guizang 长报告自动分篇", gz_parts is not None
+          and 2 <= len(gz_parts) <= WECHAT_HTML_MAX_PARTS)
+    check("guizang 续篇紧凑壳且每篇低于软上限",
+          gz_parts is not None and all(
+              _utf8_len(themed_html("长标题", p, theme_name="guizang",
+                                    continuation=(i > 0),
+                                    part_no=i + 1, part_count=len(gz_parts)))
+              <= WECHAT_HTML_SOFT_LIMIT for i, p in enumerate(gz_parts)))
+    check("guizang 续篇壳显著小于首篇壳",
+          gz_parts is not None and len(gz_parts) > 1
+          and _utf8_len(themed_html("长标题", "正文", theme_name="guizang",
+                                    continuation=True))
+          < _utf8_len(themed_html("长标题", "正文", theme_name="guizang")))
+
+    log("③e2-2 超长报告裁尾保风格（保住主题外壳，不整篇退回 markdown）")
+    trim_md = ("# 头部\n\n正文段落。\n\n"
+               + "\n\n".join(
+                   "| 指标 | 数值 | 观察 |\n|---|---|---|\n"
+                   + "\n".join(f"| 变量{j} | {j} | 中性 |" for j in range(40))
+                   for _ in range(12))
+               + "\n\n**作者：章鱼 ai**\n\n```\n"
+               + ("检查行\n" * 600) + "```")
+    trim_parts = split_md_for_html("t", trim_md, "guizang")
+    check("超长报告裁尾保风格", trim_parts is not None
+          and len(trim_parts) <= WECHAT_HTML_MAX_PARTS)
+    check("裁尾保留品牌尾注与可见提示",
+          trim_parts is not None
+          and any("作者：章鱼" in p for p in trim_parts)
+          and any("篇幅超限" in p for p in trim_parts))
+    check("裁尾后每篇仍低于软上限",
+          trim_parts is not None and all(
+              _utf8_len(themed_html("t", p, theme_name="guizang",
+                                    continuation=(i > 0),
+                                    part_no=i + 1, part_count=len(trim_parts)))
+              <= WECHAT_HTML_SOFT_LIMIT for i, p in enumerate(trim_parts)))
     check("分篇覆盖全部正文",
           parts is not None and "第3节" in "\n".join(parts or [])
           and "第0节" in "\n".join(parts or []))

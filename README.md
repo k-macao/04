@@ -243,7 +243,7 @@ result = deep_merge_dicts(base, incoming)
   - **Skills Hub 10 套**：`equity`（机构级九章投研）`initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas`
 - `theme`：HTML 推送主题。Actions 工作流、CLI 与大屏研报栏默认 **`guizang`**：参考 [Guizang PPT Skill](https://github.com/op7418/guizang-ppt-skill) Style A「电子杂志 × 电子墨水」，针对微信详情页重排为**竖版长页面**——暖米白电子纸、墨黑 Hero、中文衬线标题、非衬线正文、等宽元信息、发丝线和大留白；宽表自动转为手机友好的 rowline，不依赖 WebGL、外部 CSS 或 JavaScript。仍可选 `monitor`（服务器大屏）、`game`（8-bit 像素游戏）、`noc`（零表格监视）、`klein`（复古纸面）、`pixel`（暗色监控）、`default`（普通 Markdown）。`pushplus_deepseek.py`、`stock_report.py`、`equity_research_column.py`、`skills_hub.py`、`server_dashboard.py` 接受同一组主题名。
 - **工作流过渡文件**：根目录 `stock-report.yml` 已加入 `guizang` 选项并设为默认值。它不会被 GitHub Actions 自动执行；合并后请按文件头说明，手动覆盖到 `.github/workflows/stock-report.yml`。
-- **长报告不再丢样式**：单篇主题 HTML 超过微信软上限（≈48KB）时，PushPlus 通道自动按章节/表格行**切分为多篇（最多 4 篇，标题带 1/N 序号，表格续篇自动补表头）**依次推送，每篇都是完整主题 HTML；仅当单块实在无法切分时才退回纯 Markdown（旧行为是一超限就退回，推送页完全没有风格）
+- **长报告不再丢样式**：单篇主题 HTML 超过微信软上限（≈48KB）时，PushPlus 通道自动按章节/表格行**切分为多篇（最多 8 篇，标题带 1/N 序号，表格续篇自动补表头）**依次推送，每篇都是完整主题 HTML（guizang 主题第 2 篇起使用紧凑续篇壳，省下巨幅 Hero 让每篇装更多正文）；超过 8 篇时优先裁掉尾部最可弃的附录块（带可见提示、品牌尾注保留），仅当单块实在无法切分时才退回纯 Markdown（旧行为是一超限就退回，推送页完全没有风格）
 - `hours`：量价舆情动量/十七平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
 
 主题预览：`examples/guizang_theme_preview.html`（Guizang 竖版长页单独预览）、
