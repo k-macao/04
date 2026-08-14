@@ -2,6 +2,7 @@
 # 【过渡文件 · 手动复制版】股票研报（港股 / A股 / 美股）
 # ----------------------------------------------------------------------------
 # 本文件位于「仓库根目录」，GitHub Actions 不会执行它 —— 它只是一个中转/过渡副本。
+# 当前过渡版已加入 guizang 主题，并把它设为默认视觉主题；合并 PR 后请手动复制。
 #
 # 使用方法（复制到 main 分支）：
 #   1. 复制本文件全部内容；
@@ -107,9 +108,10 @@ on:
       theme:
         description: '视觉主题'
         required: true
-        default: 'monitor'
+        default: 'guizang'
         type: choice
         options:
+          - guizang
           - monitor
           - noc
           - game

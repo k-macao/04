@@ -1158,11 +1158,11 @@
             <div class="hud-clocks">
                 <div class="clock-badge">
                     <span class="pulse-dot"></span>
-                    <span id="cst-clock">2026-08-14 03:24:11 CST (北京时间)</span>
+                    <span id="cst-clock">2026-08-15 01:41:16 CST (北京时间)</span>
                 </div>
                 <div class="clock-badge">
                     <span style="color:var(--text-dim);">UTC</span>
-                    <span id="utc-clock">2026-08-13 19:24:11 UTC</span>
+                    <span id="utc-clock">2026-08-14 17:41:16 UTC</span>
                 </div>
                 <div class="clock-badge" style="border-color:var(--red);color:var(--red);">
                     <span>● REC LIVE 60 FPS</span>
@@ -1192,7 +1192,7 @@
             <span class="dsb-icon" id="q-banner-icon">⚠️</span>
             <span class="dsb-strong" id="q-banner-strong">演示数据 (STATIC DEMO)</span>
             <span class="dsb-hint" id="q-banner-hint">实时行情暂不可用（网络不可达或数据源失败），当前展示内置示例价格，不随市场更新。点击 ⚡ 实时刷新重试。</span>
-            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-14 03:24:11 CST (北京时间)</span>
+            <span class="dsb-time" id="q-banner-time">快照生成: 2026-08-15 01:41:16 CST (北京时间)</span>
         </div>
 
         <!-- 标的切换栏 (横排) -->
@@ -1207,7 +1207,7 @@
         <!-- 🧠 AI 研报输入栏：填入港股/A股代码 → 实时行情 + AI 分析 + 推送 -->
         <div class="stock-selector-ribbon" id="report-bar">
             <span class="selector-label">🧠 AI 研报:</span>
-            <input id="report-code-input" class="report-input" placeholder="输入港股/A股代码：09988 / 600519 / 000001.SZ" autocomplete="off" />
+            <input id="report-code-input" class="report-input" placeholder="输入港股/A股/美股代码：09988 / 600519 / 000001.SZ / NVDA" autocomplete="off" />
             <select id="report-channel" class="report-select">
                 <option value="console">📺 预览（不推送）</option>
                 <option value="pushplus">📲 PushPlus 微信</option>
@@ -1232,7 +1232,8 @@
                 <option value="earnings">财报前瞻</option>
             </select>
             <select id="report-theme" class="report-select" title="推送风格（PushPlus HTML 主题，微信详情页可见）">
-                <option value="monitor" selected>🖥 风格 MONITOR 服务器大屏</option>
+                <option value="guizang" selected>✦ 风格 GUIZANG 电子杂志长页</option>
+                <option value="monitor">🖥 风格 MONITOR 服务器大屏</option>
                 <option value="game">🎮 风格 GAME 8-bit 像素游戏</option>
                 <option value="noc">🛰 风格 NOC 零表格监视</option>
                 <option value="klein">📰 风格 KLEIN 复古纸面</option>
@@ -1335,7 +1336,7 @@
             <div class="skill-grid" id="skill-grid"></div>
             <div class="stock-selector-ribbon" style="border:none;background:transparent;padding:8px 0 0;">
                 <span class="selector-label">🧩 跑 Skill:</span>
-                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519" autocomplete="off" value="09988" />
+                <input id="skill-code-input" class="report-input" placeholder="代码：09988 / 600519 / NVDA" autocomplete="off" value="09988" />
                 <select id="skill-pick" class="report-select">
                     <option value="morning_note">🌅 晨会纪要</option>
                     <option value="initiate">📑 首次覆盖</option>
@@ -2023,7 +2024,7 @@
             const btn = document.getElementById('report-btn');
             const channel = (document.getElementById('report-channel') || {}).value || 'console';
             const template = (document.getElementById('report-template') || {}).value || 'analysis';
-            const theme = (document.getElementById('report-theme') || {}).value || 'monitor';
+            const theme = (document.getElementById('report-theme') || {}).value || 'guizang';
             if (!code) {
                 if (input) { input.style.borderColor = 'var(--red)'; input.focus(); }
                 appendLog('REPORT.INPUT', 'WARN', '请输入股票代码');
@@ -2130,7 +2131,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: code, mode: mode, channel: channel,
-                        dry_run: channel === 'console', theme: 'monitor'
+                        dry_run: channel === 'console', theme: 'guizang'
                     })
                 });
                 const r = await resp.json();
@@ -2245,7 +2246,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         code: code, skill: skill, channel: channel,
-                        dry_run: channel === 'console', theme: 'monitor'
+                        dry_run: channel === 'console', theme: 'guizang'
                     })
                 });
                 const r = await resp.json();

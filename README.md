@@ -241,14 +241,16 @@ result = deep_merge_dicts(base, incoming)
   - **12 套经典**：`analysis` `brief` `scan` `picker` `fusion` `plan` `earnings` `portfolio` `review` `regime` `sentiment` `feedscan`
   - **NewsNow**：`newsnow`（社媒热榜 10 源聚合）
   - **Skills Hub 10 套**：`equity`（机构级九章投研）`initiate` `earnings_preview` `earnings_update` `model_update` `morning_note` `catalysts` `thesis` `sector` `ideas`
-- `theme`：HTML 推送主题。Actions 工作流与大屏研报栏默认 **`monitor`**（服务器大屏监视风格：深空暗底 + 荧光青绿 + 零表格卡片流）；可选 `game`（8-bit 复古游戏风：深夜蓝游戏屏 + 像素星点 + 金色粗框 + ♥HP血条/★LV/SCORE/PRESS START）、`noc`（同 monitor 零表格变体）、`klein`（米黄纸底 + 黑细框复古）、`pixel`（暗色监控大屏）、`default`（普通 Markdown）。`pushplus_deepseek.py`、`stock_report.py`、`equity_research_column.py`、`server_dashboard.py` 大屏入口均接受同一组主题名
+- `theme`：HTML 推送主题。Actions 工作流、CLI 与大屏研报栏默认 **`guizang`**：参考 [Guizang PPT Skill](https://github.com/op7418/guizang-ppt-skill) Style A「电子杂志 × 电子墨水」，针对微信详情页重排为**竖版长页面**——暖米白电子纸、墨黑 Hero、中文衬线标题、非衬线正文、等宽元信息、发丝线和大留白；宽表自动转为手机友好的 rowline，不依赖 WebGL、外部 CSS 或 JavaScript。仍可选 `monitor`（服务器大屏）、`game`（8-bit 像素游戏）、`noc`（零表格监视）、`klein`（复古纸面）、`pixel`（暗色监控）、`default`（普通 Markdown）。`pushplus_deepseek.py`、`stock_report.py`、`equity_research_column.py`、`skills_hub.py`、`server_dashboard.py` 接受同一组主题名。
+- **工作流过渡文件**：根目录 `stock-report.yml` 已加入 `guizang` 选项并设为默认值。它不会被 GitHub Actions 自动执行；合并后请按文件头说明，手动覆盖到 `.github/workflows/stock-report.yml`。
 - **长报告不再丢样式**：单篇主题 HTML 超过微信软上限（≈48KB）时，PushPlus 通道自动按章节/表格行**切分为多篇（最多 4 篇，标题带 1/N 序号，表格续篇自动补表头）**依次推送，每篇都是完整主题 HTML；仅当单块实在无法切分时才退回纯 Markdown（旧行为是一超限就退回，推送页完全没有风格）
 - `hours`：量价舆情动量/十七平台扫描/全市场快讯的数据窗口，支持 24/48/72/**156** 小时（156h≈6.5 天，覆盖一个完整交易周）
 
-主题预览：`examples/theme_preview.html`（game/klein/pixel/monitor 四主题对比）与
-`examples/game_theme_preview.html`（game 单独大图），可用 `examples/gen_theme_previews.py` 重新生成；
+主题预览：`examples/guizang_theme_preview.html`（Guizang 竖版长页单独预览）、
+`examples/theme_preview.html`（guizang/monitor/game/klein/pixel 五主题对比）与
+`examples/game_theme_preview.html`（旧 game 单独预览），可用 `examples/gen_theme_previews.py` 重新生成；
 服务器大屏静态页 `server_monitor.html`（含 `examples/server_monitor_preview.html`）由
-`server_dashboard.py::export_static_files()` 生成，同为 8-bit 复古游戏风。
+`server_dashboard.py::export_static_files()` 生成。
 
 ### 📊 推送自带字符模拟图（纯字符，无图片，微信直接可见）
 
@@ -493,7 +495,7 @@ python stock_report.py --check-only               # 只检查 Secrets
 
 - **AI 提供方**：`--ai-provider auto`（默认，Actions 下拉同名）或留空时自动判断——配了 `DEEPSEEK_API_KEY` 走 DeepSeek（模块内模型），否则降级 `rule` 规则模板（不耗 API、可离线演示）。也可显式指定 `deepseek` / `openai` / `rule`。
 - **通道**：console（预览）/ pushplus / wecom / serverchan / all；默认 `--dry-run` 只打印，加 `--push` 才真实推送。
-- **主题**：`--theme monitor`（服务器大屏监视风）/`game`（8-bit 复古游戏风）/`klein`/`pixel`/`noc`（推送 HTML 主题，同 `pushplus_deepseek.py`；超微信软上限自动分篇推送，保留样式）。
+- **主题**：默认 `--theme guizang`（电子杂志 × 电子墨水竖版长页）；也可选 `monitor`（服务器大屏监视风）/`game`（8-bit 复古游戏风）/`klein`/`pixel`/`noc`（推送 HTML 主题，同 `pushplus_deepseek.py`；超微信软上限自动分篇推送，保留样式）。
 - **最新功能一律附带**（不再只在旧的 `pushplus_deepseek.py` 主流程里）：🧭 数据新鲜度看板与内容指纹、📊 港股/A股字符模拟走势图、🛰 十七平台扫描 + 量价舆情动量（`--hours 24/48/72/156`）。Actions 工作流默认模板已切到 `equity`（机构级九章投研）。
 
 ### 大屏输入框（`server_dashboard.py`）
@@ -504,7 +506,7 @@ python stock_report.py --check-only               # 只检查 Secrets
 1. 后端实时取行情（`hk_quote`，港股+A 股，失败自动标注数据缺口、绝不伪造）；
 2. 用模块内模型（DeepSeek，未配 Key 自动降级 rule）按 `analysis` 模板生成多空因子研报；
 3. 组装品牌头尾 + 实时行情核验块，按所选通道推送（PushPlus 超微信软上限自动分篇，每篇均带主题样式）；
-4. 前端在大屏内嵌面板直接渲染研报，风格由研报栏的「🖥 风格」下拉决定（默认 `monitor`，可切 `game`/`noc`/`klein`/`pixel`）。
+4. 前端在大屏内嵌面板直接渲染完整推送页，风格由研报栏下拉决定（默认 `guizang`，可切 `monitor`/`game`/`noc`/`klein`/`pixel`）。
 
 ```bash
 python server_dashboard.py            # 启动大屏（8080），打开后在顶部输入框填代码即可
