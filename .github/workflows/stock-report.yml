@@ -27,6 +27,7 @@
 #     规则模板（不耗 API、可离线演示）；
 #   - 需真实推送时按所选通道配置 Secret：
 #     PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY（AI 另需 DEEPSEEK_API_KEY 等）；
+#     缺少推送 Key 时脚本会完整生成正文并优雅跳过对应通道，不让 Actions 失败；
 #   - 本工作流不写图片回仓库，permissions.contents 仅需 read；
 #   - hours 控制量价舆情 / 十七平台扫描窗口（24 / 48 / 72 / 156）；
 #   - actions/cache 持久化 output/push_state.json，供新鲜度看板跨运行对比；
