@@ -1486,6 +1486,145 @@ def chat_completion(url: str, api_key: str, model: str, messages: list[dict],
         raise PushError(f"AI 接口返回格式异常：{body[:400]}") from e
 
 
+# ================================================================ 模块③c：AI 分节压缩（正文逐节简化 + 压缩）
+#
+# 拿到 AI 生成的正文后，按 Markdown 章节（# / ## 标题）切成若干「部分」，
+# 每一部分分别调用一次 AI 智能分析做「简化 + 压缩」：保留结论、数字与
+# 因子表，删铺垫与冗余。压缩在「内容指纹 / 分篇 / 推送」之前完成，
+# 因此压缩结果就是最终推送内容；任一部分压缩失败都回退该部分原文，
+# 绝不因压缩丢内容。
+
+COMPRESS_MIN_PART_CHARS = 160   # 短于该字符数的分节不值得一次 AI 调用
+COMPRESS_MAX_PARTS = 12         # 单次最多压缩的分节数（防 API 调用失控）
+
+AI_COMPRESS_SYSTEM = "你是投研推送的精简编辑，任务是把给出的每一节内容简化、压缩。"
+
+AI_COMPRESS_RULES = (
+    "请大幅简化并压缩下面这一节投研内容，严格遵守：\n"
+    "1) 第一行标题必须原样保留（# / ## 标题不得改动、不得删除）；\n"
+    "2) 保留全部关键结论与数字：方向判断、概率%、价格、估值、目标位、样本数；\n"
+    "3) 因子/象限等表格必须逐行保留（行名与百分比不得删），只精简文字描述；\n"
+    "4) 删除铺垫、重复、客套与冗余修辞，合并同类要点；\n"
+    "5) 不得新增事实，不得改变任何结论方向；\n"
+    "6) 直接输出压缩后的这一节（Markdown），不要任何前言、解释或代码围栏；\n"
+    "7) 目标：压缩到原字数的 40%~60%。"
+)
+
+
+def ai_compress_enabled() -> bool:
+    """AI 分节压缩总开关：默认开启；AI_COMPRESS=0/false/off/no 关闭。"""
+    raw = (env("AI_COMPRESS") or "").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return False
+    return True
+
+
+def _ai_endpoint(provider: str) -> tuple[str, str, str]:
+    """按 provider 返回 (url, model, key)；key 可能为空串。"""
+    if provider == "openai":
+        base = env("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+        return (f"{base.rstrip('/')}/chat/completions", "gpt-4o-mini",
+                env("OPENAI_API_KEY") or "")
+    return DEEPSEEK_URL, "deepseek-chat", env("DEEPSEEK_API_KEY") or ""
+
+
+def split_md_sections(md: str) -> list[str]:
+    """把 Markdown 正文按一级/二级标题切成「部分」；### 及更小标题归属上一节。
+
+    首个标题之前的导语文本也算独立一部分。返回不含空节。
+    """
+    parts: list[str] = []
+    cur: list[str] = []
+    for line in md.splitlines():
+        if re.match(r"^#{1,2}\s+\S", line) and cur:
+            parts.append("\n".join(cur).strip())
+            cur = [line]
+        else:
+            cur.append(line)
+    if cur:
+        parts.append("\n".join(cur).strip())
+    return [p for p in parts if p]
+
+
+def _compress_clean(out: str, part: str) -> str:
+    """清洗模型输出：去围栏/前后缀；异常（空/变长/丢标题）时回退原文。"""
+    txt = (out or "").strip()
+    # 去掉模型偶尔包的 ```markdown 围栏
+    if txt.startswith("```"):
+        txt = re.sub(r"^```[a-zA-Z]*\s*", "", txt)
+        txt = re.sub(r"\s*```$", "", txt).strip()
+    if not txt or len(txt) >= len(part):
+        return part
+    # 原节以标题开头而输出丢了标题：补回原标题行，保证章节结构稳定
+    head = part.splitlines()[0].strip()
+    if re.match(r"^#{1,2}\s+\S", head) and not re.match(r"^#{1,2}\s+\S",
+                                                        txt.splitlines()[0]):
+        txt = head + "\n\n" + txt
+    return txt if len(txt) < len(part) else part
+
+
+def ai_compress_md(md: str, *, provider: str, template: str = "",
+                   timeout: int = 30) -> tuple[str, str]:
+    """正文按章节逐节调用 AI 简化压缩；返回 (压缩后 md, 统计说明)。
+
+    - 总开关关闭（AI_COMPRESS=0）或没有可用 AI Key：原样返回；
+    - 每节独立调用，单节失败/输出异常回退该节原文，整体永不抛异常；
+    - 短节（<COMPRESS_MIN_PART_CHARS）与超出 COMPRESS_MAX_PARTS 的节不压缩。
+    """
+    if not md or not md.strip():
+        return md, ""
+    if not ai_compress_enabled():
+        return md, ""
+    url, model, key = _ai_endpoint(provider)
+    if not key and provider != "openai":        # deepseek/rule 无 key：尝试 openai
+        url2, model2, key2 = _ai_endpoint("openai")
+        if key2:
+            url, model, key = url2, model2, key2
+    if not key and provider == "openai":        # openai 无 key：尝试 deepseek
+        url2, model2, key2 = _ai_endpoint("deepseek")
+        if key2:
+            url, model, key = url2, model2, key2
+    if not key:
+        return md, "未配置 AI Key，跳过分节压缩"
+
+    parts = split_md_sections(md)
+    todo = [i for i, p in enumerate(parts)
+            if len(p) >= COMPRESS_MIN_PART_CHARS][:COMPRESS_MAX_PARTS]
+    if not todo:
+        return md, ""
+
+    done = 0
+    changed = False
+    for n, i in enumerate(todo, 1):
+        part = parts[i]
+        title = (part.splitlines()[0].lstrip("#").strip() or f"第{n}节")[:18]
+        try:
+            out = chat_completion(
+                url, key, model,
+                [{"role": "system", "content": AI_COMPRESS_SYSTEM},
+                 {"role": "user", "content": AI_COMPRESS_RULES
+                  + "\n\n--- 待压缩的这一节 ---\n" + part}],
+                max(400, min(2000, int(len(part) * 0.7))), timeout,
+                temperature=0.3)
+            new_part = _compress_clean(out, part)
+        except PushError as e:
+            log(f"  ⚠️ 压缩失败（{title}），保留原文：{e}")
+            new_part = part
+        if new_part != part:
+            done += 1
+            changed = True
+            log(f"  ✂️ [{n}/{len(todo)}] {title}："
+                f"{len(part)} → {len(new_part)} 字")
+        parts[i] = new_part
+
+    new_md = "\n\n".join(parts)
+    before, after = len(md), len(new_md)
+    if not changed or after >= before:
+        return md, f"AI 分节压缩未缩短（{before} 字），沿用原文"
+    return new_md, (f"AI 分节压缩：{done}/{len(todo)} 节生效，"
+                    f"{before} → {after} 字（省 {100 - after * 100 // before}%）")
+
+
 # ================================================================ Secrets 检查
 
 def required_secrets(channel: str, provider: str) -> list[str]:
@@ -1701,6 +1840,28 @@ def _get_theme(name_or_dict):
     return GAME
 
 
+# ---- 荧光文字「自带黑色底」规则 ----
+# 微信/PushPlus 详情页可能剥离外层容器背景，荧光青/荧光绿/荧光黄等发光色
+# 文字一旦落到白色页面上几乎不可读。因此所有荧光色文字（标题、涨跌数字、
+# 图标符号等）一律在文字元素自身加纯黑背景，不依赖任何父容器背景存活。
+FLU_BLACK_BG = "#000"
+# 荧光色集合直接派生自主题字典：调整主题色后，荧光判定自动跟进。
+FLUORESCENT_TEXT_COLORS = {
+    MONITOR["hfg"], MONITOR["accent"], MONITOR["up"],   # 荧光青/荧光绿
+    GAME["accent"], GAME["up"], GAME["hp_full"], GAME["border"],  # 金币黄/磷光绿/金框
+    PIXEL["hfg"], PIXEL["accent"], PIXEL["up"],          # 磷光绿/琥珀黄
+    GUIZANG["accent"],                                   # 荧光黄绿标题
+    KLEIN["accent"],                                     # 像素黄
+}
+
+
+def _flu_bg(color: str | None, pad: str = "0 3px") -> str:
+    """荧光色文字 → 自带黑色底；非荧光色保持原样（不加底）。"""
+    if color and color.upper() in FLUORESCENT_TEXT_COLORS:
+        return f"background:{FLU_BLACK_BG};padding:{pad};"
+    return ""
+
+
 def _contains_up(txt: str) -> bool:
     # 涨关键词 + 数值 +▲
     up_kw = ["利好", "偏多", "看多", "上涨", "大涨", "突破", "中标", "增长",
@@ -1731,7 +1892,10 @@ def _contains_down(txt: str) -> bool:
     return False
 
 
-def _inline_md(s: str, theme_name: str = "game") -> str:
+def _inline_md(s: str, theme_name: str = "game",
+               link_color: str | None = None) -> str:
+    # link_color：链接文字色覆盖。用于链接落在纯黑底上的场景
+    # （如 guizang 荧光黄绿标题自带黑底），避免正文色链接黑底黑字不可见。
     theme = _get_theme(theme_name)
     s = (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
     # 图片优先于链接：![alt](url) → <img>（微信/PushPlus html 主题直接显示）
@@ -1758,7 +1922,7 @@ def _inline_md(s: str, theme_name: str = "game") -> str:
     else:
         s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
-               rf'<a href="\2" style="color:{theme["fg"]};text-decoration:underline;'
+               rf'<a href="\2" style="color:{link_color or theme["fg"]};text-decoration:underline;'
                rf'text-underline-offset:3px;">\1</a>', s)
     return s
 
@@ -1946,7 +2110,8 @@ def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
             filled = max(0, min(10, round(p_val / 10)))
             bar_txt = "█" * filled + "░" * (10 - filled)
             bar_html = (
-                f' <span style="color:{theme["hp_full"]};font-size:9px;'
+                f' <span style="color:{theme["hp_full"]};'
+                f'background:{FLU_BLACK_BG};padding:0 2px;font-size:9px;'
                 f'letter-spacing:-1px;">{bar_txt}</span>')
         else:
             bar_html = (
@@ -1962,7 +2127,7 @@ def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
                 f'<div style="margin-top:4px;font-size:10px;'
                 f'color:{theme["muted"]};">'
                 f'{prob_label} '
-                f'<span style="color:{edge};font-weight:bold;'
+                f'<span style="color:{edge};{_flu_bg(edge)}font-weight:bold;'
                 f'font-size:{theme["size_title"]};">'
                 f'{_inline_md(prob_raw, theme_name)}</span>{bar_html}</div>')
 
@@ -2070,9 +2235,9 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
 
             b_color = theme["up"] if is_up else (theme["down"] if is_down else theme["border"])
             dir_html = (
-                f'<span style="color:{theme["up"]};font-weight:bold;font-size:10px;">▲ 偏多</span>'
+                f'<span style="color:{theme["up"]};{_flu_bg(theme["up"])}font-weight:bold;font-size:10px;">▲ 偏多</span>'
                 if is_up
-                else (f'<span style="color:{theme["down"]};font-weight:bold;font-size:10px;">▼ 偏空</span>' if is_down else "")
+                else (f'<span style="color:{theme["down"]};{_flu_bg(theme["down"])}font-weight:bold;font-size:10px;">▼ 偏空</span>' if is_down else "")
             )
             val_strs = [
                 f'<span style="padding:1px 4px;background:{theme["card_bg"]};border:1px solid {theme["border"]};color:{theme["accent"]};font-weight:bold;">{_inline_md(x, theme_name)}</span>'
@@ -2312,9 +2477,11 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                     f'letter-spacing:.22em;text-transform:uppercase;color:{theme["muted"]};'
                     f'margin-bottom:5px;">{kicker}</div>'
                     f'<div style="font-family:{theme["font_serif"]};font-size:{fs};'
-                    f'font-weight:700;color:{theme["accent"]};line-height:1.28;'
+                    f'font-weight:700;color:{theme["accent"]};'
+                    f'background:{FLU_BLACK_BG};padding:2px 8px 3px;'
+                    f'line-height:1.28;'
                     f'letter-spacing:-.02em;overflow-wrap:anywhere;">'
-                    f'{_inline_md(txt, theme_name)}</div></div>')
+                    f'{_inline_md(txt, theme_name, link_color=theme["accent"])}</div></div>')
             elif theme_name in ("pixel", "klein", "game"):
                 if theme_name == "game":
                     icon_map = {1: "◆", 2: "►", 3: "·"}
@@ -2331,7 +2498,8 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                     f'padding-left:6px;'
                     f'font-family:{theme["font"]};line-height:{theme["line"]};'
                     f'letter-spacing:1px;">'
-                    f'<span style="margin-right:4px;color:{theme["accent"]};">{icon}</span>'
+                    f'<span style="margin-right:4px;color:{theme["accent"]};'
+                    f'background:{FLU_BLACK_BG};padding:0 2px;">{icon}</span>'
                     f"{_inline_md(txt, theme_name)}</div>"
                 )
             else:
@@ -2501,8 +2669,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'color:{theme["fg"]};font-family:{theme["font"]};box-sizing:border-box;">'
             f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
             f'overflow:hidden;box-sizing:border-box;">'
-            # 紧凑页眉：等宽杂志眉线 + 小号衬线标题
-            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px 16px;">'
+            # 紧凑页眉：等宽杂志眉线 + 小号衬线标题（墨黑底，荧光黄绿标题自带深底）
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};padding:14px 20px 16px;">'
             f'<div style="display:flex;justify-content:space-between;gap:12px;'
             f'padding-bottom:10px;border-bottom:1px solid {theme["muted"]};'
             f'font-family:{theme["font_mono"]};font-size:9px;line-height:1.5;'
@@ -2522,7 +2690,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'color:{theme["muted"]};text-transform:uppercase;">'
             f'<span>LONGFORM / {part_no:02d}</span><span>READ ↓</span></div>{body}</div>'
             # 紧凑页脚
-            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px;">'
+            # 紧凑页脚（墨黑底）
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};padding:14px 20px;">'
             f'<div style="height:1px;background:{theme["muted"]};margin-bottom:10px;"></div>'
             f'<div style="display:flex;justify-content:space-between;gap:14px;'
             f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.12em;'
@@ -2539,7 +2708,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
             f'overflow:hidden;box-sizing:border-box;">'
             # 墨黑 Hero：等宽页眉 + 衬线主标题 + 巨型幽灵字
-            f'<div style="position:relative;overflow:hidden;background:{theme["bg"]};'
+            # （荧光黄绿标题文字必须落在墨黑底上，不用灰色外框色）
+            f'<div style="position:relative;overflow:hidden;background:{theme["hbg"]};'
             f'color:{theme["hfg"]};padding:14px 16px 18px;">'
             f'<div style="position:absolute;right:-10px;bottom:-30px;font-family:{theme["font_en"]};'
             f'font-size:76px;font-weight:700;line-height:1;opacity:.06;">04</div>'
@@ -2625,9 +2795,9 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:3px 8px;border-bottom:2px solid {theme["border"]};'
             f'font-family:{theme["font"]};">'
             f'<span style="color:{theme["down"]};">♥</span> '
-            f'<span style="color:{theme["hp_full"]};">{hp_bar}</span>'
-            f' <span style="color:{theme["up"]};">{hp}</span>/100'
-            f'&nbsp;&nbsp;<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
+            f'<span style="color:{theme["hp_full"]};background:{FLU_BLACK_BG};padding:0 2px;">{hp_bar}</span>'
+            f' <span style="color:{theme["up"]};background:{FLU_BLACK_BG};padding:0 2px;">{hp}</span>/100'
+            f'&nbsp;&nbsp;<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">★</span> LV.{lv:02d}'
             f'<span style="float:right;">✦ {stamp} UTC</span>'
             f'</div>'
             # 正文
@@ -2636,9 +2806,9 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="border-top:2px solid {theme["border"]};'
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">▞▚</span> GAME.LOG · '
-            f'<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
-            f'<span style="float:right;">PRESS START <span style="color:{theme["accent"]};">▮</span></span>'
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▞▚</span> GAME.LOG · '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">★</span> LV.{lv:02d}'
+            f'<span style="float:right;">PRESS START <span style="color:{theme["accent"]};background:{FLU_BLACK_BG};">▮</span></span>'
             f'</div>'
             f'</div></div>'
         )
@@ -2664,7 +2834,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'font-size:{theme["size_title"]};font-weight:bold;'
             f'padding:5px 8px;border-bottom:1px solid {theme["border"]};'
             f'font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">■</span> '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">■</span> '
             f'{safe_title}'
             f'<span style="float:right;color:{theme["down"]};font-size:9px;'
             f'font-weight:bold;letter-spacing:1px;">● REC</span>'
@@ -2678,7 +2848,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="border-top:1px dashed {theme["border"]};'
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">▚▞</span> SYS.OK · CH-04 · '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▚▞</span> SYS.OK · CH-04 · '
             f'<span style="color:{theme["down"]};">●</span> REC-ON'
             f'</div>'
             f'</div></div>'
@@ -2704,7 +2874,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:6px 10px;border-bottom:1px solid {theme["border"]};'
             f'font-family:{theme["font"]};letter-spacing:1px;'
             f'display:flex;justify-content:space-between;align-items:center;">'
-            f'<span><span style="color:{theme["accent"]};">⌜</span> {safe_title} <span style="color:{theme["accent"]};">⌟</span></span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">⌜</span> {safe_title} <span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">⌟</span></span>'
             f'<span style="color:{theme["down"]};font-size:9px;'
             f'font-weight:bold;letter-spacing:1px;">● REC LIVE</span>'
             f'</div>'
@@ -2712,7 +2882,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:3px 10px;color:{theme["muted"]};font-size:9px;'
             f'letter-spacing:0.5px;font-family:{theme["font"]};'
             f'display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;">'
-            f'<span><span style="color:{theme["accent"]};">●</span> NOC-SERVER-04 · LIVE TELEMETRY</span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};">●</span> NOC-SERVER-04 · LIVE TELEMETRY</span>'
             f'<span>✦ {stamp} UTC</span>'
             f'</div>'
             f'<div style="padding:10px 8px;">{body}</div>'
@@ -2720,8 +2890,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;'
             f'display:flex;justify-content:space-between;">'
-            f'<span><span style="color:{theme["accent"]};">▚▞</span> SYS.NOMINAL · CH-04 · 12ms</span>'
-            f'<span style="color:{theme["accent"]};">ALL FEEDS VERIFIED ▮</span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▚▞</span> SYS.NOMINAL · CH-04 · 12ms</span>'
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 4px;">ALL FEEDS VERIFIED ▮</span>'
             f'</div>'
             f'</div></div>'
         )
@@ -4122,6 +4292,72 @@ def selftest() -> int:
     title_subject = f"HK{code} {pick_cn_name(cn_q, fallback='阿里巴巴')}"
     check("标题主体=HK代码+中文名", title_subject == "HK09988 阿里巴巴")
 
+    log("③i AI 分节压缩（逐节简化 + 失败回退，离线 monkeypatch）")
+    md3 = ("导语：本节为开篇导语，" + "铺垫文字。" * 40 + "\n\n"
+           "## 核心结论\n\n偏多，目标价 18.20，多头概率 68%。\n\n"
+           "- " + "要点细节冗余描述，" * 30 + "关键数字 16.80 保留\n"
+           "\n\n## 风险与失效条件\n\n跌破 15.90 复核。" + "次要细节补充，" * 30)
+    secs = split_md_sections(md3)
+    check("分节：导语+两节=3 部分", len(secs) == 3
+          and secs[1].startswith("## 核心结论"))
+    check("### 归属上一节", len(split_md_sections("## A\n\nx\n\n### 子\n\ny")) == 1)
+    # 环境开关
+    old_env = os.environ.get("AI_COMPRESS")
+    try:
+        os.environ["AI_COMPRESS"] = "0"
+        check("AI_COMPRESS=0 关闭压缩", ai_compress_enabled() is False)
+        out, note = ai_compress_md(md3, provider="deepseek")
+        check("关闭时不做任何调用", out is md3 and note == "")
+        os.environ.pop("AI_COMPRESS")
+        check("默认开启", ai_compress_enabled() is True)
+        # 无 Key：跳过
+        for k in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+            os.environ.pop(k, None)
+        out, note = ai_compress_md(md3, provider="deepseek")
+        check("无 Key 跳过并说明", out is md3 and "跳过" in note)
+        # 正常压缩：monkeypatch chat_completion
+        real_cc = chat_completion
+        calls = []
+
+        def fake_cc(url, key, model, messages, max_tokens, timeout,
+                    temperature=0.7):
+            calls.append(messages[-1]["content"])
+            part = messages[-1]["content"].split("--- 待压缩的这一节 ---\n")[-1]
+            if "核心结论" in part:
+                return "## 核心结论\n\n偏多 68%，目标 18.20。"
+            raise PushError("模拟接口故障")
+
+        globals()["chat_completion"] = fake_cc
+        try:
+            os.environ["DEEPSEEK_API_KEY"] = "sk-test"
+            out, note = ai_compress_md(md3, provider="deepseek")
+        finally:
+            globals()["chat_completion"] = real_cc
+            os.environ.pop("DEEPSEEK_API_KEY", None)
+        check("逐节独立调用（每长节各自一次）", len(calls) == 3
+              and any("核心结论" in c for c in calls))
+        check("成功节被压缩", "偏多 68%，目标 18.20" in out)
+        check("失败节回退原文", "跌破 15.90 复核" in out)
+        check("标题结构保留", "## 核心结论" in out and "## 风险与失效条件" in out)
+        check("整体变短且有统计", len(out) < len(md3) and "节生效" in note)
+        # 输出异常（变长/为空）回退
+        def bad_cc(*a, **k):
+            return "```markdown\n" + "灌水" * 999 + "\n```"
+
+        globals()["chat_completion"] = bad_cc
+        try:
+            os.environ["DEEPSEEK_API_KEY"] = "sk-test"
+            out2, note2 = ai_compress_md(md3, provider="deepseek")
+        finally:
+            globals()["chat_completion"] = real_cc
+            os.environ.pop("DEEPSEEK_API_KEY", None)
+        check("输出变长回退原文", out2 == md3 and "未缩短" in note2)
+    finally:
+        if old_env is None:
+            os.environ.pop("AI_COMPRESS", None)
+        else:
+            os.environ["AI_COMPRESS"] = old_env
+
     log("④ 全部模板可构造")
     for t in TEMPLATES:
         try:
@@ -4284,6 +4520,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-chart", action="store_true", dest="no_chart",
                    help="关闭字符模拟图（默认：给 --hk-code 时自动生成字符模拟走势图并"
                         "嵌入推送正文顶部，纯字符无需上传）")
+    p.add_argument("--no-ai-compress", action="store_false", dest="ai_compress",
+                   default=True,
+                   help="关闭 AI 分节压缩（默认开启：正文按章节逐节调用 AI 简化+压缩，"
+                        "失败自动回退原文；也可用环境变量 AI_COMPRESS=0 关闭）")
     return p.parse_args(argv)
 
 
@@ -4459,6 +4699,17 @@ def main(argv: list[str]) -> int:
             log(f"❌ 内容生成失败：{e}")
             return 1
 
+    # ---------- 模块③c：AI 分节压缩（每部分分别调用 AI 简化 + 压缩正文） ----------
+    # 在内容指纹 / 分篇 / 推送之前完成，压缩结果即最终正文；
+    # 关闭开关（--no-ai-compress 或 AI_COMPRESS=0）或缺 Key 时自动跳过。
+    if getattr(args, "ai_compress", True):
+        log("\n✂️ AI 分节压缩（逐节简化）…")
+        content, comp_note = ai_compress_md(
+            content, provider=provider, template=template,
+            timeout=args.timeout)
+        if comp_note:
+            log(f"  → {comp_note}")
+
     # ---------- 模块③b：内容指纹 + 与上次推送的新鲜度对比 ----------
     state_enabled = not args.no_state
     st = (load_state(state_path()) if state_enabled
@@ -4528,6 +4779,13 @@ def main(argv: list[str]) -> int:
                     f"{base.rstrip('/')}/chat/completions", key,
                     "gpt-4o-mini", messages, TEMPLATE_MAX_TOKENS[template],
                     args.timeout, temperature=0.9)
+            # 差异化重试生成的是全新正文：同样走一遍 AI 分节压缩
+            if getattr(args, "ai_compress", True):
+                content, comp_note = ai_compress_md(
+                    content, provider=provider, template=template,
+                    timeout=args.timeout)
+                if comp_note:
+                    log(f"  → 重试后{comp_note}")
             fp = content_fingerprint(template, topic, content, qb,
                                      extra_points, item_keys)
             dup = prev.get("fingerprint") == fp

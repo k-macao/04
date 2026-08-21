@@ -150,6 +150,14 @@ on:
         options:
           - 'false'
           - 'true'
+      ai_compress:
+        description: 'AI 分节压缩：正文每部分分别调用 AI 简化+压缩（失败回退原文）'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 permissions:
   contents: read
@@ -189,7 +197,7 @@ jobs:
           echo "code=${{ inputs.code }} template=${{ inputs.template }} mode=${{ inputs.mode }}"
           echo "channel=${{ inputs.channel }} ai_provider=${{ inputs.ai_provider }}"
           echo "theme=${{ inputs.theme }} hours=${{ inputs.hours }} risk=${{ inputs.risk }}"
-          echo "industry=${{ inputs.industry }} dry_run=${{ inputs.dry_run }}"
+          echo "industry=${{ inputs.industry }} dry_run=${{ inputs.dry_run }} ai_compress=${{ inputs.ai_compress }}"
           python -V
 
       - name: Restore push state (新鲜度看板跨运行对比)
@@ -221,7 +229,8 @@ jobs:
             --industry "${{ inputs.industry }}" \
             --risk "${{ inputs.risk }}" \
             --theme "${{ inputs.theme }}" \
-            --hours "${{ inputs.hours }}"
+            --hours "${{ inputs.hours }}" \
+            --ai-compress "${{ inputs.ai_compress }}"
 
       - name: Real push (真实推送到微信)
         if: ${{ inputs.dry_run == 'false' }}
