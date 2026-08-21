@@ -1701,6 +1701,28 @@ def _get_theme(name_or_dict):
     return GAME
 
 
+# ---- 荧光文字「自带黑色底」规则 ----
+# 微信/PushPlus 详情页可能剥离外层容器背景，荧光青/荧光绿/荧光黄等发光色
+# 文字一旦落到白色页面上几乎不可读。因此所有荧光色文字（标题、涨跌数字、
+# 图标符号等）一律在文字元素自身加纯黑背景，不依赖任何父容器背景存活。
+FLU_BLACK_BG = "#000"
+# 荧光色集合直接派生自主题字典：调整主题色后，荧光判定自动跟进。
+FLUORESCENT_TEXT_COLORS = {
+    MONITOR["hfg"], MONITOR["accent"], MONITOR["up"],   # 荧光青/荧光绿
+    GAME["accent"], GAME["up"], GAME["hp_full"], GAME["border"],  # 金币黄/磷光绿/金框
+    PIXEL["hfg"], PIXEL["accent"], PIXEL["up"],          # 磷光绿/琥珀黄
+    GUIZANG["accent"],                                   # 荧光黄绿标题
+    KLEIN["accent"],                                     # 像素黄
+}
+
+
+def _flu_bg(color: str | None, pad: str = "0 3px") -> str:
+    """荧光色文字 → 自带黑色底；非荧光色保持原样（不加底）。"""
+    if color and color.upper() in FLUORESCENT_TEXT_COLORS:
+        return f"background:{FLU_BLACK_BG};padding:{pad};"
+    return ""
+
+
 def _contains_up(txt: str) -> bool:
     # 涨关键词 + 数值 +▲
     up_kw = ["利好", "偏多", "看多", "上涨", "大涨", "突破", "中标", "增长",
@@ -1731,7 +1753,10 @@ def _contains_down(txt: str) -> bool:
     return False
 
 
-def _inline_md(s: str, theme_name: str = "game") -> str:
+def _inline_md(s: str, theme_name: str = "game",
+               link_color: str | None = None) -> str:
+    # link_color：链接文字色覆盖。用于链接落在纯黑底上的场景
+    # （如 guizang 荧光黄绿标题自带黑底），避免正文色链接黑底黑字不可见。
     theme = _get_theme(theme_name)
     s = (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
     # 图片优先于链接：![alt](url) → <img>（微信/PushPlus html 主题直接显示）
@@ -1758,7 +1783,7 @@ def _inline_md(s: str, theme_name: str = "game") -> str:
     else:
         s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
-               rf'<a href="\2" style="color:{theme["fg"]};text-decoration:underline;'
+               rf'<a href="\2" style="color:{link_color or theme["fg"]};text-decoration:underline;'
                rf'text-underline-offset:3px;">\1</a>', s)
     return s
 
@@ -1946,7 +1971,8 @@ def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
             filled = max(0, min(10, round(p_val / 10)))
             bar_txt = "█" * filled + "░" * (10 - filled)
             bar_html = (
-                f' <span style="color:{theme["hp_full"]};font-size:9px;'
+                f' <span style="color:{theme["hp_full"]};'
+                f'background:{FLU_BLACK_BG};padding:0 2px;font-size:9px;'
                 f'letter-spacing:-1px;">{bar_txt}</span>')
         else:
             bar_html = (
@@ -1962,7 +1988,7 @@ def _render_factor_cards(rows: list[str], theme_name: str = "game") -> str:
                 f'<div style="margin-top:4px;font-size:10px;'
                 f'color:{theme["muted"]};">'
                 f'{prob_label} '
-                f'<span style="color:{edge};font-weight:bold;'
+                f'<span style="color:{edge};{_flu_bg(edge)}font-weight:bold;'
                 f'font-size:{theme["size_title"]};">'
                 f'{_inline_md(prob_raw, theme_name)}</span>{bar_html}</div>')
 
@@ -2070,9 +2096,9 @@ def _render_table(rows: list[str], theme_name: str = "game") -> str:
 
             b_color = theme["up"] if is_up else (theme["down"] if is_down else theme["border"])
             dir_html = (
-                f'<span style="color:{theme["up"]};font-weight:bold;font-size:10px;">▲ 偏多</span>'
+                f'<span style="color:{theme["up"]};{_flu_bg(theme["up"])}font-weight:bold;font-size:10px;">▲ 偏多</span>'
                 if is_up
-                else (f'<span style="color:{theme["down"]};font-weight:bold;font-size:10px;">▼ 偏空</span>' if is_down else "")
+                else (f'<span style="color:{theme["down"]};{_flu_bg(theme["down"])}font-weight:bold;font-size:10px;">▼ 偏空</span>' if is_down else "")
             )
             val_strs = [
                 f'<span style="padding:1px 4px;background:{theme["card_bg"]};border:1px solid {theme["border"]};color:{theme["accent"]};font-weight:bold;">{_inline_md(x, theme_name)}</span>'
@@ -2312,9 +2338,11 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                     f'letter-spacing:.22em;text-transform:uppercase;color:{theme["muted"]};'
                     f'margin-bottom:5px;">{kicker}</div>'
                     f'<div style="font-family:{theme["font_serif"]};font-size:{fs};'
-                    f'font-weight:700;color:{theme["accent"]};line-height:1.28;'
+                    f'font-weight:700;color:{theme["accent"]};'
+                    f'background:{FLU_BLACK_BG};padding:2px 8px 3px;'
+                    f'line-height:1.28;'
                     f'letter-spacing:-.02em;overflow-wrap:anywhere;">'
-                    f'{_inline_md(txt, theme_name)}</div></div>')
+                    f'{_inline_md(txt, theme_name, link_color=theme["accent"])}</div></div>')
             elif theme_name in ("pixel", "klein", "game"):
                 if theme_name == "game":
                     icon_map = {1: "◆", 2: "►", 3: "·"}
@@ -2331,7 +2359,8 @@ def md_to_html(md: str, theme_name: str = "game") -> str:
                     f'padding-left:6px;'
                     f'font-family:{theme["font"]};line-height:{theme["line"]};'
                     f'letter-spacing:1px;">'
-                    f'<span style="margin-right:4px;color:{theme["accent"]};">{icon}</span>'
+                    f'<span style="margin-right:4px;color:{theme["accent"]};'
+                    f'background:{FLU_BLACK_BG};padding:0 2px;">{icon}</span>'
                     f"{_inline_md(txt, theme_name)}</div>"
                 )
             else:
@@ -2501,8 +2530,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'color:{theme["fg"]};font-family:{theme["font"]};box-sizing:border-box;">'
             f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
             f'overflow:hidden;box-sizing:border-box;">'
-            # 紧凑页眉：等宽杂志眉线 + 小号衬线标题
-            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px 16px;">'
+            # 紧凑页眉：等宽杂志眉线 + 小号衬线标题（墨黑底，荧光黄绿标题自带深底）
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};padding:14px 20px 16px;">'
             f'<div style="display:flex;justify-content:space-between;gap:12px;'
             f'padding-bottom:10px;border-bottom:1px solid {theme["muted"]};'
             f'font-family:{theme["font_mono"]};font-size:9px;line-height:1.5;'
@@ -2522,7 +2551,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'color:{theme["muted"]};text-transform:uppercase;">'
             f'<span>LONGFORM / {part_no:02d}</span><span>READ ↓</span></div>{body}</div>'
             # 紧凑页脚
-            f'<div style="background:{theme["bg"]};color:{theme["hfg"]};padding:14px 20px;">'
+            # 紧凑页脚（墨黑底）
+            f'<div style="background:{theme["hbg"]};color:{theme["hfg"]};padding:14px 20px;">'
             f'<div style="height:1px;background:{theme["muted"]};margin-bottom:10px;"></div>'
             f'<div style="display:flex;justify-content:space-between;gap:14px;'
             f'font-family:{theme["font_mono"]};font-size:9px;letter-spacing:.12em;'
@@ -2539,7 +2569,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="width:100%;max-width:760px;margin:0 auto;background:{theme["page_bg"]};'
             f'overflow:hidden;box-sizing:border-box;">'
             # 墨黑 Hero：等宽页眉 + 衬线主标题 + 巨型幽灵字
-            f'<div style="position:relative;overflow:hidden;background:{theme["bg"]};'
+            # （荧光黄绿标题文字必须落在墨黑底上，不用灰色外框色）
+            f'<div style="position:relative;overflow:hidden;background:{theme["hbg"]};'
             f'color:{theme["hfg"]};padding:14px 16px 18px;">'
             f'<div style="position:absolute;right:-10px;bottom:-30px;font-family:{theme["font_en"]};'
             f'font-size:76px;font-weight:700;line-height:1;opacity:.06;">04</div>'
@@ -2625,9 +2656,9 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:3px 8px;border-bottom:2px solid {theme["border"]};'
             f'font-family:{theme["font"]};">'
             f'<span style="color:{theme["down"]};">♥</span> '
-            f'<span style="color:{theme["hp_full"]};">{hp_bar}</span>'
-            f' <span style="color:{theme["up"]};">{hp}</span>/100'
-            f'&nbsp;&nbsp;<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
+            f'<span style="color:{theme["hp_full"]};background:{FLU_BLACK_BG};padding:0 2px;">{hp_bar}</span>'
+            f' <span style="color:{theme["up"]};background:{FLU_BLACK_BG};padding:0 2px;">{hp}</span>/100'
+            f'&nbsp;&nbsp;<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">★</span> LV.{lv:02d}'
             f'<span style="float:right;">✦ {stamp} UTC</span>'
             f'</div>'
             # 正文
@@ -2636,9 +2667,9 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="border-top:2px solid {theme["border"]};'
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">▞▚</span> GAME.LOG · '
-            f'<span style="color:{theme["accent"]};">★</span> LV.{lv:02d}'
-            f'<span style="float:right;">PRESS START <span style="color:{theme["accent"]};">▮</span></span>'
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▞▚</span> GAME.LOG · '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">★</span> LV.{lv:02d}'
+            f'<span style="float:right;">PRESS START <span style="color:{theme["accent"]};background:{FLU_BLACK_BG};">▮</span></span>'
             f'</div>'
             f'</div></div>'
         )
@@ -2664,7 +2695,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'font-size:{theme["size_title"]};font-weight:bold;'
             f'padding:5px 8px;border-bottom:1px solid {theme["border"]};'
             f'font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">■</span> '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">■</span> '
             f'{safe_title}'
             f'<span style="float:right;color:{theme["down"]};font-size:9px;'
             f'font-weight:bold;letter-spacing:1px;">● REC</span>'
@@ -2678,7 +2709,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'<div style="border-top:1px dashed {theme["border"]};'
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;">'
-            f'<span style="color:{theme["accent"]};">▚▞</span> SYS.OK · CH-04 · '
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▚▞</span> SYS.OK · CH-04 · '
             f'<span style="color:{theme["down"]};">●</span> REC-ON'
             f'</div>'
             f'</div></div>'
@@ -2704,7 +2735,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:6px 10px;border-bottom:1px solid {theme["border"]};'
             f'font-family:{theme["font"]};letter-spacing:1px;'
             f'display:flex;justify-content:space-between;align-items:center;">'
-            f'<span><span style="color:{theme["accent"]};">⌜</span> {safe_title} <span style="color:{theme["accent"]};">⌟</span></span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">⌜</span> {safe_title} <span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">⌟</span></span>'
             f'<span style="color:{theme["down"]};font-size:9px;'
             f'font-weight:bold;letter-spacing:1px;">● REC LIVE</span>'
             f'</div>'
@@ -2712,7 +2743,7 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'padding:3px 10px;color:{theme["muted"]};font-size:9px;'
             f'letter-spacing:0.5px;font-family:{theme["font"]};'
             f'display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;">'
-            f'<span><span style="color:{theme["accent"]};">●</span> NOC-SERVER-04 · LIVE TELEMETRY</span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};">●</span> NOC-SERVER-04 · LIVE TELEMETRY</span>'
             f'<span>✦ {stamp} UTC</span>'
             f'</div>'
             f'<div style="padding:10px 8px;">{body}</div>'
@@ -2720,8 +2751,8 @@ def themed_html(title: str, content_md: str, theme_name: str = "game",
             f'margin:4px 8px 6px;padding-top:4px;color:{theme["muted"]};'
             f'font-size:9px;font-family:{theme["font"]};letter-spacing:1px;'
             f'display:flex;justify-content:space-between;">'
-            f'<span><span style="color:{theme["accent"]};">▚▞</span> SYS.NOMINAL · CH-04 · 12ms</span>'
-            f'<span style="color:{theme["accent"]};">ALL FEEDS VERIFIED ▮</span>'
+            f'<span><span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 2px;">▚▞</span> SYS.NOMINAL · CH-04 · 12ms</span>'
+            f'<span style="color:{theme["accent"]};background:{FLU_BLACK_BG};padding:0 4px;">ALL FEEDS VERIFIED ▮</span>'
             f'</div>'
             f'</div></div>'
         )
