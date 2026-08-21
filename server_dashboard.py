@@ -2912,12 +2912,16 @@ def _api_report(params: dict) -> dict:
     theme = str(params.get("theme") or "guizang")
     mode = str(params.get("mode") or "full")
     industry = str(params.get("industry") or "").strip() or None
+    # AI 分节压缩：不传=跟随默认（开启）；true/false 显式指定
+    raw_ac = str(params.get("ai_compress") or "").strip().lower()
+    ai_compress = (None if raw_ac in ("", "auto")
+                   else raw_ac in ("1", "true", "yes", "on"))
     try:
         hours = int(params.get("hours") or 48)
         r = stock_report.run_report(
             code, channel=channel, ai_provider=ai_provider, template=template,
             dry_run=dry_run, theme=theme, mode=mode, industry=industry,
-            hours=hours)
+            hours=hours, ai_compress=ai_compress)
         r["ok"] = True
         return r
     except Exception as e:            # noqa: BLE001

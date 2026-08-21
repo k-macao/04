@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 
@@ -299,12 +300,15 @@ def run_report(raw_code: str, *, channel: str = "console",
                push_timeout: int = 30, no_chart: bool = False,
                risk: str = "mid", mode: str = "full",
                industry: str | None = None, hours: int = 48,
-               collect_news: bool = True) -> dict:
+               collect_news: bool = True,
+               ai_compress: bool | None = None) -> dict:
     """输入股票代码，实时取行情 → AI/rule 生成研报 → 推送。返回结构化结果。
 
     一律附带最新功能：🧭 数据新鲜度看板、📊 字符模拟图、🛰 十七平台扫描。
     template=equity 时走独立栏目 equity_research_column（equity-research-skill
     九章深度 + dcf.py 可复算估值），同样注入上述最新能力。
+    ai_compress：None=跟随默认（开启，AI_COMPRESS=0 可关）；True/False 显式
+    指定是否在拿到正文后按章节逐节调用 AI 简化 + 压缩。
     """
     raw_code = (raw_code or "").strip()
     if not raw_code:
@@ -403,6 +407,17 @@ def run_report(raw_code: str, *, channel: str = "console",
                 url, key, model, messages,
                 pp.TEMPLATE_MAX_TOKENS.get(template, 3000), push_timeout)
             gen_note = f"{provider}（{model}）"
+
+    # ---- ②b AI 分节压缩：拿到正文后，每部分（章节）分别调用 AI 简化 + 压缩 ----
+    #     失败自动回退该节原文；无 Key / 总开关关闭时跳过（见 pp.ai_compress_md）。
+    if ai_compress is None:
+        ai_compress = pp.ai_compress_enabled()
+    if ai_compress:
+        report_md, comp_note = pp.ai_compress_md(
+            report_md, provider=provider, template=template,
+            timeout=push_timeout)
+        if comp_note:
+            gen_note = f"{gen_note}；{comp_note}"
 
     # ---- ③ 组装研报正文（行情快照 → 研报正文 → 新鲜度看板/字符图/附录由 wrap 包装）----
     body = report_md.rstrip()
@@ -595,8 +610,32 @@ def selftest() -> int:
           and resolve_ai_provider("") == resolve_ai_provider("auto")
           and resolve_ai_provider(None) == resolve_ai_provider("auto"))
     r_auto = run_report("600519", channel="console", ai_provider="auto", dry_run=True,
-                        collect_news=False, no_chart=True)
+                        collect_news=False, no_chart=True, ai_compress=False)
     check("run_report(auto) 落到具体提供方", r_auto["provider"] in ("rule", "deepseek"))
+
+    print("⑥b AI 分节压缩（拿到正文后逐节调用 AI 简化+压缩）")
+    args_c = parse_args(["600519", "--ai-compress", "false"])
+    check("--ai-compress 参数可解析", args_c.ai_compress == "false")
+    check("默认不传=跟随环境开关", parse_args(["600519"]).ai_compress == "")
+    old_ac = os.environ.get("AI_COMPRESS")
+    try:
+        os.environ["AI_COMPRESS"] = "0"
+        check("AI_COMPRESS=0 读为关闭", pp.ai_compress_enabled() is False)
+        r0 = run_report("600519", channel="console", ai_provider="rule",
+                        dry_run=True, collect_news=False, no_chart=True)
+        check("关闭时 gen_note 不含压缩信息",
+              "压缩" not in (r0.get("gen_note") or ""))
+        os.environ.pop("AI_COMPRESS")
+        r1 = run_report("600519", channel="console", ai_provider="rule",
+                        dry_run=True, collect_news=False, no_chart=True)
+        check("无 Key 时优雅跳过（正文完整）",
+              "跳过分节压缩" in (r1.get("gen_note") or "")
+              and len(r1.get("report_md") or "") > 0)
+    finally:
+        if old_ac is None:
+            os.environ.pop("AI_COMPRESS", None)
+        else:
+            os.environ["AI_COMPRESS"] = old_ac
 
     print(f"\n{'✅ 自检全部通过' if fails == 0 else f'❌ {fails} 项失败'}")
     return 1 if fails else 0
@@ -639,6 +678,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                    help="PushPlus 视觉主题（默认 guizang：电子杂志×电子墨水竖版长页）")
     p.add_argument("--push", action="store_true", help="真实推送（默认 dry-run 只打印不推送）")
     p.add_argument("--no-chart", action="store_true", dest="no_chart")
+    p.add_argument("--ai-compress", default="", dest="ai_compress",
+                   help="AI 分节压缩：正文按章节逐节调用 AI 简化+压缩"
+                        "（true=开启[默认] / false=关闭；不传则跟随默认，"
+                        "环境变量 AI_COMPRESS=0 亦可关闭）")
     p.add_argument("--hours", type=int, default=48,
                    help="量价舆情/十七平台扫描数据窗口（24/48/72/156）")
     p.add_argument("--timeout", type=int, default=30)
@@ -660,6 +703,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     provider = resolve_ai_provider(args.ai_provider)
+    raw_ac = (getattr(args, "ai_compress", "") or "").strip().lower()
+    ai_compress = (None if raw_ac in ("", "auto")
+                   else raw_ac in ("1", "true", "yes", "on"))
     try:
         result = run_report(
             args.code, channel=args.channel, ai_provider=provider,
@@ -667,7 +713,8 @@ def main(argv: list[str] | None = None) -> int:
             push_timeout=args.timeout, no_chart=args.no_chart, risk=args.risk,
             mode=getattr(args, "mode", "full"),
             industry=(getattr(args, "industry", None) or None) or None,
-            hours=getattr(args, "hours", 48))
+            hours=getattr(args, "hours", 48),
+            ai_compress=ai_compress)
     except ValueError as e:
         print(f"❌ {e}", file=sys.stderr)
         return 1
