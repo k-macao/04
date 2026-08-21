@@ -499,7 +499,8 @@ def selftest() -> int:
           and r["provider"] == "rule" and "report_md" in r and "report_html" in r)
     check("品牌头尾齐全", pp.BRAND_TITLE in r["report_md"]
           and pp.BRAND_DISCLAIMER in r["report_md"]
-          and r["report_md"].rstrip().endswith(pp.BRAND_SLOGAN))
+          and r["report_md"].rstrip().endswith(
+              f"**{pp.BRAND_AUTHOR} · {pp.BRAND_DISCLAIMER}**"))
     check("研报含行情核验块", "实时行情" in r["report_md"])
     check("研报含最新功能新鲜度看板", "数据新鲜度" in r["report_md"] and "内容指纹" in r["report_md"])
     check("HTML 渲染非空", "<div" in r["report_html"] or "<pre" in r["report_html"])
@@ -561,7 +562,8 @@ def selftest() -> int:
         }, sent_pack=None, persist_state=False)
     check("包装含新鲜度看板", "数据新鲜度" in wrapped and "内容指纹" in wrapped)
     check("包装含品牌头尾", pp.BRAND_TITLE in wrapped
-          and wrapped.rstrip().endswith(pp.BRAND_SLOGAN))
+          and wrapped.rstrip().endswith(
+              f"**{pp.BRAND_AUTHOR} · {pp.BRAND_DISCLAIMER}**"))
     check("包装返回指纹", bool(meta.get("fingerprint")))
     check("no_chart 不强制出图", meta.get("has_chart") is False)
     args_h = parse_args(["09988", "--hours", "156"])
