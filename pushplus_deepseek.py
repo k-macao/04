@@ -78,6 +78,13 @@ VERSION = "2.19-us-2026-08-14"  # 脚本版本指纹：每次交付递增，日�
 
 CHANNELS = ["pushplus", "wecom", "serverchan", "console", "all"]
 ALL_CHANNELS = ["pushplus", "wecom", "serverchan"]
+CHANNEL_SECRET_MAP = {
+    "pushplus": ["PUSHPLUS_TOKEN"],
+    "wecom": ["WECOM_KEY"],
+    "serverchan": ["SERVERCHAN_SENDKEY"],
+    "console": [],
+}
+SKIP_RESULT_PREFIX = "跳过"
 PROVIDERS = ["deepseek", "rule", "openai"]
 RISKS = ["low", "mid", "high"]
 RISK_ZH = {"low": "低", "mid": "中", "high": "高"}
@@ -1627,14 +1634,48 @@ def ai_compress_md(md: str, *, provider: str, template: str = "",
 
 # ================================================================ Secrets 检查
 
+def channel_targets(channel: str) -> list[str]:
+    """把 all 展开为真实推送通道；console 保持为单通道。"""
+    return ALL_CHANNELS if channel == "all" else [channel]
+
+
+def channel_required_secrets(channel: str) -> list[str]:
+    """返回单个推送通道需要的 Secret（不含 AI Key）。"""
+    if channel == "all":
+        names: list[str] = []
+        for ch in ALL_CHANNELS:
+            names.extend(CHANNEL_SECRET_MAP.get(ch, []))
+        return names
+    return list(CHANNEL_SECRET_MAP.get(channel, []))
+
+
+def missing_channel_secrets(channel: str) -> list[str]:
+    """返回单个推送通道缺失的 Secret；用于真实推送前优雅跳过。"""
+    return [name for name in channel_required_secrets(channel) if not env(name)]
+
+
+def skip_missing_secret_result(missing: list[str]) -> str:
+    """统一的“缺 Key 跳过”结果文案；不算失败，正文仍已完整输出。"""
+    return (f"{SKIP_RESULT_PREFIX}：缺少 Secret：{', '.join(missing)}"
+            "（正文已完整生成并打印到日志，未真实推送）")
+
+
+def is_skip_result(text: object) -> bool:
+    return str(text).startswith(SKIP_RESULT_PREFIX)
+
+
+def is_failure_result(text: object) -> bool:
+    return str(text).startswith("失败")
+
+
+def has_deliverable_channel(channel: str) -> bool:
+    """是否至少有一个所选通道可投递/输出；全缺 Key 时不写推送状态。"""
+    return any(not missing_channel_secrets(ch) for ch in channel_targets(channel))
+
+
 def required_secrets(channel: str, provider: str) -> list[str]:
     req: list[str] = []
-    if channel in ("pushplus", "all"):
-        req.append("PUSHPLUS_TOKEN")
-    if channel in ("wecom", "all"):
-        req.append("WECOM_KEY")
-    if channel in ("serverchan", "all"):
-        req.append("SERVERCHAN_SENDKEY")
+    req.extend(channel_required_secrets(channel))
     if provider == "deepseek":
         req.append("DEEPSEEK_API_KEY")
     elif provider == "openai":
@@ -1656,7 +1697,8 @@ def print_secret_report(channel: str, provider: str) -> bool:
             log(f"  ❌ {name} 缺失")
             missing.append(name)
     if missing:
-        log("\n❌ 请前往 仓库 Settings → Secrets and variables → Actions 补齐后重试。")
+        log("\n⚠️ 如需真实送达，请前往 仓库 Settings → Secrets and variables → Actions 补齐对应 Secret。")
+        log("  缺失的推送通道会在真实推送阶段被优雅跳过，不会使 Actions 因缺 Key 失败。")
         return False
     log("  → 全部所需 Secrets 已就绪 ✅")
     return True
@@ -4538,7 +4580,7 @@ def main(argv: list[str]) -> int:
     hk_code_raw = args.hk_code or env("HK_CODE")
     risk = args.risk or env("RISK") or "mid"
     theme = args.theme or env("THEME") or "guizang"
-    targets = ALL_CHANNELS if channel == "all" else [channel]
+    targets = channel_targets(channel)
 
     log("=" * 60)
     log(f"Manual Run - Alibaba PushPlus+DeepSeek  v{VERSION}")
@@ -4550,7 +4592,10 @@ def main(argv: list[str]) -> int:
     log("=" * 60)
 
     if args.check_only:
-        return 0 if print_secret_report(channel, provider) else 1
+        ok = print_secret_report(channel, provider)
+        if not ok:
+            log("  ⚠️ 检查到缺失项；本脚本会在真实推送阶段优雅跳过缺 Key 通道，不让 Actions 因缺 Key 失败。")
+        return 0
 
     # ---------- 新增因子：analysis/sentiment 共用 48h 量价舆情数据 ----------
     sent_pack, appendix_md, code4sent = None, "", None
@@ -4679,17 +4724,36 @@ def main(argv: list[str]) -> int:
                        else "OPENAI_API_KEY")
             key = env(key_env)
             if not key:
-                raise PushError(f"缺少 Secret：{key_env}（ai_provider={provider} 必需）")
-            messages = build_messages(template, topic, context, risk)
-            if provider == "deepseek":
-                content = chat_completion(DEEPSEEK_URL, key, "deepseek-chat",
-                                          messages, TEMPLATE_MAX_TOKENS[template],
-                                          args.timeout)
+                log(f"⚠️  缺少 Secret：{key_env}（ai_provider={provider}），已降级使用 rule 模板继续。")
+                provider = "rule"
+                if template == "sentiment" and sent_pack is not None:
+                    content = render_sentiment_rule(topic, code4sent, sent_pack)
+                elif template == "feedscan" and feed_pack is not None:
+                    content = render_feed_rule(topic, feed_pack)
+                elif template == "newsnow" and newsnow_pack is not None:
+                    try:
+                        from newsnow_sources import render_newsnow_rule
+                        content = render_newsnow_rule(topic, newsnow_pack)
+                    except Exception:
+                        content = gen_by_rule(topic, template, sent_pack=sent_pack,
+                                              newsnow_pack=newsnow_pack)
+                else:
+                    try:
+                        content = gen_by_rule(topic, template, sent_pack=sent_pack,
+                                              newsnow_pack=locals().get("newsnow_pack"))
+                    except TypeError:
+                        content = gen_by_rule(topic, template, sent_pack=sent_pack)
             else:
-                base = env("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
-                content = chat_completion(
-                    f"{base.rstrip('/')}/chat/completions", key, "gpt-4o-mini",
-                    messages, TEMPLATE_MAX_TOKENS[template], args.timeout)
+                messages = build_messages(template, topic, context, risk)
+                if provider == "deepseek":
+                    content = chat_completion(DEEPSEEK_URL, key, "deepseek-chat",
+                                              messages, TEMPLATE_MAX_TOKENS[template],
+                                              args.timeout)
+                else:
+                    base = env("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL
+                    content = chat_completion(
+                        f"{base.rstrip('/')}/chat/completions", key, "gpt-4o-mini",
+                        messages, TEMPLATE_MAX_TOKENS[template], args.timeout)
     except PushError as e:
         if args.dry_run and "缺少 Secret" in str(e):
             log(f"⚠️  {e}")
@@ -4850,14 +4914,23 @@ def main(argv: list[str]) -> int:
         log("ℹ️  主题样式仅作用于 pushplus 通道（企微/Server酱不支持换肤）")
     results: dict[str, str] = {}
     failures = 0
+    successes = 0
+    skips = 0
     for ch in targets:
         log(f"\n📤 正在通过 {ch} 推送…")
+        missing = missing_channel_secrets(ch)
+        if missing:
+            results[ch] = skip_missing_secret_result(missing)
+            skips += 1
+            log(f"  ⚠️ {ch}: {results[ch]}")
+            continue
         try:
             if ch == "pushplus":
                 results[ch] = push_pushplus(title, content, args.timeout,
                                             theme=theme)
             else:
                 results[ch] = PUSH_FUNCS[ch](title, content, args.timeout)
+            successes += 1
             log(f"  ✅ {ch}: {results[ch]}")
         except PushError as e:
             results[ch] = f"失败：{e}"
@@ -4866,10 +4939,14 @@ def main(argv: list[str]) -> int:
 
     log("\n===== 推送结果汇总 =====")
     for ch, r in results.items():
-        log(f"  {'❌' if r.startswith('失败') else '✅'} {ch}: {r}")
+        mark = "❌" if is_failure_result(r) else "⚠️" if is_skip_result(r) else "✅"
+        log(f"  {mark} {ch}: {r}")
     if failures:
         log(f"\n❌ 共 {failures}/{len(targets)} 个通道失败（详见上方日志）")
         return 1
+    if skips and not successes:
+        log("\n✅ 正文已完整生成并打印；所选推送通道均因缺少 Secret 被优雅跳过。")
+        return 0
 
     # ---------- 模块⑥：写入跨运行状态（供下次新鲜度对比）----------
     if state_enabled:

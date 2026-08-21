@@ -1002,10 +1002,12 @@ def generate_column(
     )
     body = ((market_md.rstrip() + "\n\n") if market_md else "") \
         + report_md.rstrip() + "\n\n" + "\n\n".join(extras)
+    targets = pp.channel_targets(channel)
+    should_persist_state = (not dry_run and pp.has_deliverable_channel(channel))
     content, latest_meta = sr.wrap_with_latest_features(
         body, raw_code=raw_code, template=TEMPLATE_NAME, topic=topic,
         hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,
-        persist_state=not dry_run)
+        persist_state=should_persist_state)
 
     check_out, check_code = "", 0
     if run_check:
@@ -1022,12 +1024,15 @@ def generate_column(
     title = (f"{pp.BRAND_TITLE}·{topic}·{COLUMN_TITLE}"
              f"·{MODE_TITLES.get(mode, mode)}（{now}）")
 
-    targets = pp.ALL_CHANNELS if channel == "all" else [channel]
     push_results: dict[str, str] = {}
     if dry_run:
         push_results = {ch: "dry-run（未真实推送）" for ch in targets}
     else:
         for ch in targets:
+            missing = pp.missing_channel_secrets(ch)
+            if missing:
+                push_results[ch] = pp.skip_missing_secret_result(missing)
+                continue
             try:
                 if ch == "pushplus":
                     push_results[ch] = pp.push_pushplus(
