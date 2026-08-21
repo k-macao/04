@@ -209,7 +209,7 @@ jobs:
           restore-keys: |
             push-state-
 
-      - name: Offline selftest (离线自检)
+      - name: Offline selftest (离线自检 · 全程屏蔽 AI Key，结果与 Secret 配置无关)
         run: python stock_report.py --selftest
 
       - name: Check secrets (只检查配置，不发送)
