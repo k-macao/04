@@ -29,4 +29,244 @@
 #     PUSHPLUS_TOKEN / WECOM_KEY / SERVERCHAN_SENDKEY（AI 另需 DEEPSEEK_API_KEY 等）；
 #     缺少推送 Key 时脚本会完整生成正文并优雅跳过对应通道，不让 Actions 失败；
 #   - 本工作流不写图片回仓库，permissions.contents 仅需 read；
-#   - hours 
+#   - hours 控制量价舆情 / 十七平台扫描窗口（24 / 48 / 72 / 156）；
+#   - actions/cache 持久化 output/push_state.json，供新鲜度看板跨运行对比；
+#   - 加固：actions 固定 v4/v5 并 pin 到 commit SHA；不要加 cache: 'pip'
+#     （本仓库无 requirements.txt / pyproject.toml，会导致 Setup Python 失败）；
+#   【2026-08-21 修复】离线自检不再受 Secret 影响：
+#     旧版 --selftest 直接读环境变量，仓库配了 DEEPSEEK_API_KEY 时「AI 分节压缩」
+#     会真的联网执行，导致自检项「无 Key 时优雅跳过（正文完整）」必然失败
+#     （日志特征：✂️ [1/1] … 549 → 467 字 → ❌ 1 项失败 → exit code 1）。
+#     现在 stock_report.py 用 _NoAIKeys 在自检全程屏蔽 DEEPSEEK_API_KEY /
+#     OPENAI_API_KEY（结束后原样恢复），本文件的 Offline selftest 步骤又在
+#     step 级把两个 Key 置空做双保险。注意：Actions 跑的是「所选分支上的代码」，
+#     若仍看到该失败，请确认 Run workflow 时选的分支已包含此修复。
+#   - 若遇 "Service Unavailable / Failed to resolve action download info"，
+#     见 README「故障排查」章节（Marketplace CDN 瞬时 503，网页 Re-run 即可）。
+#
+# workflow_dispatch 输入官方上限 10 个（当前本文件已有 11 个：code / template / mode /
+# channel / ai_provider / theme / hours / risk / industry / dry_run / ai_compress，
+# 实测仍可正常触发）。再新增输入前请先删一个，避免触发 "too many inputs" 报错。
+# ============================================================================
+name: Manual Run - Stock Report (HK/A-share/US)
+
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: '股票代码（港股 09988 / A股 600519 / 000001.SZ / 美股 NVDA）'
+        required: true
+        default: '09988'
+        type: string
+      template:
+        description: '研报框架（默认 equity=机构级九章投研；经典模板同样附带最新功能）'
+        required: true
+        default: 'equity'
+        type: choice
+        options:
+          - equity
+          - analysis
+          - brief
+          - scan
+          - picker
+          - fusion
+          - plan
+          - earnings
+          - portfolio
+          - review
+          - regime
+          - sentiment
+          - feedscan
+          - newsnow
+          - initiate
+          - earnings_preview
+          - earnings_update
+          - model_update
+          - morning_note
+          - catalysts
+          - thesis
+          - sector
+          - ideas
+      mode:
+        description: 'equity 栏目模式：full=九章深度 / earnings=财报深度'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - earnings
+      channel:
+        description: '推送通道（console=只打印到日志，不发微信）'
+        required: true
+        default: 'pushplus'
+        type: choice
+        options:
+          - pushplus
+          - wecom
+          - serverchan
+          - console
+          - all
+      ai_provider:
+        description: 'AI 提供方（auto=有 DEEPSEEK_API_KEY 用 deepseek，否则 rule）'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - deepseek
+          - openai
+          - rule
+      theme:
+        description: '视觉主题'
+        required: true
+        default: 'guizang'
+        type: choice
+        options:
+          - guizang
+          - monitor
+          - noc
+          - game
+          - klein
+          - pixel
+          - default
+      hours:
+        description: '量价舆情 / 十七平台扫描窗口（小时）'
+        required: true
+        default: '48'
+        type: choice
+        options:
+          - '24'
+          - '48'
+          - '72'
+          - '156'
+      risk:
+        description: '风险偏好（portfolio 模板生效）'
+        required: true
+        default: 'mid'
+        type: choice
+        options:
+          - low
+          - mid
+          - high
+      industry:
+        description: 'equity 行业附录 slug（留空=自动猜测）'
+        required: false
+        default: ''
+        type: string
+      dry_run:
+        description: 'true=只生成内容打印到日志（不发微信）；false=真实推送'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      ai_compress:
+        description: 'AI 分节压缩：正文每部分分别调用 AI 简化+压缩（失败回退原文）'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-report-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Generate & Push Stock Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+      WECOM_KEY: ${{ secrets.WECOM_KEY }}
+      SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      # actions/checkout@v4（pin 到 commit SHA，防 tag 解析抖动）
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # actions/setup-python@v5 —— 注意：不要加 cache: 'pip'（本仓库无依赖清单）
+      - name: Setup Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Show run config (不打印任何 Secret)
+        run: |
+          echo "code=${{ inputs.code }} template=${{ inputs.template }} mode=${{ inputs.mode }}"
+          echo "channel=${{ inputs.channel }} ai_provider=${{ inputs.ai_provider }}"
+          echo "theme=${{ inputs.theme }} hours=${{ inputs.hours }} risk=${{ inputs.risk }}"
+          echo "industry=${{ inputs.industry }} dry_run=${{ inputs.dry_run }} ai_compress=${{ inputs.ai_compress }}"
+          python -V
+
+      - name: Restore push state (新鲜度看板跨运行对比)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
+          restore-keys: |
+            push-state-
+
+      # 离线自检必须「真离线」：脚本内部已用 _NoAIKeys 屏蔽 AI Key，这里再在
+      # step 级把两个 Key 置空做双保险 —— 即使 checkout 到旧版脚本，也不会因为
+      # 仓库配了 DEEPSEEK_API_KEY 而真的联网压缩、导致
+      # 「无 Key 时优雅跳过（正文完整）」这一项误判失败。
+      - name: Offline selftest (离线自检 · 全程屏蔽 AI Key，结果与 Secret 配置无关)
+        env:
+          DEEPSEEK_API_KEY: ''
+          OPENAI_API_KEY: ''
+        run: python stock_report.py --selftest
+
+      - name: Check secrets (只检查配置，不发送)
+        continue-on-error: true
+        run: |
+          python stock_report.py --check-only \
+            --channel "${{ inputs.channel }}" \
+            --ai-provider "${{ inputs.ai_provider }}"
+
+      - name: Dry run (只生成内容，不推送)
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          python stock_report.py "${{ inputs.code }}" \
+            --channel "${{ inputs.channel }}" \
+            --ai-provider "${{ inputs.ai_provider }}" \
+            --template "${{ inputs.template }}" \
+            --mode "${{ inputs.mode }}" \
+            --industry "${{ inputs.industry }}" \
+            --risk "${{ inputs.risk }}" \
+            --theme "${{ inputs.theme }}" \
+            --hours "${{ inputs.hours }}" \
+            --ai-compress "${{ inputs.ai_compress }}"
+
+      - name: Real push (真实推送到微信)
+        if: ${{ inputs.dry_run == 'false' }}
+        run: |
+          python stock_report.py "${{ inputs.code }}" \
+            --channel "${{ inputs.channel }}" \
+            --ai-provider "${{ inputs.ai_provider }}" \
+            --template "${{ inputs.template }}" \
+            --mode "${{ inputs.mode }}" \
+            --industry "${{ inputs.industry }}" \
+            --risk "${{ inputs.risk }}" \
+            --theme "${{ inputs.theme }}" \
+            --hours "${{ inputs.hours }}" \
+            --push
+
+      - name: Save push state (供下次新鲜度对比)
+        if: ${{ success() && hashFiles('output/push_state.json') != '' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: output/push_state.json
+          key: push-state-${{ github.run_id }}
