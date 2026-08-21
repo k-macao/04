@@ -528,12 +528,16 @@ def run_skill(
     now = datetime.now(CST).strftime("%m-%d %H:%M")
     title = f"{pp.BRAND_TITLE}·{topic}·{meta['title']}（{now}）"
 
-    targets = pp.ALL_CHANNELS if channel == "all" else [channel]
+    targets = pp.channel_targets(channel)
     push_results: dict[str, str] = {}
     if dry_run:
         push_results = {ch: "dry-run（未真实推送）" for ch in targets}
     else:
         for ch in targets:
+            missing = pp.missing_channel_secrets(ch)
+            if missing:
+                push_results[ch] = pp.skip_missing_secret_result(missing)
+                continue
             try:
                 if ch == "pushplus":
                     push_results[ch] = pp.push_pushplus(title, content, timeout, theme=theme)

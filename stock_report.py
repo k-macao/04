@@ -420,25 +420,32 @@ def run_report(raw_code: str, *, channel: str = "console",
             gen_note = f"{gen_note}；{comp_note}"
 
     # ---- ③ 组装研报正文（行情快照 → 研报正文 → 新鲜度看板/字符图/附录由 wrap 包装）----
+    targets = pp.channel_targets(channel)
+    # 真实推送但所有目标通道均缺少推送 Secret 时，只生成并完整打印正文，
+    # 不写入“已推送”状态，避免下次新鲜度对比误以为已送达。
+    should_persist_state = (not dry_run and pp.has_deliverable_channel(channel))
     body = report_md.rstrip()
     if market_md:
         body = market_md.rstrip() + "\n\n" + body  # 行情块顶置：先价后文，界面更顺
     content, latest_meta = wrap_with_latest_features(
         body, raw_code=raw_code, template=template, topic=topic,
         hours=hours, no_chart=no_chart, quote=quote, sent_pack=sent_pack,
-        persist_state=not dry_run)
+        persist_state=should_persist_state)
 
     now = pp.datetime.now(pp.CST).strftime("%m-%d %H:%M")
     title = (f"{pp.BRAND_TITLE}·{topic}"
              f"·{pp.TEMPLATE_TITLES.get(template, template)}（{now}）")
 
     # ---- ④ 推送 ----
-    targets = pp.ALL_CHANNELS if channel == "all" else [channel]
     push_results: dict[str, str] = {}
     if dry_run:
         push_results = {ch: "dry-run（未真实推送）" for ch in targets}
     else:
         for ch in targets:
+            missing = pp.missing_channel_secrets(ch)
+            if missing:
+                push_results[ch] = pp.skip_missing_secret_result(missing)
+                continue
             try:
                 if ch == "pushplus":
                     push_results[ch] = pp.push_pushplus(title, content, push_timeout, theme=theme)
@@ -613,6 +620,20 @@ def selftest() -> int:
                         collect_news=False, no_chart=True, ai_compress=False)
     check("run_report(auto) 落到具体提供方", r_auto["provider"] in ("rule", "deepseek"))
 
+    print("⑥a 缺少推送 Key 时真实推送优雅跳过")
+    old_pushplus = os.environ.get("PUSHPLUS_TOKEN")
+    try:
+        os.environ.pop("PUSHPLUS_TOKEN", None)
+        r_skip = run_report("600519", channel="pushplus", ai_provider="rule",
+                            dry_run=False, collect_news=False, no_chart=True,
+                            ai_compress=False)
+        check("无 PushPlus Key 时跳过且正文完整",
+              pp.is_skip_result(r_skip["push"].get("pushplus"))
+              and len(r_skip.get("report_md") or "") > 0)
+    finally:
+        if old_pushplus is not None:
+            os.environ["PUSHPLUS_TOKEN"] = old_pushplus
+
     print("⑥b AI 分节压缩（拿到正文后逐节调用 AI 简化+压缩）")
     args_c = parse_args(["600519", "--ai-compress", "false"])
     check("--ai-compress 参数可解析", args_c.ai_compress == "false")
@@ -650,7 +671,9 @@ def _check_only(channel: str, provider: str) -> int:
         print(f"  {'✅' if n not in missing else '❌'} {n} {'已配置' if n not in missing else '缺失'}")
     if not names:
         print("  （所选 通道+AI 组合无需 Secret，行情数据免 Key）")
-    return 0 if not missing else 1
+    elif missing:
+        print("  ⚠️ 缺失项只会导致对应推送通道被跳过；正文仍会完整生成并打印，检查步骤不再返回失败。")
+    return 0
 
 
 # ================================================================ CLI
@@ -730,17 +753,26 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  正文 {len(md)} 字 / {len(md.encode('utf-8'))} 字节"
           f" · dry_run={result.get('dry_run')} · 通道={list(result.get('push') or {})}")
     failed = 0
+    skipped = 0
     for ch, r in result["push"].items():
         text = str(r)
-        ok = not text.startswith("失败")
+        ok = not pp.is_failure_result(text)
+        is_skip = pp.is_skip_result(text)
+        mark = "⚠️" if is_skip else "✅" if ok else "❌"
         if ch == "console" and not result.get("dry_run"):
             print(f"  ⚠️ {ch}: {text}（console 不会发到微信，请把 channel 改成 pushplus）")
         else:
-            print(f"  {'✅' if ok else '❌'} {ch}: {text}")
+            print(f"  {mark} {ch}: {text}")
+        if is_skip:
+            skipped += 1
         if not ok:
             failed += 1
     if result.get("dry_run"):
         print("  ℹ️ 本次是 dry-run，没有真实推送到微信。")
+    elif skipped and skipped == len(result.get("push") or {}):
+        print("  ℹ️ 所选推送通道均缺少 Secret，已优雅跳过；正文已完整打印到日志，不视为失败。")
+    elif skipped:
+        print("  ℹ️ 部分通道缺少 Secret 已跳过；其余通道已按上方结果处理。")
     if failed:
         print(f"\n❌ {failed} 个通道推送失败，微信不会收到。")
         return 1

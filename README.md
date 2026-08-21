@@ -227,6 +227,8 @@ result = deep_merge_dicts(base, incoming)
 | `SERVERCHAN_SENDKEY` | 通道为 `serverchan`/`all` | Server酱 Turbo 的 SendKey |
 | `OPENAI_API_KEY` | AI 为 `openai` | OpenAI 控制台（可选变量 `OPENAI_BASE_URL`） |
 
+> 无 Key 容错：行情源免 Key；`stock_report.py` 的 `auto` AI 无 `DEEPSEEK_API_KEY` 会降级为 `rule`。真实推送时若所选微信通道缺少 `PUSHPLUS_TOKEN` / `WECOM_KEY` / `SERVERCHAN_SENDKEY`，脚本会完整生成并打印正文，然后把该通道标记为“跳过”，不再让 Actions 因缺少推送 Key 失败。
+
 ### 运行方式
 
 **Actions → 选择对应工作流 → Run workflow**：
