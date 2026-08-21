@@ -478,7 +478,39 @@ def run_report(raw_code: str, *, channel: str = "console",
 
 # ================================================================ 离线自检
 
+# 自检期间需要屏蔽的 AI Key —— 自检是「离线自检」，不得因为 CI 环境里配了
+# DEEPSEEK_API_KEY / OPENAI_API_KEY 就真的联网调用大模型（既慢又会让
+# 「无 Key 时优雅跳过」这类断言失败）。
+_AI_KEY_ENVS = ("DEEPSEEK_API_KEY", "OPENAI_API_KEY")
+
+
+class _NoAIKeys:
+    """上下文管理器：临时清空 AI Key，退出时原样恢复。"""
+
+    def __init__(self, *names: str):
+        self.names = names or _AI_KEY_ENVS
+        self._old: dict[str, str] = {}
+
+    def __enter__(self):
+        for n in self.names:
+            if n in os.environ:
+                self._old[n] = os.environ.pop(n)
+        return self
+
+    def __exit__(self, *exc):
+        for n, v in self._old.items():
+            os.environ[n] = v
+        self._old.clear()
+        return False
+
+
 def selftest() -> int:
+    """离线自检入口：全程屏蔽 AI Key，保证结果与环境无关、不联网调用大模型。"""
+    with _NoAIKeys():
+        return _selftest_impl()
+
+
+def _selftest_impl() -> int:
     fails = 0
 
     def check(name, cond):
@@ -612,10 +644,16 @@ def selftest() -> int:
     check("argparse 接受 auto", args_auto.ai_provider == "auto")
     args_empty = parse_args(["600519"])
     check("默认即为 auto", args_empty.ai_provider == "auto")
-    check("auto 解析为 rule（无 Key）或 deepseek",
-          resolve_ai_provider("auto") in ("rule", "deepseek")
+    check("auto 无 Key 时解析为 rule",
+          resolve_ai_provider("auto") == "rule"
           and resolve_ai_provider("") == resolve_ai_provider("auto")
           and resolve_ai_provider(None) == resolve_ai_provider("auto"))
+    os.environ["DEEPSEEK_API_KEY"] = "sk-selftest"
+    try:
+        check("auto 有 Key 时解析为 deepseek",
+              resolve_ai_provider("auto") == "deepseek")
+    finally:
+        os.environ.pop("DEEPSEEK_API_KEY", None)
     r_auto = run_report("600519", channel="console", ai_provider="auto", dry_run=True,
                         collect_news=False, no_chart=True, ai_compress=False)
     check("run_report(auto) 落到具体提供方", r_auto["provider"] in ("rule", "deepseek"))
@@ -647,11 +685,14 @@ def selftest() -> int:
         check("关闭时 gen_note 不含压缩信息",
               "压缩" not in (r0.get("gen_note") or ""))
         os.environ.pop("AI_COMPRESS")
-        r1 = run_report("600519", channel="console", ai_provider="rule",
-                        dry_run=True, collect_news=False, no_chart=True)
+        with _NoAIKeys():           # 显式屏蔽 Key：断言与 CI 是否配置 Secret 无关
+            r1 = run_report("600519", channel="console", ai_provider="rule",
+                            dry_run=True, collect_news=False, no_chart=True)
         check("无 Key 时优雅跳过（正文完整）",
               "跳过分节压缩" in (r1.get("gen_note") or "")
               and len(r1.get("report_md") or "") > 0)
+        check("跳过压缩时正文与未压缩版一致（不丢内容）",
+              (r1.get("report_md") or "x") == (r0.get("report_md") or "y"))
     finally:
         if old_ac is None:
             os.environ.pop("AI_COMPRESS", None)

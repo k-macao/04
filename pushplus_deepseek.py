@@ -4345,6 +4345,8 @@ def selftest() -> int:
     check("### 归属上一节", len(split_md_sections("## A\n\nx\n\n### 子\n\ny")) == 1)
     # 环境开关
     old_env = os.environ.get("AI_COMPRESS")
+    old_ai_keys = {k: os.environ[k] for k in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY")
+                   if k in os.environ}
     try:
         os.environ["AI_COMPRESS"] = "0"
         check("AI_COMPRESS=0 关闭压缩", ai_compress_enabled() is False)
@@ -4395,6 +4397,9 @@ def selftest() -> int:
             os.environ.pop("DEEPSEEK_API_KEY", None)
         check("输出变长回退原文", out2 == md3 and "未缩短" in note2)
     finally:
+        for _k in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+            os.environ.pop(_k, None)
+        os.environ.update(old_ai_keys)   # 自检期间清空的 AI Key 原样恢复
         if old_env is None:
             os.environ.pop("AI_COMPRESS", None)
         else:
